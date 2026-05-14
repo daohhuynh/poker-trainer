@@ -9,3 +9,4 @@ node_modules/
 .idea/
 *.swp
 .env
+CLAUDE.md
