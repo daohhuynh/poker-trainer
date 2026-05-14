@@ -10,3 +10,23 @@ node_modules/
 *.swp
 .env
 CLAUDE.md
+
+# Additional build directories
+build-debug/
+build-*/
+
+# In-tree CMake artifacts (defensive: builds should use build-* dirs)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+_deps/
+compile_commands.json
+
+# Emscripten extra outputs
+*.data
+*.mem
+
+# Editor / LSP caches
+.cache/
+.ccls-cache/
