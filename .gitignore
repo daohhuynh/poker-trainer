@@ -1,0 +1,11 @@
+build/
+*.o
+*.a
+*.wasm
+*.js.map
+node_modules/
+.DS_Store
+.vscode/
+.idea/
+*.swp
+.env
