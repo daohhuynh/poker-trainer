@@ -2735,6 +2735,7 @@ None beyond the standard library.
 
     #pragma once
 
+    #include <cstddef>
     #include <cstdint>
 
     namespace poker_trainer::backbone {
