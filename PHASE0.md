@@ -2183,6 +2183,7 @@ The screen state is one of the six backbone primitives. It lives in `src/backbon
 
     #include "engine/scenario_id.hpp"
 
+    #include <cstddef>
     #include <cstdint>
     #include <optional>
 
