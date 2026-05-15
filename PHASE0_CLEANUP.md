@@ -84,6 +84,39 @@ lines, 85 runtime assertions + 1 static_assert, 15 test functions), since
 duplicating the full test verbatim would create a second maintenance burden.
 The test itself was correct and required no changes; only §17's description
 of it was stale.
+ARCHITECTURE.md scenario_events drift — the original architecture spec
+listed 4 lifecycle events (scenario_spawned, scenario_submitted,
+scenario_ended, tier_advanced); Phase 0 scenario_events.hpp implements 5
+(ScenarioSpawned, AnswersSubmitted, GradingComplete, AgainPressed,
+ExitToModeSelection). The source split scenario_submitted into
+AnswersSubmitted + GradingComplete (separating submission timing from
+grading timing) and scenario_ended into AgainPressed + ExitToModeSelection
+(separating recap-loop intent from exit intent), both reasonable design
+improvements. The architecture's tier_advanced event had no documented
+consumer and is retired. Resolved by amending ARCHITECTURE.md to match the
+as-built event list and remove the orphan tier_advanced declaration.
+PHASE0.md §11–§16 rename drift — commit 958e0bc renamed each backbone
+primitive's reset_for_testing function to a per-primitive name. Commit
+2d7f838 amended §17 for the rename but left §11–§16 Contents blocks
+unchanged. Resolved by sweeping §11 through §16 (six one-line edits) to
+use the per-primitive names matching the as-built headers. The §16
+embedded stub example was also updated to use
+reset_modal_state_for_testing.
+PHASE0.md §18 completion checklist stale path — §18 referenced
+tests/phase0_integration/all_headers_test.cpp; the test on disk is at
+tests/all_headers_test.cpp. Resolved by updating §18 to the actual path.
+PHASE0.md §17 assertion count off-by-one (then off-by-four after coverage
+addition) — §17 said "85 runtime assertions"; actual count was 86, then
+increased to 90 with the addition of ScreenId::PostRound and
+ScreenId::Error coverage in test_screen_state. Resolved by updating §17
+to reflect the as-built count of 90 runtime + 1 static_assert.
+ZONES.md sync_state path — ZONES.md line 16 in the Phase 0 Owns clause
+listed src/backbone/sync_state.hpp; the actual file is at
+src/persistence/sync_state.hpp per PHASE0.md §4. Resolved by updating
+ZONES.md.
+Integration test ScreenId coverage — tests/all_headers_test.cpp
+test_screen_state did not exercise ScreenId::PostRound or ScreenId::Error.
+Resolved by adding 4 assertions covering both states.
 
 ## Process lessons (for future contract-generation workflows)
 
