@@ -43,7 +43,7 @@ Sixteen header files plus one integration test:
 
 Plus the integration test:
 
-- `tests/phase0_integration/all_headers_test.cpp`
+- `tests/all_headers_test.cpp`
 
 ### What Phase 0 does NOT produce
 
@@ -77,7 +77,7 @@ Phase 0 files depend on each other through includes. The order below is the safe
 14. `focus_manager.hpp` (depends on event_router.hpp)
 15. `scenario_events.hpp` (depends on scenario_id.hpp)
 16. `modal_state.hpp` (no dependencies beyond standard library)
-17. `tests/phase0_integration/all_headers_test.cpp` (depends on all of the above)
+17. `tests/all_headers_test.cpp` (depends on all of the above)
 
 Files in this list with no dependencies on prior list entries can be generated in any order or in parallel. Files with dependencies must be generated after their dependencies exist.
 
@@ -107,7 +107,7 @@ Phase 0 is complete when all of the following pass:
 
 1. All 16 header files exist at the paths listed above with the contents specified in this document.
 2. The four backbone primitives that have Phase 0 implementations (event router, focus manager, scenario events bus, screen state singleton) have `.cpp` stub files in `src/backbone/` that compile and link.
-3. The integration test `tests/phase0_integration/all_headers_test.cpp` exists, includes every Phase 0 header, instantiates one of each declared type or accesses one of each declared constant, and compiles and links cleanly.
+3. The integration test `tests/all_headers_test.cpp` exists, includes every Phase 0 header, instantiates one of each declared type or accesses one of each declared constant, and compiles and links cleanly.
 4. The integration test passes when run via `ctest --output-on-failure`.
 5. A clean build from scratch (`rm -rf build && mkdir build && cd build && emcmake cmake .. && emmake make -j`) produces zero warnings and zero errors.
 6. A native debug build with tests (`mkdir build-debug && cd build-debug && cmake -DENABLE_TESTS=ON .. && make -j`) builds, links, and passes ctest.
@@ -2143,7 +2143,7 @@ None beyond the standard library.
     // Reset all clock state to zero. Used by the integration test to
     // restore a clean state between test cases. No other zone should
     // call this.
-    void reset_for_testing() noexcept;
+    void reset_animation_clock_for_testing() noexcept;
 
     }  // namespace poker_trainer::backbone
 
@@ -2227,7 +2227,7 @@ The screen state is one of the six backbone primitives. It lives in `src/backbon
 
     // Reset to initial state (Root, no scenario). Used by the integration
     // test only.
-    void reset_for_testing() noexcept;
+    void reset_screen_state_for_testing() noexcept;
 
     }  // namespace poker_trainer::backbone
 
@@ -2397,7 +2397,7 @@ This is the architectural rule's mechanism: "no zone may register a global keybo
     void dispatch_mouse_event(const MouseEvent& event) noexcept;
 
     // Clear all installed handlers. Used by the integration test only.
-    void reset_for_testing() noexcept;
+    void reset_event_router_for_testing() noexcept;
 
     }  // namespace poker_trainer::backbone
 
@@ -2517,7 +2517,7 @@ The focus manager supports a stack of focus contexts. When a modal opens, the mo
 
     // Reset all focus state to initial (no focus, no contexts beyond
     // base, keyboard mode inactive). Used by the integration test.
-    void reset_for_testing() noexcept;
+    void reset_focus_manager_for_testing() noexcept;
 
     // Compile-time helper: compute a FocusableId from a string literal
     // via FNV-1a hash. This is the recommended way to define focusable
@@ -2699,7 +2699,7 @@ This is the architectural rule's mechanism: "no zone may fire scenario lifecycle
         const ExitToModeSelectionEvent& event) noexcept;
 
     // Clear all subscribers. Used by the integration test only.
-    void reset_for_testing() noexcept;
+    void reset_scenario_events_for_testing() noexcept;
 
     }  // namespace poker_trainer::backbone
 
@@ -2777,7 +2777,7 @@ None beyond the standard library.
     void notify_modal_closed(ModalId id) noexcept;
 
     // Reset modal state. Used by the integration test only.
-    void reset_for_testing() noexcept;
+    void reset_modal_state_for_testing() noexcept;
 
     }  // namespace poker_trainer::backbone
 
@@ -2823,7 +2823,7 @@ None beyond the standard library.
           }
       }
 
-      void reset_for_testing() noexcept {
+      void reset_modal_state_for_testing() noexcept {
           g_modal_depth.store(0, std::memory_order_release);
           g_topmost_value.store(0, std::memory_order_release);
       }
@@ -2854,7 +2854,7 @@ All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `mo
 
 ### Contents
 
-Representative excerpt showing the test's actual shape. See `tests/all_headers_test.cpp` for the full as-built test (370 lines, 85 runtime assertions + 1 `static_assert`, 15 test functions).
+Representative excerpt showing the test's actual shape. See `tests/all_headers_test.cpp` for the full as-built test (370 lines, 86 runtime assertions + 1 `static_assert`, 15 test functions).
 
     // tests/all_headers_test.cpp
     //
@@ -2920,7 +2920,7 @@ Phase 0 is signed off when the following have all been verified:
 
 - [ ] All 16 header files exist at their specified paths.
 - [ ] The Phase 0 `.cpp` files (`rng_seed.cpp`, `sync_state.cpp`, `screen_state.cpp`, `event_router.cpp`, `focus_manager.cpp`, `scenario_events.cpp`, `animation_clock_stub.cpp`, `modal_state_stub.cpp`) exist and compile.
-- [ ] The integration test `tests/phase0_integration/all_headers_test.cpp` exists.
+- [ ] The integration test `tests/all_headers_test.cpp` exists.
 - [ ] A clean wasm build (`emcmake cmake .. && emmake make -j`) succeeds with zero warnings.
 - [ ] A clean native test build (`cmake -DENABLE_TESTS=ON .. && make -j`) succeeds with zero warnings.
 - [ ] `ctest --output-on-failure` runs the integration test and it passes.
