@@ -13,7 +13,7 @@ This document defines the 14 implementation zones plus Phase 0. Each zone is a p
 - `src/backbone/modal_state.hpp` (interface only — implementation in Z11)
 - `src/backbone/animation_clock.hpp` (interface only — implementation in Z05)
 - `src/backbone/focus_manager.hpp`
-- `src/backbone/sync_state.hpp`
+- `src/persistence/sync_state.hpp`
 - `src/engine/scenario_id.hpp`
 - `src/engine/rng_seed.hpp`
 - `src/settings/settings.hpp`
