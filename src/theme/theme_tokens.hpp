@@ -121,15 +121,13 @@ inline constexpr std::size_t kColorTokenCount =
 // theme pointer is held by Z06 and queried by every rendering
 // consumer via get_color().
 struct Theme {
-    // Indexed by ColorToken. tokens[static_cast<size_t>(ColorToken::X)]
+    // Non-owning pointer to a kColorTokenCount-element ImVec4 array.
+    // The pointee is owned by the palette .cpp file in Z06 (which
+    // includes imgui.h), giving ImVec4 its complete definition there.
+    // theme_tokens.hpp itself never needs ImVec4 to be a complete type.
+    // Indexed by ColorToken: tokens[static_cast<size_t>(ColorToken::X)]
     // gives the ImVec4 for token X under this theme.
-    //
-    // The raw ImVec4 type is used here directly because every consumer
-    // of this header also consumes ImGui types. We forward-declared
-    // ImVec4 above to avoid the ImGui include; the actual storage
-    // requires the full definition, which palette implementations
-    // pull in.
-    std::array<ImVec4, kColorTokenCount> tokens;
+    const ImVec4* tokens;
 
     // Theme identifier (one of the kThemeId* values below).
     std::uint8_t theme_id;
