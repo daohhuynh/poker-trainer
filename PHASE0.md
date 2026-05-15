@@ -2436,6 +2436,7 @@ The focus manager supports a stack of focus contexts. When a modal opens, the mo
 
     #include "backbone/event_router.hpp"
 
+    #include <cstddef>
     #include <cstdint>
     #include <span>
     #include <string_view>
