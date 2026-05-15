@@ -2840,7 +2840,7 @@ None beyond the standard library.
 
 ### File path
 
-`tests/phase0_integration/all_headers_test.cpp`
+`tests/all_headers_test.cpp`
 
 ### Purpose
 
@@ -2987,7 +2987,7 @@ All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `mo
     // --- Backbone: animation clock ---
 
     TEST(Phase0Integration, AnimationClockTicks) {
-        backbone::reset_for_testing();  // Reset across all backbone primitives
+        backbone::reset_animation_clock_for_testing();
         backbone::tick(100);
         EXPECT_GE(backbone::wall_clock_ms(), 100u);
         EXPECT_GE(backbone::animation_time_ms(), 100u);
@@ -3008,7 +3008,7 @@ All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `mo
     // --- Backbone: screen state ---
 
     TEST(Phase0Integration, ScreenStateTransitions) {
-        backbone::reset_for_testing();
+        backbone::reset_screen_state_for_testing();
         auto s = backbone::read_screen_state();
         EXPECT_EQ(s.current, backbone::ScreenId::Root);
         EXPECT_FALSE(s.active_scenario.has_value());
@@ -3025,7 +3025,7 @@ All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `mo
     // --- Backbone: event router ---
 
     TEST(Phase0Integration, EventRouterDispatchesKey) {
-        backbone::reset_for_testing();
+        backbone::reset_event_router_for_testing();
         bool handler_called = false;
         const auto handle = backbone::install_key_handler(
             [&](const backbone::KeyEvent& e) {
@@ -3051,7 +3051,7 @@ All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `mo
     // --- Backbone: focus manager ---
 
     TEST(Phase0Integration, FocusManagerSnapAndAdvance) {
-        backbone::reset_for_testing();
+        backbone::reset_focus_manager_for_testing();
         constexpr auto kA = backbone::make_focusable_id("test.a");
         constexpr auto kB = backbone::make_focusable_id("test.b");
         constexpr auto kC = backbone::make_focusable_id("test.c");
@@ -3073,7 +3073,7 @@ All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `mo
     // --- Backbone: scenario events ---
 
     TEST(Phase0Integration, ScenarioEventsDispatch) {
-        backbone::reset_for_testing();
+        backbone::reset_scenario_events_for_testing();
         bool spawned_received = false;
         const auto h = backbone::subscribe_scenario_spawned(
             [&](const backbone::ScenarioSpawnedEvent& e) {
@@ -3090,7 +3090,7 @@ All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `mo
     // --- Backbone: modal state ---
 
     TEST(Phase0Integration, ModalStateStack) {
-        backbone::reset_for_testing();
+        backbone::reset_modal_state_for_testing();
         EXPECT_FALSE(backbone::is_any_modal_open());
         EXPECT_EQ(backbone::modal_stack_depth(), 0u);
 
@@ -3109,9 +3109,9 @@ All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `mo
 ### Notes
 
 - The test uses googletest's `EXPECT_*` macros throughout. The standard pattern (one `TEST` per behavior, descriptive names) applies.
-- `backbone::reset_for_testing()` is called at the start of most tests to ensure a clean state. Each backbone primitive provides its own `reset_for_testing()`; the tests above call them individually because there isn't a single combined "reset everything" function (and adding one would be a Phase 0 deliverable expansion, which we're not doing).
+- The per-primitive reset function (`reset_animation_clock_for_testing()`, `reset_modal_state_for_testing()`, `reset_screen_state_for_testing()`, `reset_scenario_events_for_testing()`, `reset_event_router_for_testing()`, `reset_focus_manager_for_testing()`) is called at the start of each backbone test to ensure a clean state. There is no single combined "reset everything" function; the original combined name `backbone::reset_for_testing()` was renamed per primitive in commit 958e0bc to resolve a link-time duplicate-symbol collision across the 6 backbone .cpp files.
 - Each test focuses on the contract surface of one header. The tests are intentionally shallow — proving that the headers compile, link, and behave correctly at the interface level. Deep functional tests come with the zone implementations.
-- The test file is at `tests/phase0_integration/all_headers_test.cpp` per ZONES.md's Phase 0 Owns list and per the directory layout in CLAUDE.md.
+- The test file is at `tests/all_headers_test.cpp`.
 - The test runs natively (not in WebAssembly) via the `-DENABLE_TESTS=ON` build path. Browser environment is not required.
 
 ---
