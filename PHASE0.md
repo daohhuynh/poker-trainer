@@ -2850,269 +2850,67 @@ This is **not** a comprehensive functional test of any subsystem. Comprehensive 
 
 ### Dependencies
 
-All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `modal_state`, plus the real Phase 0 `.cpp` files for `rng_seed`, `sync_state`, `screen_state`, `event_router`, `focus_manager`, and `scenario_events`. Plus googletest.
+All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `modal_state`, plus the real Phase 0 `.cpp` files for `rng_seed`, `scenario_id`, `sync_state`, `screen_state`, `event_router`, `focus_manager`, and `scenario_events`. Plus `<cassert>` (no third-party test framework). Compile-time correctness via `static_assert` where possible (e.g., the FNV-1a hash output); runtime correctness via `assert()` calls inside `static void test_*()` functions invoked sequentially from `main()`.
 
 ### Contents
 
-    #include "engine/scenario_id.hpp"
-    #include "engine/rng_seed.hpp"
-    #include "persistence/auth0_config.hpp"
-    #include "persistence/sync_state.hpp"
-    #include "audio/audio_paths.hpp"
-    #include "assets/tier_config.hpp"
-    #include "assets/asset_paths.hpp"
-    #include "theme/theme_tokens.hpp"
-    #include "persistence/persistence_schema.hpp"
-    #include "settings/settings.hpp"
-    #include "backbone/animation_clock.hpp"
-    #include "backbone/screen_state.hpp"
-    #include "backbone/event_router.hpp"
-    #include "backbone/focus_manager.hpp"
-    #include "backbone/scenario_events.hpp"
-    #include "backbone/modal_state.hpp"
+Representative excerpt showing the test's actual shape. See `tests/all_headers_test.cpp` for the full as-built test (370 lines, 85 runtime assertions + 1 `static_assert`, 15 test functions).
 
-    #include <gtest/gtest.h>
+    // tests/all_headers_test.cpp
+    //
+    // Phase 0 integration test: includes every Phase 0 header, links every
+    // Phase 0 .cpp, and exercises a representative behavior subset of each
+    // backbone primitive plus a sanity check on every contract-bearing
+    // constant. Plain C++ assertions (no GoogleTest dependency) keep Phase 0
+    // free of extra third-party deps.
 
-    using namespace poker_trainer;
+    #undef NDEBUG  // assertions stay live regardless of build flags
+    #include <cassert>
+    #include <cstdio>
 
-    // --- Engine ---
+    // ... every Phase 0 header included here ...
 
-    TEST(Phase0Integration, ScenarioIdRoundTrip) {
-        const engine::ScenarioId id{4729183746281ULL};
-        EXPECT_TRUE(engine::is_valid(id));
-        EXPECT_EQ(engine::format_scenario_id(id), "4729183746281");
-        const auto parsed = engine::parse_scenario_id("4729183746281");
-        ASSERT_TRUE(parsed.has_value());
-        EXPECT_EQ(*parsed, id);
+    namespace pt = poker_trainer;
+
+    static void test_animation_clock() {
+        pt::backbone::reset_animation_clock_for_testing();
+        assert(pt::backbone::wall_clock_ms() == 0);
+        // ... more assertions ...
     }
 
-    TEST(Phase0Integration, ScenarioIdInvalidParses) {
-        EXPECT_FALSE(engine::parse_scenario_id("0").has_value());
-        EXPECT_FALSE(engine::parse_scenario_id("abc").has_value());
-        EXPECT_FALSE(engine::parse_scenario_id("").has_value());
-    }
+    // ... one test function per backbone primitive plus static-data sanity tests ...
 
-    TEST(Phase0Integration, RngSeedConstructsAndProduces) {
-        engine::RngSeed rng{engine::ScenarioId{42}};
-        EXPECT_EQ(rng.seed_id(), engine::ScenarioId{42});
-        const auto v1 = rng.engine()();
-        const auto v2 = rng.engine()();
-        EXPECT_NE(v1, v2);  // Two consecutive draws differ
-    }
+    static_assert(pt::backbone::make_focusable_id("test").value
+                      == 0xf9e6e6ef197c2b25ULL,
+                  "FNV-1a hash mismatch");
 
-    // --- Persistence ---
-
-    TEST(Phase0Integration, Auth0ConfigConstants) {
-        EXPECT_FALSE(persistence::kAuth0Domain.empty());
-        EXPECT_FALSE(persistence::kAuth0RedirectUri.empty());
-        EXPECT_GT(persistence::kAuth0HealthCheckTimeout.count(), 0);
-    }
-
-    TEST(Phase0Integration, SyncStateReadWrite) {
-        persistence::write_sync_state({});  // Reset
-        auto s = persistence::read_sync_state();
-        EXPECT_EQ(s.status, persistence::SyncStatus::Idle);
-
-        persistence::SyncStateSnapshot updated{};
-        updated.status = persistence::SyncStatus::SyncFailing;
-        updated.consecutive_failures = 3;
-        persistence::write_sync_state(updated);
-
-        s = persistence::read_sync_state();
-        EXPECT_EQ(s.status, persistence::SyncStatus::SyncFailing);
-        EXPECT_EQ(s.consecutive_failures, 3u);
-    }
-
-    TEST(Phase0Integration, PersistenceSchemaValidation) {
-        using persistence::validate_schema_version;
-        using persistence::SchemaValidationResult;
-        EXPECT_EQ(validate_schema_version(1), SchemaValidationResult::Ok);
-        EXPECT_EQ(validate_schema_version(0), SchemaValidationResult::Unsupported);
-        EXPECT_EQ(validate_schema_version(999), SchemaValidationResult::Unsupported);
-
-        persistence::AppState state{};
-        EXPECT_EQ(state.schema_version, persistence::kCurrentSchemaVersion);
-        EXPECT_TRUE(persistence::is_guest_state(state));
-    }
-
-    // --- Audio ---
-
-    TEST(Phase0Integration, AudioPathsAreUnique) {
-        for (std::size_t i = 0; i < audio::kSfxCount; ++i) {
-            EXPECT_FALSE(audio::kSfxPaths[i].empty());
-        }
-        EXPECT_EQ(audio::kMusicTrackCount, 12u);
-        EXPECT_EQ(audio::kMusicGenreCount, 4u);
-    }
-
-    // --- Assets ---
-
-    TEST(Phase0Integration, AssetCountMatches) {
-        EXPECT_EQ(assets::kAssetCount, 90u);
-        EXPECT_EQ(assets::asset_tier(assets::AssetId::AppLogo),
-                  assets::AssetTier::Tier1);
-        EXPECT_EQ(assets::asset_tier(assets::AssetId::FrogSideProfile),
-                  assets::AssetTier::Tier4);
-    }
-
-    TEST(Phase0Integration, TierConfigsExist) {
-        EXPECT_EQ(assets::tier_config(assets::AssetTier::Tier1).max_retries, 3);
-        EXPECT_TRUE(assets::tier_config(assets::AssetTier::Tier1)
-                        .fatal_failure_shows_error_screen);
-        EXPECT_FALSE(assets::tier_config(assets::AssetTier::Tier3)
-                         .fatal_failure_shows_error_screen);
-    }
-
-    // --- Theme ---
-
-    TEST(Phase0Integration, ThemeTokenCount) {
-        EXPECT_EQ(theme::kColorTokenCount, 61u);
-        EXPECT_EQ(theme::kThemeIdCount, 4u);
-        EXPECT_EQ(theme::kFixedAcrossThemeTokens.size(), 10u);
-    }
-
-    // --- Settings ---
-
-    TEST(Phase0Integration, SettingsDefaults) {
-        settings::Settings s{};
-        EXPECT_EQ(s.display.active_theme_id, theme::kThemeIdNoLimit);
-        EXPECT_TRUE(s.display.show_hud);
-        EXPECT_TRUE(s.gameplay.scenario_types_enabled[0]);
-        EXPECT_TRUE(s.gameplay.scenario_types_enabled[1]);
-        EXPECT_FLOAT_EQ(s.gameplay.difficulty_min, 0.2f);
-        EXPECT_FLOAT_EQ(s.gameplay.difficulty_max, 0.8f);
-        EXPECT_TRUE(s.account.display_name_override.empty());
-    }
-
-    // --- Backbone: animation clock ---
-
-    TEST(Phase0Integration, AnimationClockTicks) {
-        backbone::reset_animation_clock_for_testing();
-        backbone::tick(100);
-        EXPECT_GE(backbone::wall_clock_ms(), 100u);
-        EXPECT_GE(backbone::animation_time_ms(), 100u);
-        EXPECT_FALSE(backbone::is_animation_paused());
-
-        backbone::pause();
-        EXPECT_TRUE(backbone::is_animation_paused());
-        const auto frozen = backbone::animation_time_ms();
-        backbone::tick(100);
-        EXPECT_EQ(backbone::animation_time_ms(), frozen);
-        EXPECT_GE(backbone::wall_clock_ms(), 200u);  // Wall clock keeps moving
-
-        backbone::resume();
-        backbone::tick(100);
-        EXPECT_GT(backbone::animation_time_ms(), frozen);
-    }
-
-    // --- Backbone: screen state ---
-
-    TEST(Phase0Integration, ScreenStateTransitions) {
-        backbone::reset_screen_state_for_testing();
-        auto s = backbone::read_screen_state();
-        EXPECT_EQ(s.current, backbone::ScreenId::Root);
-        EXPECT_FALSE(s.active_scenario.has_value());
-
-        backbone::set_screen(backbone::ScreenId::Game,
-                             engine::ScenarioId{42});
-        s = backbone::read_screen_state();
-        EXPECT_EQ(s.current, backbone::ScreenId::Game);
-        ASSERT_TRUE(s.active_scenario.has_value());
-        EXPECT_EQ(*s.active_scenario, engine::ScenarioId{42});
-        EXPECT_TRUE(backbone::is_in_scenario());
-    }
-
-    // --- Backbone: event router ---
-
-    TEST(Phase0Integration, EventRouterDispatchesKey) {
-        backbone::reset_event_router_for_testing();
-        bool handler_called = false;
-        const auto handle = backbone::install_key_handler(
-            [&](const backbone::KeyEvent& e) {
-                if (e.code == backbone::KeyCode::Enter) {
-                    handler_called = true;
-                    return true;
-                }
-                return false;
-            },
-            backbone::HandlerPriority::ScreenContext,
-            "test.enter_handler");
-
-        backbone::dispatch_key_event({
-            .type = backbone::KeyEventType::KeyDown,
-            .code = backbone::KeyCode::Enter,
-            .mods = backbone::ModMask::None,
-        });
-        EXPECT_TRUE(handler_called);
-
-        backbone::uninstall_handler(handle);
-    }
-
-    // --- Backbone: focus manager ---
-
-    TEST(Phase0Integration, FocusManagerSnapAndAdvance) {
-        backbone::reset_focus_manager_for_testing();
-        constexpr auto kA = backbone::make_focusable_id("test.a");
-        constexpr auto kB = backbone::make_focusable_id("test.b");
-        constexpr auto kC = backbone::make_focusable_id("test.c");
-
-        const backbone::FocusableId list[] = {kA, kB, kC};
-        backbone::register_focus_list(list);
-        backbone::activate_keyboard_mode();
-
-        backbone::snap_focus_to(kB);
-        EXPECT_EQ(backbone::current_focus(), kB);
-
-        backbone::advance_focus(false);
-        EXPECT_EQ(backbone::current_focus(), kC);
-
-        backbone::advance_focus(false);  // Wraps to kA
-        EXPECT_EQ(backbone::current_focus(), kA);
-    }
-
-    // --- Backbone: scenario events ---
-
-    TEST(Phase0Integration, ScenarioEventsDispatch) {
-        backbone::reset_scenario_events_for_testing();
-        bool spawned_received = false;
-        const auto h = backbone::subscribe_scenario_spawned(
-            [&](const backbone::ScenarioSpawnedEvent& e) {
-                spawned_received = (e.scenario_id == engine::ScenarioId{99});
-            },
-            "test.spawn_subscriber");
-
-        backbone::fire_scenario_spawned({engine::ScenarioId{99}});
-        EXPECT_TRUE(spawned_received);
-
-        backbone::unsubscribe(h);
-    }
-
-    // --- Backbone: modal state ---
-
-    TEST(Phase0Integration, ModalStateStack) {
-        backbone::reset_modal_state_for_testing();
-        EXPECT_FALSE(backbone::is_any_modal_open());
-        EXPECT_EQ(backbone::modal_stack_depth(), 0u);
-
-        backbone::notify_modal_opened({1});
-        EXPECT_TRUE(backbone::is_any_modal_open());
-        EXPECT_EQ(backbone::modal_stack_depth(), 1u);
-
-        backbone::notify_modal_opened({2});
-        EXPECT_EQ(backbone::modal_stack_depth(), 2u);
-
-        backbone::notify_modal_closed({2});
-        backbone::notify_modal_closed({1});
-        EXPECT_FALSE(backbone::is_any_modal_open());
+    int main() {
+        test_scenario_id();
+        test_rng_seed();
+        test_auth0_config();
+        test_sync_state();
+        test_persistence_schema();
+        test_audio_paths();
+        test_asset_paths_and_tier_config();
+        test_theme_tokens();
+        test_settings_defaults();
+        test_animation_clock();
+        test_modal_state();
+        test_screen_state();
+        test_event_router();
+        test_scenario_events();
+        test_focus_manager();
+        std::printf("all_headers_test: all assertions passed\n");
+        return 0;
     }
 
 ### Notes
 
-- The test uses googletest's `EXPECT_*` macros throughout. The standard pattern (one `TEST` per behavior, descriptive names) applies.
+- The test uses plain `assert()` for runtime checks and `static_assert` for compile-time invariants like the FNV-1a hash. No third-party test framework is required, keeping Phase 0 dependency-free. The pattern is one `static void test_<area>()` function per primitive or static-data group, called sequentially from `main()`; failures abort via `assert` and the failing expression + line are printed by the C runtime.
 - The per-primitive reset function (`reset_animation_clock_for_testing()`, `reset_modal_state_for_testing()`, `reset_screen_state_for_testing()`, `reset_scenario_events_for_testing()`, `reset_event_router_for_testing()`, `reset_focus_manager_for_testing()`) is called at the start of each backbone test to ensure a clean state. There is no single combined "reset everything" function; the original combined name `backbone::reset_for_testing()` was renamed per primitive in commit 958e0bc to resolve a link-time duplicate-symbol collision across the 6 backbone .cpp files.
 - Each test focuses on the contract surface of one header. The tests are intentionally shallow — proving that the headers compile, link, and behave correctly at the interface level. Deep functional tests come with the zone implementations.
 - The test file is at `tests/all_headers_test.cpp`.
-- The test runs natively (not in WebAssembly) via the `-DENABLE_TESTS=ON` build path. Browser environment is not required.
+- The test compiles via emcc to a WebAssembly artifact (`.js` + `.wasm`) and runs via Node.js: `node /tmp/all_headers_test.js`. Running through emcc rather than the host compiler verifies the entire Phase 0 surface works in the actual target environment (browser-equivalent WebAssembly), not just in a host-system simulation.
 
 ---
 
