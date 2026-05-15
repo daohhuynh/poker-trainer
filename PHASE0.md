@@ -1695,8 +1695,8 @@ Effectively every zone. Major examples:
 - Z03 (Audio): reads `audio.master_volume`, `audio.music_volume`, `audio.sfx_volume`, `audio.current_music_genre`, `audio.music_muted`, `audio.sfx_muted`.
 - Z06 (Theme): reads `display.active_theme_id`.
 - Z08 (Game Screen): reads `display.show_hud`, `units.cash_mode`.
-- Z09 (Math Interrogator): reads `gameplay.time_pressure_seconds`, `gameplay.include_bet_sizing_inputs`.
-- Z10 (Temporal): reads `display.show_countdown`, `gameplay.time_pressure_seconds`, `gameplay.delta_timer_enabled`.
+- Z09 (Math Interrogator): reads `gameplay.time_pressure_custom_seconds`, `gameplay.include_bet_sizing_inputs`.
+- Z10 (Temporal): reads `display.show_countdown`, `gameplay.time_pressure_custom_seconds`, `gameplay.delta_timer_enabled`.
 - Z11 (Modal Infrastructure): reads `tomatoes.show_lifetime_total`.
 - Z12 (Settings): the master writer. Renders every section, mutates every field on user action.
 - Z13 (Post-Round): reads `recap.transitions_enabled`, `recap.show_detailed_breakdown`.
