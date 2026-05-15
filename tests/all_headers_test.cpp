@@ -206,6 +206,17 @@ static void test_screen_state() {
     assert(snap.current == pt::backbone::ScreenId::Root);
     assert(!snap.active_scenario.has_value());
     assert(!pt::backbone::is_in_scenario());
+
+    pt::backbone::set_screen(pt::backbone::ScreenId::PostRound,
+                             pt::engine::ScenarioId{12345});
+    snap = pt::backbone::read_screen_state();
+    assert(snap.current == pt::backbone::ScreenId::PostRound);
+    assert(*snap.active_scenario == pt::engine::ScenarioId{12345});
+
+    pt::backbone::set_screen(pt::backbone::ScreenId::Error, std::nullopt);
+    snap = pt::backbone::read_screen_state();
+    assert(snap.current == pt::backbone::ScreenId::Error);
+    assert(!snap.active_scenario.has_value());
 }
 
 static void test_event_router() {

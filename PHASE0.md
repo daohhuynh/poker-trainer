@@ -2854,7 +2854,7 @@ All 16 Phase 0 headers, plus the stub `.cpp` files for `animation_clock` and `mo
 
 ### Contents
 
-Representative excerpt showing the test's actual shape. See `tests/all_headers_test.cpp` for the full as-built test (370 lines, 86 runtime assertions + 1 `static_assert`, 15 test functions).
+Representative excerpt showing the test's actual shape. See `tests/all_headers_test.cpp` for the full as-built test (381 lines, 90 runtime assertions + 1 `static_assert`, 15 test functions).
 
     // tests/all_headers_test.cpp
     //
