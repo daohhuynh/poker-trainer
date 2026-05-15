@@ -45,6 +45,6 @@ void tick(std::uint64_t delta_ms) noexcept;
 // Reset all clock state to zero. Used by the integration test to
 // restore a clean state between test cases. No other zone should
 // call this.
-void reset_for_testing() noexcept;
+void reset_animation_clock_for_testing() noexcept;
 
 }  // namespace poker_trainer::backbone

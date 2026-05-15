@@ -93,7 +93,7 @@ std::size_t context_depth() noexcept {
     return g_context_stack.size();
 }
 
-void reset_for_testing() noexcept {
+void reset_focus_manager_for_testing() noexcept {
     g_active_context = FocusContext{};
     g_context_stack.clear();
     g_keyboard_mode_active = false;

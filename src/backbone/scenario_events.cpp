@@ -182,7 +182,7 @@ void fire_exit_to_mode_selection(const ExitToModeSelectionEvent& event) noexcept
             g_exit_to_mode_selection_mutex, event);
 }
 
-void reset_for_testing() noexcept {
+void reset_scenario_events_for_testing() noexcept {
     {
         std::lock_guard<std::mutex> lock(g_scenario_spawned_mutex);
         g_scenario_spawned_subscribers.clear();

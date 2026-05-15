@@ -46,6 +46,6 @@ void set_screen(ScreenId screen,
 
 // Reset to initial state (Root, no scenario). Used by the integration
 // test only.
-void reset_for_testing() noexcept;
+void reset_screen_state_for_testing() noexcept;
 
 }  // namespace poker_trainer::backbone

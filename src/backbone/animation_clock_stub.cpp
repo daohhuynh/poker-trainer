@@ -23,7 +23,7 @@ void resume() noexcept {
 void tick(std::uint64_t /*delta_ms*/) noexcept {
 }
 
-void reset_for_testing() noexcept {
+void reset_animation_clock_for_testing() noexcept {
 }
 
 }  // namespace poker_trainer::backbone

@@ -71,7 +71,7 @@ bool is_in_scenario() noexcept {
     return s.current == ScreenId::Game || s.current == ScreenId::PostRound;
 }
 
-void reset_for_testing() noexcept {
+void reset_screen_state_for_testing() noexcept {
     write_snapshot(storage(), ScreenStateSnapshot{});
 }
 

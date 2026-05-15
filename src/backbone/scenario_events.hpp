@@ -118,6 +118,6 @@ void fire_exit_to_mode_selection(
     const ExitToModeSelectionEvent& event) noexcept;
 
 // Clear all subscribers. Used by the integration test only.
-void reset_for_testing() noexcept;
+void reset_scenario_events_for_testing() noexcept;
 
 }  // namespace poker_trainer::backbone

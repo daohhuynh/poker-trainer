@@ -40,6 +40,6 @@ void notify_modal_opened(ModalId id) noexcept;
 void notify_modal_closed(ModalId id) noexcept;
 
 // Reset modal state. Used by the integration test only.
-void reset_for_testing() noexcept;
+void reset_modal_state_for_testing() noexcept;
 
 }  // namespace poker_trainer::backbone

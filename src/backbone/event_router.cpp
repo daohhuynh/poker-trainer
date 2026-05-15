@@ -133,7 +133,7 @@ void dispatch_mouse_event(const MouseEvent& event) noexcept {
     }
 }
 
-void reset_for_testing() noexcept {
+void reset_event_router_for_testing() noexcept {
     g_key_handlers.clear();
     g_mouse_handlers.clear();
     g_handler_counter.store(1, std::memory_order_relaxed);

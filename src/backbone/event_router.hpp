@@ -137,6 +137,6 @@ void dispatch_key_event(const KeyEvent& event) noexcept;
 void dispatch_mouse_event(const MouseEvent& event) noexcept;
 
 // Clear all installed handlers. Used by the integration test only.
-void reset_for_testing() noexcept;
+void reset_event_router_for_testing() noexcept;
 
 }  // namespace poker_trainer::backbone

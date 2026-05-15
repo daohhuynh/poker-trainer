@@ -83,7 +83,7 @@ void pop_focus_context() noexcept;
 
 // Reset all focus state to initial (no focus, no contexts beyond
 // base, keyboard mode inactive). Used by the integration test.
-void reset_for_testing() noexcept;
+void reset_focus_manager_for_testing() noexcept;
 
 // Compile-time helper: compute a FocusableId from a string literal
 // via FNV-1a hash. This is the recommended way to define focusable

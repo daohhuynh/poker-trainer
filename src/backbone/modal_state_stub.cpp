@@ -35,7 +35,7 @@ void notify_modal_closed(ModalId /*id*/) noexcept {
     }
 }
 
-void reset_for_testing() noexcept {
+void reset_modal_state_for_testing() noexcept {
     g_modal_depth.store(0, std::memory_order_release);
     g_topmost_value.store(0, std::memory_order_release);
 }
