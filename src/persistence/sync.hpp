@@ -100,6 +100,41 @@ public:
     // evaluated against the injected clock.
     void pump(std::string_view auth0_user_id);
 
+    // --- Session-start reconcile gate ---
+    //
+    // The server is the source of truth on reconciliation (Module 7), so the
+    // engine withholds every push until a session-start reconcile has
+    // succeeded at least once this session. Pushing local writes before the
+    // server's authoritative state has been fetched would risk clobbering it
+    // (and those writes are superseded by the wholesale reconcile anyway).
+    // Local IDBFS persistence is unaffected — it lives upstream of the engine,
+    // so writes stay durable locally while the gate is closed.
+
+    // True once a session-start reconcile has succeeded this session. While
+    // false, record_state_change and attempt_sync never contact the server.
+    [[nodiscard]] bool session_reconciled() const noexcept {
+        return session_reconciled_;
+    }
+
+    // Open the gate after a successful session-start reconcile (server state
+    // adopted, or a brand-new account seeded). Marks the subsystem online and
+    // releases subsequent pushes. The reconcile path (AuthManager) calls this.
+    void note_session_reconciled() noexcept;
+
+    // Record that a session-start reconcile failed (offline / server error).
+    // Surfaces the offline indicator (SyncFailing) and schedules the reconcile
+    // retry per the backoff table; the gate stays closed so no push is sent.
+    void note_session_reconcile_failed() noexcept;
+
+    // Reset the gate to closed and discard the pending queue (sign-out /
+    // delete-account). The next account's session-start reconcile must reopen
+    // the gate before that account's writes are pushed.
+    void reset_session_gate() noexcept;
+
+    // True when the gate is closed, a reconcile attempt has failed, and the
+    // backoff delay has elapsed — i.e. pump_sync should retry the reconcile.
+    [[nodiscard]] bool reconcile_retry_due() const noexcept;
+
     // The steady-clock time the next retry is due. Meaningful only while the
     // most recent attempt failed (sync_state == SyncFailing).
     [[nodiscard]] std::chrono::steady_clock::time_point next_retry_at()
@@ -126,6 +161,10 @@ private:
     Clock& clock_;
     std::vector<AppState> pending_;
     std::chrono::steady_clock::time_point next_retry_at_{};
+
+    // Session-start reconcile gate. Closed (false) at construction: no push
+    // reaches the server until the first successful reconcile opens it.
+    bool session_reconciled_{false};
 };
 
 }  // namespace poker_trainer::persistence

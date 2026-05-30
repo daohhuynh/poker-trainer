@@ -221,3 +221,49 @@ TEST_F(AuthFlowTest, HealthCheckCachesSuccessWithinTtl) {
     EXPECT_TRUE(svc.auth0_health_check());
     EXPECT_EQ(auth_.health_calls, 2);
 }
+
+TEST_F(AuthFlowTest, OfflineAtSessionStartWithholdsPushesUntilReconcileSucceeds) {
+    using namespace std::chrono_literals;
+
+    // Sign-in succeeds at Auth0 but the state fetch fails (offline at session
+    // start). The user is authenticated and proceeds on local state; the
+    // offline indicator shows (SyncFailing) and the push gate stays closed.
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Failed, {}};
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+    ASSERT_TRUE(svc.sign_in(kCreds).has_value());
+    EXPECT_TRUE(svc.state().account.is_authenticated);
+    EXPECT_EQ(pt::read_sync_state().status, pt::SyncStatus::SyncFailing);
+
+    // The user trains: the write is durable in IDBFS but nothing is pushed.
+    pt::AppState s1 = svc.state();
+    s1.tomatoes.spendable = 7;
+    svc.save_state(s1);
+    EXPECT_TRUE(server_.pushes.empty());
+    EXPECT_TRUE(storage_.blob().has_value());  // durable locally
+
+    // pump_sync before the backoff elapses does not retry the reconcile.
+    svc.pump_sync();
+    EXPECT_EQ(server_.fetch_calls, 1);  // only the original sign-in fetch
+    EXPECT_TRUE(server_.pushes.empty());
+
+    // Connectivity returns. After the backoff, pump_sync retries the reconcile;
+    // the server is reachable and authoritative, so the gate opens and its
+    // state is adopted wholesale.
+    pt::AppState server_state{};
+    server_state.tomatoes.spendable = 500;
+    server_state.tomatoes.lifetime = 900;
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Found, server_state};
+    clock_.advance(6s);  // past the 5s first-retry delay
+    svc.pump_sync();
+    EXPECT_EQ(server_.fetch_calls, 2);  // reconcile retried
+    EXPECT_EQ(pt::read_sync_state().status, pt::SyncStatus::SyncOk);
+    EXPECT_EQ(svc.state().tomatoes.spendable, 500u);  // server adopted
+
+    // Thereafter pushes flow as before.
+    pt::AppState s2 = svc.state();
+    s2.tomatoes.spendable = 501;
+    svc.save_state(s2);
+    ASSERT_FALSE(server_.pushes.empty());
+    EXPECT_EQ(server_.pushes.back().writes.back().tomatoes.spendable, 501u);
+}

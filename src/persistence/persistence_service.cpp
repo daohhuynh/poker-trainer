@@ -14,7 +14,7 @@ PersistenceService::PersistenceService(StorageBackend& storage,
     : store_(storage),
       sync_(server, clock),
       migrator_(server),
-      auth_(auth, store_, migrator_, server, clock) {}
+      auth_(auth, store_, migrator_, sync_, server, clock) {}
 
 AppState PersistenceService::load_state() { return store_.load_state(); }
 
@@ -75,8 +75,21 @@ bool PersistenceService::migrate_guest_to_account() {
 
 void PersistenceService::pump_sync() {
     if (!store_.state().account.is_authenticated) {
+        return;  // guests never sync
+    }
+
+    // Until a session-start reconcile has succeeded this session, pushes stay
+    // gated. Drive the reconcile retry instead (per the backoff schedule) so a
+    // user who was offline at session start re-establishes the server-
+    // authoritative baseline as soon as connectivity returns; only then do
+    // pushes flow.
+    if (!sync_.session_reconciled()) {
+        if (sync_.reconcile_retry_due()) {
+            reconcile_on_session_start();
+        }
         return;
     }
+
     const std::string user_id = store_.state().account.auth0_user_id;
     sync_.pump(user_id);
 }

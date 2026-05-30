@@ -38,7 +38,9 @@ public:
     AppState load_state();
 
     // Persist a state change: writes IDBFS immediately, then (for logged-in
-    // users) queues a background server sync.
+    // users whose session-start reconcile has succeeded) queues a background
+    // server sync. Before that reconcile the write stays durable in IDBFS but
+    // is not pushed — the server is the source of truth on reconciliation.
     void save_state(const AppState& state);
 
     [[nodiscard]] const AppState& state() const noexcept;
@@ -70,7 +72,9 @@ public:
 
     // --- Sync ---
 
-    // Drive the sync retry schedule (called each frame by Z05's main loop).
+    // Drive the sync schedule (called each frame by Z05's main loop). While the
+    // session-start reconcile has not yet succeeded, retries that reconcile per
+    // the backoff schedule; once it has, drives the pending-push retry.
     void pump_sync();
 
     // --- Tutorial flags ---

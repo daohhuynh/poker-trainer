@@ -17,11 +17,12 @@
 namespace poker_trainer::persistence {
 
 AuthManager::AuthManager(AuthBackend& auth, IdbfsStore& store,
-                         Migrator& migrator, SyncBackend& server,
-                         Clock& clock) noexcept
+                         Migrator& migrator, SyncEngine& sync,
+                         SyncBackend& server, Clock& clock) noexcept
     : auth_(auth),
       store_(store),
       migrator_(migrator),
+      sync_(sync),
       server_(server),
       clock_(clock) {}
 
@@ -52,9 +53,11 @@ std::expected<void, AuthError> AuthManager::sign_out() {
         return std::unexpected(result.error());
     }
     // IDBFS state remains intact for offline guest use; only the account
-    // linkage and the in-memory session are dropped.
+    // linkage and the in-memory session are dropped. Re-close the push gate so
+    // a subsequent sign-in must reconcile before any of its writes are pushed.
     store_.update_account(AccountState{});
     session_.reset();
+    sync_.reset_session_gate();
     return {};
 }
 
@@ -68,8 +71,10 @@ std::expected<void, AuthError> AuthManager::delete_account() {
         return std::unexpected(result.error());
     }
     // Auth0 deletion succeeded: wipe local IDBFS and revert to a fresh guest.
+    // Re-close the push gate; the fresh guest has no account to push to.
     store_.wipe();
     session_.reset();
+    sync_.reset_session_gate();
     return {};
 }
 
@@ -99,18 +104,31 @@ void AuthManager::reconcile_account(std::string_view auth0_user_id) {
     const FetchResult fetched = server_.fetch(auth0_user_id);
     switch (fetched.outcome) {
         case FetchOutcome::Found:
-            // Server is the source of truth: IDBFS reconciles to match.
+            // Server is the source of truth: IDBFS reconciles to match. The
+            // authoritative baseline is now established, so open the push gate.
             store_.adopt_server_state(fetched.state);
+            sync_.note_session_reconciled();
             break;
-        case FetchOutcome::NotFound:
+        case FetchOutcome::NotFound: {
             // Brand-new account: seed the server from the guest's local state.
-            // A failed upload is re-attempted on the next session-start
-            // reconcile rather than retried inline.
-            static_cast<void>(migrator_.migrate(store_.state(), auth0_user_id));
+            // A successful seed makes the server authoritative and opens the
+            // gate; a failed upload leaves the gate closed and schedules a
+            // reconcile retry, which re-attempts the seed.
+            const bool seeded =
+                migrator_.migrate(store_.state(), auth0_user_id);
+            if (seeded) {
+                sync_.note_session_reconciled();
+            } else {
+                sync_.note_session_reconcile_failed();
+            }
             break;
+        }
         case FetchOutcome::Failed:
             // Offline / server error at session start: keep local state and
-            // proceed; reconciliation retries on the next session start.
+            // proceed. The push gate stays closed (no push could clobber the
+            // not-yet-fetched authoritative state) and the reconcile is retried
+            // per the backoff schedule on the next pump.
+            sync_.note_session_reconcile_failed();
             break;
     }
 }

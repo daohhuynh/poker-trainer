@@ -11,6 +11,7 @@ namespace poker_trainer::persistence {
 class IdbfsStore;
 class Migrator;
 class SyncBackend;
+class SyncEngine;
 class Clock;
 
 // Categorized auth failure. Auth0 owns the actual credential check; these are
@@ -98,7 +99,7 @@ public:
 class AuthManager {
 public:
     AuthManager(AuthBackend& auth, IdbfsStore& store, Migrator& migrator,
-                SyncBackend& server, Clock& clock) noexcept;
+                SyncEngine& sync, SyncBackend& server, Clock& clock) noexcept;
 
     [[nodiscard]] std::expected<void, AuthError> sign_in(
         const AuthCredentials& credentials);
@@ -122,7 +123,10 @@ public:
     // Reconcile the current authenticated account against the server. Used by
     // both the sign-in/up transition and session-start reconciliation:
     // Found -> adopt server state; NotFound -> migrate local up as initial;
-    // Failed -> leave local state and let the sync subsystem retry.
+    // Failed -> leave local state and let the sync subsystem retry. Drives the
+    // SyncEngine's session-start gate: a successful reconcile (adopt, or a
+    // brand-new account seeded) opens it; a failed one keeps it closed and
+    // schedules a reconcile retry.
     void reconcile_account(std::string_view auth0_user_id);
 
 private:
@@ -133,6 +137,7 @@ private:
     AuthBackend& auth_;
     IdbfsStore& store_;
     Migrator& migrator_;
+    SyncEngine& sync_;
     SyncBackend& server_;
     Clock& clock_;
 
