@@ -75,4 +75,13 @@ inline constexpr int kMaxRejectionAttempts = 1024;
 // the side-pot frequency, and the Bet Sizing Engine toggle.
 [[nodiscard]] ScenarioState generate_scenario(ScenarioId id, const settings::Settings& settings);
 
+// Cheaply resolve only the seed-locked scenario type for an id, without running
+// full generation. Returns exactly the type generate_scenario(id, ...) would
+// produce (type is a pure function of the seed). Z05's main loop uses this to
+// pick a fresh id matching the launched mode: STANDARD accepts any id, AGGRESSOR
+// keeps drawing until is_aggressor(peek_type(id)), CALLER until type == Caller,
+// CUSTOM until the type honors the Aggressor/Caller split. The reject loop lives
+// in Z05; the engine only exposes this peek.
+[[nodiscard]] ScenarioType peek_type(ScenarioId id) noexcept;
+
 }  // namespace poker_trainer::engine

@@ -323,4 +323,11 @@ ScenarioState generate_scenario(ScenarioId id, const settings::Settings& setting
     return s;
 }
 
+ScenarioType peek_type(ScenarioId id) noexcept {
+    // Type is the first draw on a fresh seed engine, so this reproduces exactly
+    // what generate_scenario resolves as s.type. No further draws are made.
+    RngSeed seed{id};
+    return draw_type(seed.engine());
+}
+
 }  // namespace poker_trainer::engine

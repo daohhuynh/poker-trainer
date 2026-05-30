@@ -75,6 +75,17 @@ TEST(Generator, SameSeedAndSettingsAreIdentical) {
     }
 }
 
+TEST(Generator, PeekTypeMatchesGeneratedType) {
+    // peek_type must equal the fully-generated type for every id (it is what Z05
+    // filters on when selecting a mode-matched id), and be deterministic.
+    const ps::Settings settings = default_settings();
+    for (std::uint64_t id = 1; id <= kSampleSeeds; ++id) {
+        const pe::ScenarioType peeked = pe::peek_type(pe::ScenarioId{id});
+        EXPECT_EQ(peeked, pe::generate_scenario(pe::ScenarioId{id}, settings).type) << "id=" << id;
+        EXPECT_EQ(peeked, pe::peek_type(pe::ScenarioId{id})) << "id=" << id;
+    }
+}
+
 TEST(Generator, KnownSeedReproducesKnownScenario) {
     // Regression lock on the frozen generation algorithm (RNG draw order + math).
     // Captured from the implementation under default settings; if any of these
