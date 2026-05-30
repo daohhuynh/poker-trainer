@@ -30,6 +30,7 @@ const Theme& no_limit_theme() noexcept {
         .text_button = rgba8(242, 233, 218),
         .text_input = rgba8(237, 227, 211),
         .accent_primary = rgba8(239, 180, 46),     // bright warm amber-gold
+        .accent_secondary = rgba8(168, 123, 74),   // muted warm bronze
         .state_pass = rgba8(107, 162, 87),         // warm-calibrated green
         .state_fail = rgba8(192, 88, 74),          // warm, slightly muted red
         .state_warn = rgba8(217, 150, 46),

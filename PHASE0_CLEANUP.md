@@ -2,6 +2,37 @@ Phase 0 sign-off cleanup list
 This file tracks items that must be resolved before Phase 0 is signed off and
 the Phase 0 contract becomes immutable. Each item documents the issue, the
 files affected, and the resolution options.
+
+Post-seal contract amendments
+This section records deliberate amendments to a Phase 0 contract header made
+AFTER the contract was sealed, via the amendment process PHASE0_COMPLETE.md
+mandates (not casual edits). Each amendment states what changed, why, and that
+it preserves binary/source compatibility for existing consumers.
+
+Amendment 1 (2026-05-30): add accent_secondary color token.
+Affected files: src/theme/theme_tokens.hpp (the sealed contract). Downstream,
+non-contract: src/theme/palettes.hpp + the four palette_*.cpp (populate the
+new token), tests/theme/theme_test.cpp (coverage), tests/all_headers_test.cpp
+(count assertion).
+What changed: appended ColorToken::AccentSecondary = 61 to the enum and moved
+the Count sentinel 61 -> 62. kColorTokenCount derives from Count and follows
+automatically. The four Z06 palettes each gained a concrete accent_secondary
+value (No Limit muted warm bronze #A87B4A, Slate subdued bronze #997F4D, Ocean
+pale teal #6FC2C2, Sage warm cream #E0D2A0), matching ARCHITECTURE's "Accent
+tokens" descriptions.
+Why: ARCHITECTURE's "Notes — Color Tint Theme" lists accent_secondary as a
+required accent token with a per-theme value, and the Leaderboard View spec
+uses it for the searched-match row highlight and the signed-in user's row tint
+(at ~30% opacity, applied by the consumer). The original sealed enum omitted
+it; Z06 had temporarily dropped its palette slot as dead data because no token
+consumed it. This amendment closes that gap so Z11/Z13 can reference it.
+Additive-only guarantee: no pre-existing token's integer value changed. The
+fixed chip/dealer tokens remain 51..60; accent_secondary occupies the formerly
+unused index 61; Count moved to 62. kFixedAcrossThemeTokens is unchanged
+(accent_secondary is theme-controlled, not fixed). No other contract header was
+touched. The integration test asserts DealerButtonGreen == 60, AccentSecondary
+== 61, and Count == 62 to lock the additivity.
+
 B. theme_tokens forward-declaration + std::array
 Affected files: src/theme/theme_tokens.hpp
 Issue: theme_tokens.hpp forward-declares the per-theme token bundle and

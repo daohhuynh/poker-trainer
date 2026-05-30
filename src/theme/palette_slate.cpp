@@ -29,6 +29,7 @@ const Theme& slate_theme() noexcept {
         .text_button = rgba8(236, 238, 241),
         .text_input = rgba8(230, 232, 235),
         .accent_primary = rgba8(191, 160, 70),     // muted gold (monocle)
+        .accent_secondary = rgba8(153, 127, 77),   // subdued bronze
         .state_pass = rgba8(79, 164, 92),          // clean medium green
         .state_fail = rgba8(192, 80, 77),          // clean medium red
         .state_warn = rgba8(208, 162, 58),

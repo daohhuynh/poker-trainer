@@ -53,6 +53,7 @@ struct PaletteSpec {
     ImVec4 text_button;         // text on buttons / accent surfaces
     ImVec4 text_input;          // text inside input fields
     ImVec4 accent_primary;      // theme's defining accent
+    ImVec4 accent_secondary;    // complementary accent (Leaderboard, etc.)
     ImVec4 state_pass;          // success / pass green
     ImVec4 state_fail;          // failure / error red
     ImVec4 state_warn;          // warning / caution amber
@@ -194,6 +195,10 @@ inline constexpr ImVec4 kFallbackColor{1.0f, 0.0f, 1.0f, 1.0f};
     at(ColorToken::AgainButtonDefault) = s.btn_default;
     at(ColorToken::AgainButtonArmed) = s.btn_armed;
     at(ColorToken::AgainButtonCommit) = s.accent_primary;
+
+    // Complementary accent (post-seal-appended token). Theme-controlled;
+    // consumers like the Leaderboard apply it at reduced opacity (~30%).
+    at(ColorToken::AccentSecondary) = s.accent_secondary;
 
     // Fixed across all themes.
     at(ColorToken::ChipWhite) = kChipWhite;

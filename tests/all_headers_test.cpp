@@ -126,9 +126,18 @@ static void test_asset_paths_and_tier_config() {
 }
 
 static void test_theme_tokens() {
-    assert(pt::theme::kColorTokenCount == 61u);
+    // accent_secondary was appended to the enum post-seal (additive). The
+    // count grew 61 -> 62; the pre-existing tokens kept their integer values.
+    assert(pt::theme::kColorTokenCount == 62u);
     assert(pt::theme::kThemeIdCount == 4u);
     assert(pt::theme::kFixedAcrossThemeTokens.size() == 10u);
+
+    // Additivity guarantees: no pre-existing token renumbered, the new token
+    // sits at the end, and the sentinel moved to 62.
+    using pt::theme::ColorToken;
+    assert(static_cast<std::uint16_t>(ColorToken::DealerButtonGreen) == 60u);
+    assert(static_cast<std::uint16_t>(ColorToken::AccentSecondary) == 61u);
+    assert(static_cast<std::uint16_t>(ColorToken::Count) == 62u);
 }
 
 static void test_settings_defaults() {

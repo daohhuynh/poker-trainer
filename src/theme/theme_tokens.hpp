@@ -109,8 +109,17 @@ enum class ColorToken : std::uint16_t {
     DealerButtonBlue = 59,
     DealerButtonGreen = 60,
 
+    // --- Appended post-Phase-0-seal (deliberate additive amendment) ---
+    // accent_secondary: the theme's complementary accent (ARCHITECTURE
+    // "Accent tokens"). Theme-controlled, NOT fixed. Appended at the end of
+    // the enum so no pre-existing token's integer value shifts — the 0..60
+    // layout is preserved. Consumed by the Leaderboard (Z11/Z13): the
+    // searched-match row highlight and the signed-in user's row tint, applied
+    // at ~30% opacity by the consumer. See PHASE0_CLEANUP.md for the record.
+    AccentSecondary = 61,
+
     // Sentinel.
-    Count = 61,
+    Count = 62,
 };
 
 inline constexpr std::size_t kColorTokenCount =

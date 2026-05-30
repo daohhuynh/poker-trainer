@@ -1340,8 +1340,15 @@ Every zone that renders anything visible. The major consumers:
         DealerButtonBlue = 59,
         DealerButtonGreen = 60,
 
+        // --- Appended post-Phase-0-seal (deliberate additive amendment) ---
+        // accent_secondary: complementary accent (ARCHITECTURE "Accent
+        // tokens"). Theme-controlled, NOT fixed. Appended at the end so no
+        // pre-existing token value shifts. Consumed by the Leaderboard
+        // (Z11/Z13) at ~30% opacity. See PHASE0_CLEANUP.md.
+        AccentSecondary = 61,
+
         // Sentinel.
-        Count = 61,
+        Count = 62,
     };
 
     inline constexpr std::size_t kColorTokenCount =
@@ -1411,12 +1418,13 @@ Every zone that renders anything visible. The major consumers:
 ### Notes
 
 - This header is the largest single point of contact between Phase 0 and the rest of the codebase. Every visible UI element queries it. Get it right.
-- The token enum is partitioned into semantic groups (backgrounds, text, borders, buttons, inputs, state, HUD, cluster, offline, outage, settings, tutorial, post-round, again button, fixed). The grouping is for human readability; the underlying values are dense integers 0..60 for indexing into the `tokens` array.
-- `ColorToken::Count` is the sentinel value that gives the total count. It is not a real token; consumers must never use it as an argument to `get_color()`. The integration test will verify the count is 61 (matching the manually counted tokens above).
+- The token enum is partitioned into semantic groups (backgrounds, text, borders, buttons, inputs, state, HUD, cluster, offline, outage, settings, tutorial, post-round, again button, fixed, and the post-seal-appended accent_secondary). The grouping is for human readability; the underlying values are dense integers 0..61 for indexing into the `tokens` array.
+- `ColorToken::Count` is the sentinel value that gives the total count. It is not a real token; consumers must never use it as an argument to `get_color()`. The integration test verifies the count is 62 (the original 61 tokens at indices 0..60, plus `accent_secondary` appended at 61 — see the post-seal amendment note below).
 - The fixed-across-theme tokens (chips, dealer buttons) are part of the enum because the consumer API is uniform: every color is fetched via `get_color(token)`. The palette implementations in Z06 must populate these 10 tokens with identical values across all four palettes. The integration test (Part 5) asserts equality of these tokens across palettes once the palettes exist.
 - `get_color()` is declared but not implemented in Phase 0. The implementation lives in Z06. The Phase 0 integration test does not call this function; it only verifies the header compiles. This is appropriate because palette implementation is squarely Z06's scope.
 - The 65% opacity for `StatModalBg` is not encoded in the token itself; the token holds the base color with full alpha, and the rendering layer applies the 65% opacity. This separation allows the base color to come from the theme palette while the opacity remains constant across themes.
 - The `Theme::display_name` field uses `std::string_view`. It points to a string with static storage duration (one of the entries in `kThemeDisplayNames` or a string literal in the palette implementation). The lifetime contract is that palette implementations only ever use string literals or `kThemeDisplayNames` entries here; they never use dynamically allocated strings.
+- POST-SEAL AMENDMENT (2026-05-30): `accent_secondary` (value 61) was appended to the enum after Phase 0 was sealed. The original sealed enum omitted it, but ARCHITECTURE's "Accent tokens" list mandates it and the Leaderboard View (Z11/Z13) requires it (searched-match row highlight + signed-in user's row tint at ~30% opacity). The amendment is strictly additive: no pre-existing token's integer value changed (chips/dealer buttons remain 51..60), `Count` moved 61 → 62, `kColorTokenCount` follows automatically, and `kFixedAcrossThemeTokens` is unchanged (accent_secondary is theme-controlled, not fixed). Z06 populates it in all four palettes. See PHASE0_CLEANUP.md for the full amendment record.
 - The token list is **frozen** at Phase 0 sign-off. Adding a new token after sign-off requires updating every palette implementation. Removing a token requires checking every consumer. Both are explicit decisions, not silent changes.
 - A handful of architectural-spec colors are **deliberately not in this enum** because they are not theme-controlled:
   - Card face PNGs (rendered as authored, no tinting).

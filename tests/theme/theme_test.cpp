@@ -138,6 +138,30 @@ TEST(PaletteValues, AccentPrimaryHexPerTheme) {
         th::rgba8(156, 203, 91));
 }
 
+TEST(PaletteValues, AccentSecondaryHexPerTheme) {
+    // accent_secondary was appended to the contract post-seal; verify each
+    // theme's value matches its ARCHITECTURE description.
+    th::test::expect_color_eq(
+        token_value(th::kThemeIdNoLimit, th::ColorToken::AccentSecondary),
+        th::rgba8(168, 123, 74));   // muted warm bronze
+    th::test::expect_color_eq(
+        token_value(th::kThemeIdSlate, th::ColorToken::AccentSecondary),
+        th::rgba8(153, 127, 77));   // subdued bronze
+    th::test::expect_color_eq(
+        token_value(th::kThemeIdOcean, th::ColorToken::AccentSecondary),
+        th::rgba8(111, 194, 194));  // pale teal
+    th::test::expect_color_eq(
+        token_value(th::kThemeIdSage, th::ColorToken::AccentSecondary),
+        th::rgba8(224, 210, 160));  // warm cream
+
+    // It is theme-controlled (distinct from accent_primary) and not fixed.
+    for (const std::uint8_t id : kAllThemeIds) {
+        EXPECT_FALSE(th::test::colors_equal(
+            token_value(id, th::ColorToken::AccentSecondary),
+            token_value(id, th::ColorToken::ButtonBgPrimary)));
+    }
+}
+
 TEST(PaletteValues, BorderFocusEqualsAccentPrimary) {
     for (const std::uint8_t id : kAllThemeIds) {
         th::test::expect_color_eq(

@@ -30,6 +30,7 @@ const Theme& sage_theme() noexcept {
         .text_input = rgba8(236, 237, 224),
         .accent_primary = rgba8(156, 203, 91),     // bright sage green (distinct
                                                    // from dealer_button_green)
+        .accent_secondary = rgba8(224, 210, 160),  // warm cream
         .state_pass = rgba8(95, 181, 74),          // vivid green
         .state_fail = rgba8(199, 106, 69),         // muted red-orange
         .state_warn = rgba8(217, 162, 58),

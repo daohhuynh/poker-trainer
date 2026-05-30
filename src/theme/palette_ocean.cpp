@@ -30,6 +30,7 @@ const Theme& ocean_theme() noexcept {
         .text_input = rgba8(228, 236, 244),
         .accent_primary = rgba8(63, 169, 224),     // bright ocean blue (distinct
                                                    // from dealer_button_blue)
+        .accent_secondary = rgba8(111, 194, 194),  // pale teal
         .state_pass = rgba8(70, 168, 126),         // cool green
         .state_fail = rgba8(200, 90, 74),          // warm red
         .state_warn = rgba8(216, 162, 58),

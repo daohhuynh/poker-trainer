@@ -22,7 +22,19 @@ against these contracts; changing them retroactively breaks every zone simultane
 See PHASE0_CLEANUP.md for the running cleanup list. As of Phase 0 generation completion:
 - Item A: CLAUDE.md §10 vs seqlock retry-loop idiom — affects sync_state.cpp and
   screen_state.cpp. Unresolved; resolution path documented.
-- Item B: theme_tokens forward-declaration + std::array — pending Z06 zone work.
+- Item B: theme_tokens forward-declaration + std::array — RESOLVED (2026-05-30)
+  when Z06 landed and backed the contract with concrete palettes + tests.
+
+## Contract amendments (post-seal)
+
+Phase 0 contracts are immutable except via the deliberate amendment process
+described above. Amendments to date:
+- 2026-05-30: appended `ColorToken::AccentSecondary` (value 61) to
+  `theme_tokens.hpp`; `Count` moved 61 -> 62. Strictly additive — no
+  pre-existing token renumbered, no other contract header touched,
+  `kFixedAcrossThemeTokens` unchanged. ARCHITECTURE mandates accent_secondary
+  and the Leaderboard (Z11/Z13) requires it. Z06 populates it in all four
+  palettes. Full record in PHASE0_CLEANUP.md ("Post-seal contract amendments").
 
 ## Commit reference
 
