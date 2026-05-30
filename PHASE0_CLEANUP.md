@@ -16,6 +16,19 @@ Resolution: None required for Phase 0 sign-off as long as the integration
 test in tests/all_headers_test.cpp only verifies that theme_tokens.hpp
 includes cleanly. When Z06 lands (post-Phase-0), the test can be extended to
 verify the array population and the access functions return expected values.
+RESOLVED (2026-05-30): Z06 landed. The forward-declared ImVec4 in
+Theme::tokens is now backed by four concrete per-theme palette arrays
+(src/theme/palette_*.cpp), built from a single shared build_palette() so every
+one of the 61 ColorTokens is populated; get_color() and the Theme struct are
+implemented in src/theme/theme.cpp. The contract surface is now exercised by a
+googletest suite (tests/theme/theme_test.cpp) that verifies array population
+(no token left at the zero default), per-theme get_color() values, the
+kFixedAcrossThemeTokens invariant, and a persistence round-trip — exactly the
+"array population + access functions" verification this item deferred.
+theme_tokens.hpp itself was not modified; the contract held as-is. The std::array
+usage in theme_tokens.hpp (kThemeDisplayNames, kFixedAcrossThemeTokens) compiles
+and is consumed cleanly by Z06 with no polish needed. No remaining work; item B
+is closed.
 Items resolved during Phase 0 generation (for reference)
 
 modal_state.hpp <cstddef> defect — PHASE0.md §16 Contents block was
