@@ -102,89 +102,233 @@ static void test_persistence_schema() {
 }
 
 static void test_audio_paths() {
-    assert(pt::audio::kSfxCount > 0);
+    // SFX set per the amended contract (AU1): Card Deal, Button Click
+    // Confirmation, Chip Push, Side Pot Split, Modal Open/Close Swoosh, Frog
+    // Toggle, Slide In, Slide Out. The architecturally forbidden Pass/Fail
+    // performance-feedback cues (and the stray ChipLand) are gone; the count
+    // coincidentally stays 9 but the membership is the corrected set.
+    assert(pt::audio::kSfxCount == 9u);
+    assert(static_cast<std::uint8_t>(pt::audio::SfxId::CardDeal) == 0);
+    assert(static_cast<std::uint8_t>(pt::audio::SfxId::ButtonClickConfirmation) == 1);
+    assert(static_cast<std::uint8_t>(pt::audio::SfxId::ChipPush) == 2);
+    assert(static_cast<std::uint8_t>(pt::audio::SfxId::SidePotSplit) == 3);
+    assert(static_cast<std::uint8_t>(pt::audio::SfxId::ModalSwooshOpen) == 4);
+    assert(static_cast<std::uint8_t>(pt::audio::SfxId::ModalSwooshClose) == 5);
+    assert(static_cast<std::uint8_t>(pt::audio::SfxId::FrogToggle) == 6);
+    assert(static_cast<std::uint8_t>(pt::audio::SfxId::SlideIn) == 7);
+    assert(static_cast<std::uint8_t>(pt::audio::SfxId::SlideOut) == 8);
     for (std::size_t i = 0; i < pt::audio::kSfxCount; ++i) {
         assert(!pt::audio::kSfxPaths[i].empty());
     }
+    assert(pt::audio::sfx_path(pt::audio::SfxId::CardDeal)
+               == "assets/audio/sfx/card_deal.ogg");
+
     assert(pt::audio::kMusicTrackCount == 12u);
     assert(pt::audio::kMusicGenreCount == 4u);
+
+    // Track price is denominated in tomatoes (AU2), not USD cents: starters
+    // are free, paid unlocks cost 25 tomatoes.
+    const auto& starter =
+        pt::audio::music_track_info(pt::audio::MusicTrackId::LoungeJazz_Starter);
+    assert(starter.is_starter);
+    assert(starter.price_tomatoes == 0u);
+    const auto& paid =
+        pt::audio::music_track_info(pt::audio::MusicTrackId::LoungeJazz_Track2);
+    assert(!paid.is_starter);
+    assert(paid.price_tomatoes == 25u);
 }
 
 static void test_asset_paths_and_tier_config() {
-    assert(pt::assets::kAssetCount == 90u);
+    // kAssetCount recomputed (A10) after the Frog set collapsed to 3
+    // (frog_base + pass + fail), the per-theme Root backgrounds collapsed to
+    // theme-independent blur variants, and the missing Tier-2 glyphs (exit /
+    // copy / share / tomato / side-pot chip) were added. The header
+    // static_assert pins it to the enum; mirror the value here.
+    assert(pt::assets::kAssetCount == 84u);
+
+    // Tier-1 synchronous set includes the front-facing Butler (A3) and the
+    // Home icon (A4), both promoted from Tier 2.
     assert(pt::assets::asset_tier(pt::assets::AssetId::AppLogo)
                == pt::assets::AssetTier::Tier1);
-    assert(pt::assets::asset_tier(pt::assets::AssetId::FrogSideProfile)
+    assert(pt::assets::asset_tier(pt::assets::AssetId::ButlerNeutral)
+               == pt::assets::AssetTier::Tier1);
+    assert(pt::assets::asset_tier(pt::assets::AssetId::IconHome)
+               == pt::assets::AssetTier::Tier1);
+
+    // Frog easter-egg set (A2) is the on-demand Tier-4 base plus two
+    // expression overlays; the side-profile / overtime / perfect variants
+    // were removed.
+    assert(pt::assets::asset_tier(pt::assets::AssetId::FrogBase)
+               == pt::assets::AssetTier::Tier4);
+    assert(pt::assets::asset_tier(pt::assets::AssetId::FrogExpressionPass)
+               == pt::assets::AssetTier::Tier4);
+    assert(pt::assets::asset_tier(pt::assets::AssetId::FrogExpressionFail)
                == pt::assets::AssetTier::Tier4);
 
-    assert(pt::assets::tier_config(pt::assets::AssetTier::Tier1).max_retries
-               == 3);
-    assert(pt::assets::tier_config(pt::assets::AssetTier::Tier1)
-               .fatal_failure_shows_error_screen);
-    assert(!pt::assets::tier_config(pt::assets::AssetTier::Tier3)
-               .fatal_failure_shows_error_screen);
+    // The table-side all-in marker is re-tiered to Tier 2 (A8).
+    assert(pt::assets::asset_tier(pt::assets::AssetId::SidePotAllInMarker)
+               == pt::assets::AssetTier::Tier2);
+
+    // Retry schedule is the explicit [immediate, 2s, 10s] list, identical
+    // across all four tiers (C1). Fatal-failure handling is a tri-state
+    // policy (C3): immediate error screen (Tier 1), deferred error screen on
+    // use (Tier 2), or silent degrade (Tier 3/4) — no longer a single bool.
+    assert(pt::assets::tier_config(pt::assets::AssetTier::Tier1).max_retries == 3);
+    assert(pt::assets::tier_config(pt::assets::AssetTier::Tier1).retry_delays
+               == pt::assets::kRetryBackoff);
+    assert(pt::assets::tier_config(pt::assets::AssetTier::Tier1).fatal_failure_policy
+               == pt::assets::FatalFailurePolicy::ErrorScreenImmediate);
+    assert(pt::assets::tier_config(pt::assets::AssetTier::Tier2).fatal_failure_policy
+               == pt::assets::FatalFailurePolicy::ErrorScreenOnUse);
+    assert(pt::assets::tier_config(pt::assets::AssetTier::Tier3).fatal_failure_policy
+               == pt::assets::FatalFailurePolicy::Silent);
+    assert(pt::assets::tier_config(pt::assets::AssetTier::Tier4).fatal_failure_policy
+               == pt::assets::FatalFailurePolicy::Silent);
 }
 
 static void test_theme_tokens() {
-    // accent_secondary was appended to the enum post-seal (additive). The
-    // count grew 61 -> 62; the pre-existing tokens kept their integer values.
-    assert(pt::theme::kColorTokenCount == 62u);
+    // Tokens were reshaped to the architecture's closed, semantic palette
+    // (T1-T10): the ~27 element-specific tokens were removed in favor of the
+    // semantic set, the three per-screen backgrounds collapsed to a single
+    // BgPrimary (T3, no per-screen overrides), and the required text_button /
+    // text_placeholder tokens were added (T5/T6). The set is now 32.
+    assert(pt::theme::kColorTokenCount == 32u);
     assert(pt::theme::kThemeIdCount == 4u);
     assert(pt::theme::kFixedAcrossThemeTokens.size() == 10u);
 
-    // Additivity guarantees: no pre-existing token renumbered, the new token
-    // sits at the end, and the sentinel moved to 62.
     using pt::theme::ColorToken;
-    assert(static_cast<std::uint16_t>(ColorToken::DealerButtonGreen) == 60u);
-    assert(static_cast<std::uint16_t>(ColorToken::AccentSecondary) == 61u);
-    assert(static_cast<std::uint16_t>(ColorToken::Count) == 62u);
+    // Single global background tint (T3): one BgPrimary at index 0.
+    assert(static_cast<std::uint16_t>(ColorToken::BgPrimary) == 0);
+    // Added semantic tokens (T5/T6).
+    assert(static_cast<std::uint16_t>(ColorToken::TextButton) == 12);
+    assert(static_cast<std::uint16_t>(ColorToken::TextPlaceholder) == 13);
+    // Complementary accent (Leaderboard row tint).
+    assert(static_cast<std::uint16_t>(ColorToken::AccentSecondary) == 16);
+    // The fixed-across-themes chip / dealer-button block sits at the tail,
+    // immediately before the sentinel.
+    assert(static_cast<std::uint16_t>(ColorToken::ChipWhite) == 22);
+    assert(static_cast<std::uint16_t>(ColorToken::DealerButtonGreen) == 31);
+    assert(static_cast<std::uint16_t>(ColorToken::Count) == 32);
 }
 
 static void test_settings_defaults() {
     pt::settings::Settings s{};
-    assert(s.display.active_theme_id == pt::theme::kThemeIdNoLimit);
-    assert(s.display.show_hud);
-    assert(s.gameplay.scenario_types_enabled[0]);
-    assert(s.gameplay.scenario_types_enabled[1]);
+
+    // Gameplay — seed-encoded street split defaults 15/35/30/20 (S1); the
+    // StreetWeightPreset enum was removed in favor of four coupled weights.
+    assert(s.gameplay.street_weight_preflop == 15);
+    assert(s.gameplay.street_weight_flop == 35);
+    assert(s.gameplay.street_weight_turn == 30);
+    assert(s.gameplay.street_weight_river == 20);
+    // Custom-mode Aggressor/Caller weights default 50/50 (S10).
+    assert(s.gameplay.custom_aggressor_weight == 50);
+    assert(s.gameplay.custom_caller_weight == 50);
+    // Side-pot frequency ~10% (S9); bet sizing engine ON (S8); chip
+    // denomination Stake-scaled (S2).
+    assert(s.gameplay.side_pot_frequency == 0.10f);
+    assert(s.gameplay.bet_sizing_engine_enabled);
+    assert(s.gameplay.chip_denomination_mode
+               == pt::settings::ChipDenominationMode::StakeScaled);
     assert(s.gameplay.difficulty_min == 0.2f);
     assert(s.gameplay.difficulty_max == 0.8f);
+    // Time pressure — street-scaled default with the flat custom override off
+    // by default; custom value 30s within the corrected 1-300 range (S4/S5).
+    assert(!s.gameplay.time_pressure_custom_enabled);
+    assert(s.gameplay.time_pressure_custom_seconds == 30);
+    // HUD shown by default; Visual Countdown OFF by default (S3). show_hud is
+    // a Gameplay control now, not Display.
+    assert(s.gameplay.show_hud);
+    assert(!s.gameplay.show_countdown);
+
+    // Units.
+    assert(s.units.cash_mode);
+
+    // Display — theme plus the three motion toggles (S11/S12/S13).
+    assert(s.display.active_theme_id == pt::theme::kThemeIdNoLimit);
+    assert(!s.display.reduce_motion);                   // Reduce Motion OFF
+    assert(s.display.background_atmospheric_movement);  // ambient drift ON
+    assert(s.display.particle_drift);                   // particle drift ON
+
+    // Audio — single Volume slider default 50 (S7); the three mutes default off.
+    assert(s.audio.volume == 50);
+    assert(s.audio.current_music_genre
+               == pt::settings::ActiveMusicGenre::LoungeJazz);
+    assert(!s.audio.mute_all);
+    assert(!s.audio.mute_sfx);
+    assert(!s.audio.mute_music);
+
+    // Recap — dealer arrival animation ON (S14); default tab Tier 1 (S15).
+    assert(s.recap.dealer_arrival_animation);
+    assert(s.recap.default_aggressor_recap_tab
+               == pt::settings::DefaultAggressorRecapTab::Tier1);
+
+    // Tomatoes — Shop button visible by default (S17).
+    assert(s.tomatoes.shop_button_visible);
+    assert(!s.tomatoes.leaderboard_opt_in);
+
+    // General — confirm-before-leaving-site ON (S16).
+    assert(s.general.confirm_before_leaving_site);
+
+    // Account.
     assert(s.account.display_name_override.empty());
 }
 
 static void test_animation_clock() {
     pt::backbone::reset_animation_clock_for_testing();
-    // Stub implementation: wall_clock_ms() and animation_time_ms() return 0,
-    // is_animation_paused() always returns false. Pause/resume/tick are
-    // no-ops in the stub. The real implementation lives in Z05.
-    assert(pt::backbone::wall_clock_ms() == 0u);
-    assert(pt::backbone::animation_time_ms() == 0u);
-    assert(!pt::backbone::is_animation_paused());
+    // Stub implementation: total_ms_since_app_start() returns 0 and
+    // delta_ms_since_last_frame() returns 0.0f; tick() is a no-op. The real
+    // implementation lives in Z05. Per the amendment (B9/B10/B11) the clock
+    // no longer pauses and no longer exposes a separate pausable
+    // animation-time counter — modal-driven pause of scenario time is the
+    // Z10 Delta Timer's responsibility, so the clock keeps running while a
+    // modal is open.
+    assert(pt::backbone::total_ms_since_app_start() == 0u);
+    assert(pt::backbone::delta_ms_since_last_frame() == 0.0f);
 
-    // Drive the API surface to prove it links; the stub does not honor
-    // the calls but they must be callable.
+    // Drive the tick API surface to prove it links; the stub ignores it.
     pt::backbone::tick(100);
-    pt::backbone::pause();
-    pt::backbone::resume();
+    assert(pt::backbone::total_ms_since_app_start() == 0u);
 }
 
 static void test_modal_state() {
     pt::backbone::reset_modal_state_for_testing();
+    // is_modal_locked() derives from the screen-state tutorial phase, so
+    // start from a clean screen state too.
+    pt::backbone::reset_screen_state_for_testing();
+
     assert(!pt::backbone::is_any_modal_open());
     assert(pt::backbone::modal_stack_depth() == 0u);
-    assert(pt::backbone::topmost_modal() == pt::backbone::kNoModal);
+    // topmost_modal() was renamed to current_modal_id() and now returns an
+    // optional (B7): empty when no modal is open.
+    assert(pt::backbone::current_modal_id() == std::nullopt);
+    assert(!pt::backbone::is_modal_locked());
 
     pt::backbone::notify_modal_opened(pt::backbone::ModalId{42});
     assert(pt::backbone::is_any_modal_open());
     assert(pt::backbone::modal_stack_depth() == 1u);
-    assert(pt::backbone::topmost_modal().value == 42u);
+    assert(pt::backbone::current_modal_id().has_value());
+    assert(pt::backbone::current_modal_id()->value == 42u);
 
     pt::backbone::notify_modal_opened(pt::backbone::ModalId{7});
     assert(pt::backbone::modal_stack_depth() == 2u);
+    assert(pt::backbone::current_modal_id()->value == 7u);
 
     pt::backbone::notify_modal_closed(pt::backbone::ModalId{7});
     pt::backbone::notify_modal_closed(pt::backbone::ModalId{42});
     assert(!pt::backbone::is_any_modal_open());
     assert(pt::backbone::modal_stack_depth() == 0u);
+    assert(pt::backbone::current_modal_id() == std::nullopt);
+
+    // is_modal_locked() (B8) is true only while the tutorial walkthrough is
+    // Active; Z10 observes it to gate the Delta Timer and Z11/Z14 to lock
+    // modal interaction.
+    pt::backbone::set_tutorial_state(
+        pt::backbone::TutorialState{pt::backbone::TutorialPhase::Active, 1});
+    assert(pt::backbone::is_modal_locked());
+    pt::backbone::set_tutorial_state(
+        pt::backbone::TutorialState{pt::backbone::TutorialPhase::Complete, 0});
+    assert(!pt::backbone::is_modal_locked());
+    pt::backbone::reset_screen_state_for_testing();
 }
 
 static void test_screen_state() {
@@ -226,6 +370,37 @@ static void test_screen_state() {
     snap = pt::backbone::read_screen_state();
     assert(snap.current == pt::backbone::ScreenId::Error);
     assert(!snap.active_scenario.has_value());
+
+    // TutorialComplete is the architecture's enumerated post-tutorial screen
+    // (B5); Error (above) is the 6th, boot-failure value retained for Z05.
+    // kScreenCount covers all six.
+    assert(pt::backbone::kScreenCount == 6u);
+    pt::backbone::set_screen(pt::backbone::ScreenId::TutorialComplete,
+                             std::nullopt);
+    snap = pt::backbone::read_screen_state();
+    assert(snap.current == pt::backbone::ScreenId::TutorialComplete);
+    assert(!snap.active_scenario.has_value());
+    assert(!pt::backbone::is_in_scenario());
+
+    // Tutorial state (B6) is orthogonal to the screen: it defaults to
+    // Inactive after a reset and survives a screen transition.
+    pt::backbone::reset_screen_state_for_testing();
+    snap = pt::backbone::read_screen_state();
+    assert(snap.tutorial_state.phase == pt::backbone::TutorialPhase::Inactive);
+    assert(snap.tutorial_state.active_step == 0);
+
+    pt::backbone::set_tutorial_state(
+        pt::backbone::TutorialState{pt::backbone::TutorialPhase::Active, 3});
+    pt::backbone::set_screen(pt::backbone::ScreenId::Game,
+                             pt::engine::ScenarioId{777});
+    snap = pt::backbone::read_screen_state();
+    assert(snap.current == pt::backbone::ScreenId::Game);
+    assert(snap.tutorial_state.phase == pt::backbone::TutorialPhase::Active);
+    assert(snap.tutorial_state.active_step == 3);
+    assert(snap.active_scenario.has_value());
+    assert(*snap.active_scenario == pt::engine::ScenarioId{777});
+
+    pt::backbone::reset_screen_state_for_testing();
 }
 
 static void test_event_router() {
@@ -234,8 +409,14 @@ static void test_event_router() {
     bool top_fired = false;
     bool bottom_fired = false;
 
+    // install_*_handler was reshaped to register_*_handler(context, handler,
+    // priority, tag) (B2): the leading HandlerContext predicate gates
+    // eligibility by global state. An empty (default-constructed) context
+    // means the handler is always eligible.
+    //
     // Install BackgroundCatchAll first; it will run last in priority order.
-    const auto bottom_handle = pt::backbone::install_key_handler(
+    const auto bottom_handle = pt::backbone::register_key_handler(
+        {},
         [&](const pt::backbone::KeyEvent&) {
             bottom_fired = true;
             return true;  // Would consume.
@@ -243,8 +424,9 @@ static void test_event_router() {
         pt::backbone::HandlerPriority::BackgroundCatchAll,
         "test.bottom");
 
-    // Install ModalLayer; it runs first and consumes.
-    const auto top_handle = pt::backbone::install_key_handler(
+    // Install ModalLayer; it outranks BackgroundCatchAll and consumes Enter.
+    const auto top_handle = pt::backbone::register_key_handler(
+        {},
         [&](const pt::backbone::KeyEvent& e) {
             if (e.code == pt::backbone::KeyCode::Enter) {
                 top_fired = true;
@@ -283,6 +465,67 @@ static void test_event_router() {
         pt::backbone::ModMask::None,
     });
     assert(!bottom_fired);
+
+    // Priority-inversion fix (B1): the tutorial overlay now outranks a modal,
+    // so a tutorial-active Escape handler captures the key before any modal
+    // sees it. (Before the amendment, ModalLayer=0 would have swallowed it.)
+    pt::backbone::reset_event_router_for_testing();
+    bool tutorial_fired = false;
+    bool modal_fired = false;
+    pt::backbone::register_key_handler(
+        {},
+        [&](const pt::backbone::KeyEvent&) {
+            modal_fired = true;
+            return true;
+        },
+        pt::backbone::HandlerPriority::ModalLayer,
+        "test.modal");
+    pt::backbone::register_key_handler(
+        {},
+        [&](const pt::backbone::KeyEvent&) {
+            tutorial_fired = true;
+            return true;
+        },
+        pt::backbone::HandlerPriority::TutorialOverlay,
+        "test.tutorial");
+    pt::backbone::dispatch_key_event({
+        pt::backbone::KeyEventType::KeyDown,
+        pt::backbone::KeyCode::Escape,
+        pt::backbone::ModMask::None,
+    });
+    assert(tutorial_fired);  // TutorialOverlay = 0 runs first ...
+    assert(!modal_fired);    // ... and consumes before the modal layer.
+
+    // Context predicate (B2): a handler whose context evaluates false is
+    // skipped, and a lower-priority but eligible handler runs instead.
+    pt::backbone::reset_event_router_for_testing();
+    bool gated_fired = false;
+    bool fallthrough_fired = false;
+    pt::backbone::register_key_handler(
+        []() { return false; },  // context: never eligible
+        [&](const pt::backbone::KeyEvent&) {
+            gated_fired = true;
+            return true;
+        },
+        pt::backbone::HandlerPriority::ModalLayer,
+        "test.gated");
+    pt::backbone::register_key_handler(
+        []() { return true; },  // context: always eligible
+        [&](const pt::backbone::KeyEvent&) {
+            fallthrough_fired = true;
+            return true;
+        },
+        pt::backbone::HandlerPriority::ScreenContext,
+        "test.fallthrough");
+    pt::backbone::dispatch_key_event({
+        pt::backbone::KeyEventType::KeyDown,
+        pt::backbone::KeyCode::Enter,
+        pt::backbone::ModMask::None,
+    });
+    assert(!gated_fired);       // gated out by its false context predicate
+    assert(fallthrough_fired);  // lower-priority but eligible handler runs
+
+    pt::backbone::reset_event_router_for_testing();
 }
 
 static void test_scenario_events() {
@@ -326,8 +569,9 @@ static void test_scenario_events() {
 static void test_focus_manager() {
     pt::backbone::reset_focus_manager_for_testing();
 
-    // Initial state: no focus, keyboard mode inactive, no contexts.
-    assert(pt::backbone::current_focus() == pt::backbone::kNoFocus);
+    // current_focus() was renamed get_focused_element() (B3); it returns
+    // kNoFocus while keyboard mode is inactive or no element is focused.
+    assert(pt::backbone::get_focused_element() == pt::backbone::kNoFocus);
     assert(!pt::backbone::is_keyboard_mode_active());
     assert(pt::backbone::context_depth() == 0u);
 
@@ -339,32 +583,33 @@ static void test_focus_manager() {
     constexpr auto kC = pt::backbone::make_focusable_id("test.c");
 
     const pt::backbone::FocusableId base_list[] = {kA, kB, kC};
-    pt::backbone::register_focus_list(base_list);
-    assert(pt::backbone::current_focus() == kA);
+    // register_focus_list() now takes the owning ScreenId (B4).
+    pt::backbone::register_focus_list(pt::backbone::ScreenId::Root, base_list);
+    assert(pt::backbone::get_focused_element() == kA);
 
     pt::backbone::advance_focus(false);  // forward
-    assert(pt::backbone::current_focus() == kB);
+    assert(pt::backbone::get_focused_element() == kB);
 
     pt::backbone::advance_focus(true);  // reverse
-    assert(pt::backbone::current_focus() == kA);
+    assert(pt::backbone::get_focused_element() == kA);
 
     pt::backbone::snap_focus_to(kC);
-    assert(pt::backbone::current_focus() == kC);
+    assert(pt::backbone::get_focused_element() == kC);
 
     // Push a new context for a modal.
     constexpr auto kJ = pt::backbone::make_focusable_id("modal.j");
     constexpr auto kK = pt::backbone::make_focusable_id("modal.k");
     const pt::backbone::FocusableId modal_list[] = {kJ, kK};
     pt::backbone::push_focus_context(modal_list, kJ, "test.modal_ctx");
-    assert(pt::backbone::current_focus() == kJ);
+    assert(pt::backbone::get_focused_element() == kJ);
     assert(pt::backbone::context_depth() == 1u);
 
     pt::backbone::advance_focus(false);
-    assert(pt::backbone::current_focus() == kK);
+    assert(pt::backbone::get_focused_element() == kK);
 
     // Pop: the prior context (with focus on kC) is restored.
     pt::backbone::pop_focus_context();
-    assert(pt::backbone::current_focus() == kC);
+    assert(pt::backbone::get_focused_element() == kC);
     assert(pt::backbone::context_depth() == 0u);
 }
 
