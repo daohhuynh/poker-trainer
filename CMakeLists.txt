@@ -81,25 +81,28 @@ if(ENABLE_TESTS)
 
     enable_testing()
 
-    # The integration test source is written at the end of Phase 0. Marking
-    # it GENERATED lets configure succeed before the file exists on disk;
-    # the build step still fails until the file is written, which matches
-    # the Phase 0 sequencing.
-    set_source_files_properties(
-        tests/phase0_integration/all_headers_test.cpp
-        PROPERTIES GENERATED TRUE
-    )
+    # The Phase 0 sign-off gate is a standalone plain-assert program (its own
+    # main(), no GoogleTest) that links directly against every Phase 0 .cpp.
+    # See the header comment in tests/all_headers_test.cpp. It therefore does
+    # not link the googletest libraries fetched above; those serve the
+    # unit-tested zones (Z01, Z10) that come online in later waves.
     add_executable(phase0_integration_test
-        tests/phase0_integration/all_headers_test.cpp
+        tests/all_headers_test.cpp
+        src/backbone/event_router.cpp
+        src/backbone/scenario_events.cpp
+        src/backbone/screen_state.cpp
+        src/backbone/focus_manager.cpp
+        src/backbone/modal_state_stub.cpp
+        src/backbone/animation_clock_stub.cpp
+        src/engine/scenario_id.cpp
+        src/engine/rng_seed.cpp
+        src/persistence/sync_state.cpp
     )
     target_include_directories(phase0_integration_test
         PRIVATE ${CMAKE_SOURCE_DIR}/src
     )
     target_compile_options(phase0_integration_test
         PRIVATE ${POKER_TRAINER_WARNING_FLAGS}
-    )
-    target_link_libraries(phase0_integration_test
-        PRIVATE GTest::gtest GTest::gtest_main
     )
 
     add_test(NAME phase0_integration_test COMMAND phase0_integration_test)
