@@ -254,4 +254,48 @@ if(ENABLE_TESTS)
     target_link_libraries(persistence_test PRIVATE persistence GTest::gtest_main)
 
     add_test(NAME persistence_test COMMAND persistence_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 01 (Core Scenario Engine) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # Project code held to the full warning baseline so the zone is proven to
+    # compile clean under -Werror. Built for the test target only; the
+    # WebAssembly app wires the engine in a later wave (Z05/Bridge), so the app
+    # target above is left untouched. Depends only on Phase 0 headers
+    # (scenario_id / rng_seed / settings, the last pulling in the header-only
+    # theme_tokens) via the src include path. scenario_id.cpp and rng_seed.cpp
+    # are compiled here as their own objects, distinct from the copies linked
+    # into phase0_integration_test.
+    add_library(engine STATIC
+        src/engine/scenario_id.cpp
+        src/engine/rng_seed.cpp
+        src/engine/deck.cpp
+        src/engine/fold_function.cpp
+        src/engine/hand_eval.cpp
+        src/engine/side_pot.cpp
+        src/engine/evaluator.cpp
+        src/engine/generator.cpp
+    )
+    target_include_directories(engine PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(engine PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+
+    # Zone 01 unit tests (googletest). Test glue is not held to -Werror so that
+    # googletest macro expansions do not fight the strict baseline; the zone code
+    # under test is held to it via the `engine` library above.
+    add_executable(engine_test
+        tests/engine/deck_test.cpp
+        tests/engine/fold_function_test.cpp
+        tests/engine/hand_eval_test.cpp
+        tests/engine/evaluator_test.cpp
+        tests/engine/side_pot_test.cpp
+        tests/engine/generator_test.cpp
+    )
+    target_include_directories(engine_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests/engine
+    )
+    target_link_libraries(engine_test PRIVATE engine GTest::gtest_main)
+
+    add_test(NAME engine_test COMMAND engine_test)
 endif()
