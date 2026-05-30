@@ -199,11 +199,15 @@ TEST(TierLoader, RetriesThreeTimesWithContractBackoffThenFatallyFails) {
     ASSERT_TRUE(fetch.has_pending());
     EXPECT_EQ(fetch.pending_path, first_path);
 
-    fetch.resolve_failure();  // initial attempt (t=0) fails
+    // Contract retry schedule (tier_config.hpp): delays [immediate, 2s, 10s]
+    // measured from each failure, i.e. absolute retry issue times 0, 2000,
+    // 12000 ms (the immediate retry fires in the same poll as the failure).
+    fetch.resolve_failure();  // initial attempt (t=0) fails -> immediate retry at t=0
+    ASSERT_TRUE(fetch.has_pending()) << "immediate (0ms) retry did not fire";
+    EXPECT_EQ(fetch.pending_path, first_path);
+    fetch.resolve_failure();  // first retry (t=0) fails -> next retry scheduled for t=2000
 
-    // Contract backoff from tier_config.hpp: initial 500ms, then x2, then x4,
-    // i.e. absolute retry times 500, 1500, 3500 ms.
-    const std::array<long long, 3> deadlines{500, 1500, 3500};
+    const std::array<long long, 2> deadlines{2000, 12000};
     for (long long deadline : deadlines) {
         SCOPED_TRACE(deadline);
         clock.set_ms(deadline - 1);
@@ -223,7 +227,7 @@ TEST(TierLoader, RetriesThreeTimesWithContractBackoffThenFatallyFails) {
     // Exactly one initial attempt plus max_retries retries, on the contract schedule.
     const std::vector<long long> times = fetch.issue_times_ms(first_path);
     ASSERT_EQ(times.size(), 1u + pa::tier_config(pa::AssetTier::Tier1).max_retries);
-    EXPECT_EQ(times, (std::vector<long long>{0, 500, 1500, 3500}));
+    EXPECT_EQ(times, (std::vector<long long>{0, 0, 2000, 12000}));
 
     // Loading continues past the failed asset; drain the rest successfully.
     while (fetch.has_pending()) {
@@ -239,18 +243,23 @@ TEST(TierLoader, RetriesThreeTimesWithContractBackoffThenFatallyFails) {
               loader.total_count(pa::AssetTier::Tier1) - 1u);
 }
 
-TEST(TierLoader, Tier3FatalFailureIsSilentlySkipped) {
+TEST(TierLoader, SilentTierFatalFailureIsSilentlySkipped) {
     pa::AssetRegistry reg;
     FakeClock clock;
     CapturingFetch fetch;
     fetch.clock = &clock;
     pa::TierLoader loader(reg, fetch.fn(), ok_decode(), clock_fn(clock));
 
-    const pa::AssetId first = tier_assets(pa::AssetTier::Tier3).front();
+    // Tier 4 carries the Silent fatal-failure policy (the Frog easter-egg
+    // assets). asset_paths.hpp puts no PNG in Tier 3 — its members are SFX and
+    // music owned by Z03 — so Tier 4 is the Silent tier exercised here.
+    const pa::AssetId first = tier_assets(pa::AssetTier::Tier4).front();
 
-    std::future<void> done = loader.load_tier(pa::AssetTier::Tier3);
-    fetch.resolve_failure();  // initial attempt fails
-    for (long long deadline : {500, 1500, 3500}) {
+    std::future<void> done = loader.load_tier(pa::AssetTier::Tier4);
+    fetch.resolve_failure();  // initial attempt fails -> immediate retry fires
+    ASSERT_TRUE(fetch.has_pending());
+    fetch.resolve_failure();  // immediate retry fails -> backoff to 2000
+    for (long long deadline : {2000, 12000}) {
         clock.set_ms(deadline);
         loader.poll();
         ASSERT_TRUE(fetch.has_pending());
@@ -258,17 +267,17 @@ TEST(TierLoader, Tier3FatalFailureIsSilentlySkipped) {
     }
 
     EXPECT_TRUE(reg.is_unavailable(first));
-    // Tier 3 fails silently: no error screen is signalled.
+    // A Silent tier fails silently: no error screen is signalled.
     EXPECT_FALSE(loader.has_error_screen_failure());
 
     while (fetch.has_pending()) {
         fetch.resolve_success({});
     }
-    EXPECT_TRUE(loader.is_tier_complete(pa::AssetTier::Tier3));
+    EXPECT_TRUE(loader.is_tier_complete(pa::AssetTier::Tier4));
     EXPECT_EQ(done.wait_for(ms{0}), std::future_status::ready);
-    EXPECT_EQ(loader.unavailable_count(pa::AssetTier::Tier3), 1u);
-    EXPECT_EQ(loader.loaded_count(pa::AssetTier::Tier3),
-              loader.total_count(pa::AssetTier::Tier3) - 1u);
+    EXPECT_EQ(loader.unavailable_count(pa::AssetTier::Tier4), 1u);
+    EXPECT_EQ(loader.loaded_count(pa::AssetTier::Tier4),
+              loader.total_count(pa::AssetTier::Tier4) - 1u);
 }
 
 TEST(TierLoader, DecodeFailureCountsAsAFailedAttempt) {
@@ -285,8 +294,10 @@ TEST(TierLoader, DecodeFailureCountsAsAFailedAttempt) {
 
     [[maybe_unused]] std::future<void> started = loader.load_tier(pa::AssetTier::Tier4);
     ASSERT_TRUE(fetch.has_pending());
-    fetch.resolve_success({std::byte{1}});  // fetched, but undecodable
-    for (long long deadline : {500, 1500, 3500}) {
+    fetch.resolve_success({std::byte{1}});  // fetched, but undecodable -> immediate retry
+    ASSERT_TRUE(fetch.has_pending());
+    fetch.resolve_success({std::byte{1}});  // immediate retry also undecodable -> backoff to 2000
+    for (long long deadline : {2000, 12000}) {
         clock.set_ms(deadline);
         loader.poll();
         ASSERT_TRUE(fetch.has_pending());

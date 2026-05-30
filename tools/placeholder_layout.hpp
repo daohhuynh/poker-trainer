@@ -28,14 +28,9 @@ struct Size {
     if (id >= A::ChipWhite && id <= A::ChipGold) {
         return {96, 96};
     }
-    if (id >= A::IconShop && id <= A::IconClose) {
+    // Cluster + Post-Round glyphs (Shop..SidePotChip) are square icons.
+    if (id >= A::IconShop && id <= A::IconSidePotChip) {
         return {48, 48};
-    }
-    if (id >= A::PositionUTG && id <= A::PositionBB) {
-        return {48, 48};
-    }
-    if (id >= A::RootBackgroundNoLimit && id <= A::RootBackgroundSage) {
-        return {256, 144};  // 16:9
     }
 
     switch (id) {
@@ -45,18 +40,20 @@ struct Size {
             return {200, 200};
         case A::TableFelt:
             return {320, 180};  // 16:9
+        case A::IconHome:
+            return {48, 48};
+        case A::BackgroundRoot:
+        case A::BackgroundMode:
+        case A::BackgroundGame:
+            return {256, 144};  // 16:9
         case A::SidePotAllInMarker:
             return {64, 64};
-        case A::ButlerSideProfile:
-        case A::ButlerFrontNeutral:
-        case A::ButlerFrontRaised:
-        case A::FrogSideProfile:
-        case A::FrogFrontNeutral:
-        case A::FrogFrontRaised:
+        case A::ButlerProfile:
+        case A::ButlerNeutral:
+        case A::ButlerRaised:
+        case A::FrogBase:
         case A::FrogExpressionPass:
         case A::FrogExpressionFail:
-        case A::FrogExpressionOvertime:
-        case A::FrogExpressionPerfect:
             return {160, 240};  // 2:3 portrait character frame
         default:
             return {64, 64};
