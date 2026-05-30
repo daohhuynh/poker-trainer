@@ -178,7 +178,6 @@ if(ENABLE_TESTS)
     add_test(NAME theme_test COMMAND theme_test)
 
     # -------------------------------------------------------------------------
- HEAD
     # Zone 02 (Asset Pipeline) — native unit tests.
     # -------------------------------------------------------------------------
     #
@@ -255,5 +254,4 @@ if(ENABLE_TESTS)
     target_link_libraries(persistence_test PRIVATE persistence GTest::gtest_main)
 
     add_test(NAME persistence_test COMMAND persistence_test)
- z04/persistence
 endif()
