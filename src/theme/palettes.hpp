@@ -7,7 +7,7 @@
 // hands it to build_palette(), which expands the spec into the full
 // kColorTokenCount-element ImVec4 array indexed by ColorToken. Keeping the
 // token-to-design-color mapping in one constexpr function (rather than
-// hand-writing 61 entries four times) means every theme shares an identical
+// hand-writing every token four times) means every theme shares an identical
 // semantic structure and only the concrete hex values differ per theme.
 //
 // The fixed chip/dealer-button colors live here as shared constants so that
@@ -36,32 +36,28 @@ namespace poker_trainer::theme {
 
 // The named design colors a single theme is built from. These mirror the
 // semantic token names in ARCHITECTURE.md's Token Palette. build_palette()
-// fans these out across the 61 concrete ColorToken slots.
+// fans these out across the concrete ColorToken slots.
 struct PaletteSpec {
     ImVec4 bg_primary;          // main screen background tint
     ImVec4 bg_modal;            // modal panel fill
     ImVec4 bg_input;            // input field fill
-    ImVec4 bg_input_focused;    // input field fill while focused
     ImVec4 btn_default;         // default button background
     ImVec4 btn_hover;           // button hover background
     ImVec4 btn_active;          // button pressed background
     ImVec4 btn_armed;           // Again button armed (darkened) background
-    ImVec4 btn_disabled;        // disabled button background
     ImVec4 text_primary;        // main body text
     ImVec4 text_secondary;      // subdued text (labels, captions)
-    ImVec4 text_disabled;       // greyed-out text / placeholder
-    ImVec4 text_button;         // text on buttons / accent surfaces
+    ImVec4 text_button;         // text on buttons
     ImVec4 text_input;          // text inside input fields
+    ImVec4 text_placeholder;    // placeholder text in empty input fields
     ImVec4 accent_primary;      // theme's defining accent
     ImVec4 accent_secondary;    // complementary accent (Leaderboard, etc.)
     ImVec4 state_pass;          // success / pass green
     ImVec4 state_fail;          // failure / error red
-    ImVec4 state_warn;          // warning / caution amber
     ImVec4 border_default;      // default border for inputs / panels
     ImVec4 separator;           // separator lines (low opacity)
     ImVec4 scrim;               // modal dimming layer (translucent)
     ImVec4 felt;                // poker-table felt overlay tint (translucent)
-    ImVec4 settings_sidebar_bg; // settings modal sidebar background
 };
 
 // ----- Tokens fixed across all four themes -----
@@ -82,16 +78,6 @@ inline constexpr ImVec4 kChipGold{rgba8(201, 162, 39)};
 inline constexpr ImVec4 kDealerButtonBlue{rgba8(47, 110, 158)};
 inline constexpr ImVec4 kDealerButtonGreen{rgba8(107, 142, 78)};
 
-// The tutorial grey-lens overlay is fixed across all themes for consistent
-// contrast (ARCHITECTURE: "rendered at 60% opacity using a neutral dark color,
-// not theme-controlled").
-inline constexpr ImVec4 kTutorialScrim{rgba8(10, 10, 12, 0.60f)};
-
-// The service-outage banner's countdown bar is a fixed white progress bar
-// across all themes (ARCHITECTURE: "a white progress bar renders" along the
-// bottom edge of the banner).
-inline constexpr ImVec4 kOutageCountdownBar{rgba8(255, 255, 255)};
-
 // Returned by get_color() for an out-of-range token query. Bright magenta so
 // misuse is visible on screen rather than silently rendering a plausible
 // color. It lives here, alongside the other theme-layer color constants, so
@@ -109,96 +95,45 @@ inline constexpr ImVec4 kFallbackColor{1.0f, 0.0f, 1.0f, 1.0f};
         return t[static_cast<std::size_t>(token)];
     };
 
-    // Backgrounds. The three screen backgrounds share bg_primary; there are
-    // no per-screen theme overrides (ARCHITECTURE: one global theme).
-    at(ColorToken::BgRoot) = s.bg_primary;
-    at(ColorToken::BgGame) = s.bg_primary;
-    at(ColorToken::BgPostRound) = s.bg_primary;
+    // Backgrounds. There is one global theme and no per-screen overrides
+    // (ARCHITECTURE), so a single bg_primary covers Root, Game, and Post-Round.
+    // The stat modal's translucent background is bg_modal at 65% opacity.
+    at(ColorToken::BgPrimary) = s.bg_primary;
     at(ColorToken::BgModalSurface) = s.bg_modal;
+    at(ColorToken::BgModalTranslucent) =
+        ImVec4{s.bg_modal.x, s.bg_modal.y, s.bg_modal.z, 0.65f};
     at(ColorToken::BgModalScrim) = s.scrim;
     at(ColorToken::BgTableFelt) = s.felt;
+    at(ColorToken::InputBg) = s.bg_input;
+
+    // Buttons. Default/hover/active states plus the Again button's armed
+    // (darkened) state. Disabled is rendered as reduced opacity at draw time,
+    // and the primary/destructive treatments reuse accent_primary / state_fail
+    // per the Token Application Rules — none needs its own token.
+    at(ColorToken::ButtonBg) = s.btn_default;
+    at(ColorToken::ButtonBgHover) = s.btn_hover;
+    at(ColorToken::ButtonBgActive) = s.btn_active;
+    at(ColorToken::AgainButtonArmed) = s.btn_armed;
 
     // Text.
     at(ColorToken::TextPrimary) = s.text_primary;
     at(ColorToken::TextSecondary) = s.text_secondary;
-    at(ColorToken::TextDisabled) = s.text_disabled;
-    at(ColorToken::TextOnAccent) = s.text_button;
+    at(ColorToken::TextButton) = s.text_button;
+    at(ColorToken::TextPlaceholder) = s.text_placeholder;
+    at(ColorToken::InputText) = s.text_input;
+
+    // Accents.
+    at(ColorToken::AccentPrimary) = s.accent_primary;
+    at(ColorToken::AccentSecondary) = s.accent_secondary;
+
+    // State colors. state_fail also covers overtime and destructive actions.
+    at(ColorToken::StatePass) = s.state_pass;
+    at(ColorToken::StateFail) = s.state_fail;
 
     // Borders and separators. The focus outline renders as accent_primary.
     at(ColorToken::BorderDefault) = s.border_default;
     at(ColorToken::BorderFocus) = s.accent_primary;
     at(ColorToken::SeparatorLine) = s.separator;
-
-    // Buttons. The primary call-to-action uses the accent; the danger button
-    // uses the failure red.
-    at(ColorToken::ButtonBg) = s.btn_default;
-    at(ColorToken::ButtonBgHover) = s.btn_hover;
-    at(ColorToken::ButtonBgActive) = s.btn_active;
-    at(ColorToken::ButtonBgDisabled) = s.btn_disabled;
-    at(ColorToken::ButtonBgPrimary) = s.accent_primary;
-    at(ColorToken::ButtonBgDanger) = s.state_fail;
-
-    // Inputs.
-    at(ColorToken::InputBg) = s.bg_input;
-    at(ColorToken::InputBgFocused) = s.bg_input_focused;
-    at(ColorToken::InputText) = s.text_input;
-
-    // State colors. Overtime reuses the failure red per ARCHITECTURE (the
-    // Visual Countdown text turns state_fail while in overtime).
-    at(ColorToken::StatePass) = s.state_pass;
-    at(ColorToken::StateFail) = s.state_fail;
-    at(ColorToken::StateWarn) = s.state_warn;
-    at(ColorToken::StateOvertime) = s.state_fail;
-
-    // HUD text on the Game screen.
-    at(ColorToken::HudPotText) = s.text_primary;
-    at(ColorToken::HudBlindsText) = s.text_secondary;
-    at(ColorToken::HudBetAmountText) = s.text_primary;
-
-    // Cluster icons sit on the screen background: glyph in text_primary,
-    // hover fill in the button hover color.
-    at(ColorToken::ClusterIconTint) = s.text_primary;
-    at(ColorToken::ClusterIconHover) = s.btn_hover;
-
-    // Offline sync indicator glyph renders in text_secondary (ARCHITECTURE:
-    // "The icon color is text_secondary"); it is informational, not a warning.
-    at(ColorToken::OfflineIndicator) = s.text_secondary;
-
-    // Outage banner: modal-fill background and primary text, with a fixed
-    // white countdown bar (ARCHITECTURE: bg_modal background, text_primary
-    // message, "a white progress bar" along the bottom edge).
-    at(ColorToken::OutageBannerBg) = s.bg_modal;
-    at(ColorToken::OutageBannerText) = s.text_primary;
-    at(ColorToken::OutageBannerCountdown) = kOutageCountdownBar;
-
-    // Settings: sidebar fill, section headers, and the slider widget.
-    at(ColorToken::SettingsSidebarBg) = s.settings_sidebar_bg;
-    at(ColorToken::SettingsSectionHeader) = s.text_primary;
-    at(ColorToken::SettingsSliderTrack) = s.border_default;
-    at(ColorToken::SettingsSliderFill) = s.accent_primary;
-    at(ColorToken::SettingsSliderHandle) = s.btn_default;
-
-    // Tutorial overlay (fixed scrim), callout panel, and callout border.
-    at(ColorToken::TutorialScrim) = kTutorialScrim;
-    at(ColorToken::TutorialCalloutBg) = s.bg_modal;
-    at(ColorToken::TutorialCalloutBorder) = s.border_default;
-
-    // Post-Round stat modal. The background is the modal fill at 65% opacity.
-    at(ColorToken::StatModalBg) =
-        ImVec4{s.bg_modal.x, s.bg_modal.y, s.bg_modal.z, 0.65f};
-    at(ColorToken::StatModalTabBg) = s.btn_default;
-    at(ColorToken::StatModalTabActive) = s.accent_primary;
-    at(ColorToken::TimeGradeUndertime) = s.state_pass;
-    at(ColorToken::TimeGradeOvertime) = s.state_fail;
-
-    // Again button: default, armed (darkened), and commit (accent) states.
-    at(ColorToken::AgainButtonDefault) = s.btn_default;
-    at(ColorToken::AgainButtonArmed) = s.btn_armed;
-    at(ColorToken::AgainButtonCommit) = s.accent_primary;
-
-    // Complementary accent (post-seal-appended token). Theme-controlled;
-    // consumers like the Leaderboard apply it at reduced opacity (~30%).
-    at(ColorToken::AccentSecondary) = s.accent_secondary;
 
     // Fixed across all themes.
     at(ColorToken::ChipWhite) = kChipWhite;

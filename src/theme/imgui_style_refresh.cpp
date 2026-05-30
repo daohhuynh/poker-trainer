@@ -19,9 +19,11 @@ void apply_theme_to_imgui_style(ImGuiStyle& style) noexcept {
         style.Colors[slot] = get_color(token);
     };
 
-    // Text.
+    // Text. ImGui's "disabled" text slot also draws InputTextWithHint
+    // placeholder text, so it maps to the placeholder token; genuinely
+    // disabled controls are dimmed via an opacity multiplier at draw time.
     set(ImGuiCol_Text, ColorToken::TextPrimary);
-    set(ImGuiCol_TextDisabled, ColorToken::TextDisabled);
+    set(ImGuiCol_TextDisabled, ColorToken::TextPlaceholder);
 
     // Window / popup surfaces map to the modal panel fill.
     set(ImGuiCol_WindowBg, ColorToken::BgModalSurface);
@@ -37,10 +39,12 @@ void apply_theme_to_imgui_style(ImGuiStyle& style) noexcept {
     set(ImGuiCol_Border, ColorToken::BorderDefault);
     set(ImGuiCol_Separator, ColorToken::SeparatorLine);
 
-    // Input frames (checkbox, slider, text input backgrounds).
+    // Input frames (checkbox, slider, text input backgrounds). Hover and
+    // focus do not change the fill — the focus cue is the border_focus
+    // outline — so all three frame states use the same input fill.
     set(ImGuiCol_FrameBg, ColorToken::InputBg);
-    set(ImGuiCol_FrameBgHovered, ColorToken::InputBgFocused);
-    set(ImGuiCol_FrameBgActive, ColorToken::InputBgFocused);
+    set(ImGuiCol_FrameBgHovered, ColorToken::InputBg);
+    set(ImGuiCol_FrameBgActive, ColorToken::InputBg);
 
     // Buttons.
     set(ImGuiCol_Button, ColorToken::ButtonBg);
@@ -52,10 +56,13 @@ void apply_theme_to_imgui_style(ImGuiStyle& style) noexcept {
     set(ImGuiCol_HeaderHovered, ColorToken::ButtonBgHover);
     set(ImGuiCol_HeaderActive, ColorToken::ButtonBgActive);
 
-    // Accent-driven widgets.
-    set(ImGuiCol_CheckMark, ColorToken::ButtonBgPrimary);
-    set(ImGuiCol_SliderGrab, ColorToken::SettingsSliderHandle);
-    set(ImGuiCol_SliderGrabActive, ColorToken::ButtonBgPrimary);
+    // Accent-driven widgets. The slider handle rests at bg_button_default and
+    // brightens to accent_primary while being dragged; checkmarks use the
+    // accent (Token Application Rules: slider handle in bg_button_default,
+    // accent for the active/selected highlight).
+    set(ImGuiCol_CheckMark, ColorToken::AccentPrimary);
+    set(ImGuiCol_SliderGrab, ColorToken::ButtonBg);
+    set(ImGuiCol_SliderGrabActive, ColorToken::AccentPrimary);
     set(ImGuiCol_ScrollbarGrab, ColorToken::ButtonBg);
 }
 

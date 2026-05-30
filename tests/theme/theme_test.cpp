@@ -71,17 +71,17 @@ TEST(SetTheme, SwapsActivePalette) {
 TEST(SetTheme, GetColorTracksActiveTheme) {
     // After each switch, get_color reflects the newly active palette.
     th::set_theme(th::kThemeIdOcean);
-    th::test::expect_color_eq(th::get_color(th::ColorToken::BgRoot),
-                              token_value(th::kThemeIdOcean, th::ColorToken::BgRoot));
+    th::test::expect_color_eq(th::get_color(th::ColorToken::BgPrimary),
+                              token_value(th::kThemeIdOcean, th::ColorToken::BgPrimary));
 
     th::set_theme(th::kThemeIdNoLimit);
-    th::test::expect_color_eq(th::get_color(th::ColorToken::BgRoot),
-                              token_value(th::kThemeIdNoLimit, th::ColorToken::BgRoot));
+    th::test::expect_color_eq(th::get_color(th::ColorToken::BgPrimary),
+                              token_value(th::kThemeIdNoLimit, th::ColorToken::BgPrimary));
 
     // The background genuinely differs between the two themes.
     EXPECT_FALSE(th::test::colors_equal(
-        token_value(th::kThemeIdOcean, th::ColorToken::BgRoot),
-        token_value(th::kThemeIdNoLimit, th::ColorToken::BgRoot)));
+        token_value(th::kThemeIdOcean, th::ColorToken::BgPrimary),
+        token_value(th::kThemeIdNoLimit, th::ColorToken::BgPrimary)));
 }
 
 TEST(SetTheme, GetColorMatchesActivePaletteForEveryToken) {
@@ -123,18 +123,18 @@ TEST(DefaultTheme, InvalidThemeIdFallsBackToNoLimit) {
 // ----- per-theme accent hex values (headline colors) -----
 
 TEST(PaletteValues, AccentPrimaryHexPerTheme) {
-    // accent_primary maps onto ButtonBgPrimary (and BorderFocus, etc.).
+    // accent_primary is its own token; BorderFocus mirrors it (asserted below).
     th::test::expect_color_eq(
-        token_value(th::kThemeIdNoLimit, th::ColorToken::ButtonBgPrimary),
+        token_value(th::kThemeIdNoLimit, th::ColorToken::AccentPrimary),
         th::rgba8(239, 180, 46));
     th::test::expect_color_eq(
-        token_value(th::kThemeIdSlate, th::ColorToken::ButtonBgPrimary),
+        token_value(th::kThemeIdSlate, th::ColorToken::AccentPrimary),
         th::rgba8(191, 160, 70));
     th::test::expect_color_eq(
-        token_value(th::kThemeIdOcean, th::ColorToken::ButtonBgPrimary),
+        token_value(th::kThemeIdOcean, th::ColorToken::AccentPrimary),
         th::rgba8(63, 169, 224));
     th::test::expect_color_eq(
-        token_value(th::kThemeIdSage, th::ColorToken::ButtonBgPrimary),
+        token_value(th::kThemeIdSage, th::ColorToken::AccentPrimary),
         th::rgba8(156, 203, 91));
 }
 
@@ -158,15 +158,16 @@ TEST(PaletteValues, AccentSecondaryHexPerTheme) {
     for (const std::uint8_t id : kAllThemeIds) {
         EXPECT_FALSE(th::test::colors_equal(
             token_value(id, th::ColorToken::AccentSecondary),
-            token_value(id, th::ColorToken::ButtonBgPrimary)));
+            token_value(id, th::ColorToken::AccentPrimary)));
     }
 }
 
 TEST(PaletteValues, BorderFocusEqualsAccentPrimary) {
+    // ARCHITECTURE: border_focus "typically renders as accent_primary."
     for (const std::uint8_t id : kAllThemeIds) {
         th::test::expect_color_eq(
             token_value(id, th::ColorToken::BorderFocus),
-            token_value(id, th::ColorToken::ButtonBgPrimary));
+            token_value(id, th::ColorToken::AccentPrimary));
     }
 }
 
@@ -184,23 +185,26 @@ TEST(PaletteValues, EveryTokenIsPopulatedInEveryTheme) {
     }
 }
 
-TEST(PaletteValues, OutageAndOfflineTokensMatchSpec) {
-    // ARCHITECTURE: outage banner uses bg_modal background + text_primary
-    // message + a white countdown bar; the offline indicator is text_secondary.
-    const ImVec4 white{1.0f, 1.0f, 1.0f, 1.0f};
+TEST(PaletteValues, StatModalTranslucentIsModalFillAt65Percent) {
+    // ARCHITECTURE: bg_modal_translucent is the stat modal background at 65%
+    // opacity — the same RGB as bg_modal with alpha forced to 0.65.
     for (const std::uint8_t id : kAllThemeIds) {
-        th::test::expect_color_eq(
-            token_value(id, th::ColorToken::OutageBannerBg),
-            token_value(id, th::ColorToken::BgModalSurface));
-        th::test::expect_color_eq(
-            token_value(id, th::ColorToken::OutageBannerText),
-            token_value(id, th::ColorToken::TextPrimary));
-        th::test::expect_color_eq(
-            token_value(id, th::ColorToken::OutageBannerCountdown), white);
-        th::test::expect_color_eq(
-            token_value(id, th::ColorToken::OfflineIndicator),
-            token_value(id, th::ColorToken::TextSecondary));
+        const ImVec4 modal = token_value(id, th::ColorToken::BgModalSurface);
+        const ImVec4 translucent =
+            token_value(id, th::ColorToken::BgModalTranslucent);
+        th::test::expect_color_eq(translucent,
+                                  ImVec4{modal.x, modal.y, modal.z, 0.65f});
     }
+}
+
+TEST(TokenSet, CountMatchesCorrectedSemanticPalette) {
+    // The corrected token set after the T1–T10 contract amendment: 22
+    // theme-controlled tokens + 10 fixed chip/dealer tokens = 32. This guards
+    // against an accidental re-expansion of the element-specific tokens the
+    // amendment removed.
+    EXPECT_EQ(th::kColorTokenCount, static_cast<std::size_t>(32));
+    EXPECT_EQ(static_cast<std::size_t>(th::ColorToken::Count),
+              static_cast<std::size_t>(32));
 }
 
 // ----- get_color out-of-range guard -----
@@ -237,29 +241,18 @@ TEST(FixedTokens, MatchTheSharedChipAndDealerConstants) {
         th::kDealerButtonGreen));
 }
 
-TEST(FixedTokens, TutorialScrimIsIdenticalAcrossThemes) {
-    // ARCHITECTURE pins the tutorial grey lens as fixed across themes even
-    // though it is not in kFixedAcrossThemeTokens.
-    const ImVec4 reference =
-        token_value(th::kThemeIdNoLimit, th::ColorToken::TutorialScrim);
-    for (const std::uint8_t id : kAllThemeIds) {
-        EXPECT_TRUE(th::test::colors_equal(
-            token_value(id, th::ColorToken::TutorialScrim), reference));
-    }
-}
-
 // ----- accent vs dealer-button distinctness -----
 
 TEST(AccentDistinctness, OceanAccentDiffersFromDealerButtonBlue) {
     const ImVec4 accent =
-        token_value(th::kThemeIdOcean, th::ColorToken::ButtonBgPrimary);
+        token_value(th::kThemeIdOcean, th::ColorToken::AccentPrimary);
     EXPECT_FALSE(th::test::colors_equal(accent, th::kDealerButtonBlue));
     EXPECT_GT(th::test::rgb_distance_255(accent, th::kDealerButtonBlue), 48.0f);
 }
 
 TEST(AccentDistinctness, SageAccentDiffersFromDealerButtonGreen) {
     const ImVec4 accent =
-        token_value(th::kThemeIdSage, th::ColorToken::ButtonBgPrimary);
+        token_value(th::kThemeIdSage, th::ColorToken::AccentPrimary);
     EXPECT_FALSE(th::test::colors_equal(accent, th::kDealerButtonGreen));
     EXPECT_GT(th::test::rgb_distance_255(accent, th::kDealerButtonGreen), 48.0f);
 }

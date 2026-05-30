@@ -42,7 +42,7 @@ TEST(ApplyThemeToImGuiStyle, WritesExpectedSlots) {
 
     // Every slot the bridge maps is asserted, so the full mapping is locked.
     slot_is(ImGuiCol_Text, th::ColorToken::TextPrimary);
-    slot_is(ImGuiCol_TextDisabled, th::ColorToken::TextDisabled);
+    slot_is(ImGuiCol_TextDisabled, th::ColorToken::TextPlaceholder);
     slot_is(ImGuiCol_WindowBg, th::ColorToken::BgModalSurface);
     slot_is(ImGuiCol_ChildBg, th::ColorToken::BgModalSurface);
     slot_is(ImGuiCol_PopupBg, th::ColorToken::BgModalSurface);
@@ -54,17 +54,17 @@ TEST(ApplyThemeToImGuiStyle, WritesExpectedSlots) {
     slot_is(ImGuiCol_Border, th::ColorToken::BorderDefault);
     slot_is(ImGuiCol_Separator, th::ColorToken::SeparatorLine);
     slot_is(ImGuiCol_FrameBg, th::ColorToken::InputBg);
-    slot_is(ImGuiCol_FrameBgHovered, th::ColorToken::InputBgFocused);
-    slot_is(ImGuiCol_FrameBgActive, th::ColorToken::InputBgFocused);
+    slot_is(ImGuiCol_FrameBgHovered, th::ColorToken::InputBg);
+    slot_is(ImGuiCol_FrameBgActive, th::ColorToken::InputBg);
     slot_is(ImGuiCol_Button, th::ColorToken::ButtonBg);
     slot_is(ImGuiCol_ButtonHovered, th::ColorToken::ButtonBgHover);
     slot_is(ImGuiCol_ButtonActive, th::ColorToken::ButtonBgActive);
     slot_is(ImGuiCol_Header, th::ColorToken::ButtonBg);
     slot_is(ImGuiCol_HeaderHovered, th::ColorToken::ButtonBgHover);
     slot_is(ImGuiCol_HeaderActive, th::ColorToken::ButtonBgActive);
-    slot_is(ImGuiCol_CheckMark, th::ColorToken::ButtonBgPrimary);
-    slot_is(ImGuiCol_SliderGrab, th::ColorToken::SettingsSliderHandle);
-    slot_is(ImGuiCol_SliderGrabActive, th::ColorToken::ButtonBgPrimary);
+    slot_is(ImGuiCol_CheckMark, th::ColorToken::AccentPrimary);
+    slot_is(ImGuiCol_SliderGrab, th::ColorToken::ButtonBg);
+    slot_is(ImGuiCol_SliderGrabActive, th::ColorToken::AccentPrimary);
     slot_is(ImGuiCol_ScrollbarGrab, th::ColorToken::ButtonBg);
 }
 
@@ -91,7 +91,7 @@ TEST(RefreshActiveThemeStyle, DrivesGlobalStyleWhenContextExists) {
     th::test::expect_color_eq(global.Colors[ImGuiCol_Button],
                               th::get_color(th::ColorToken::ButtonBg));
     th::test::expect_color_eq(global.Colors[ImGuiCol_CheckMark],
-                              th::get_color(th::ColorToken::ButtonBgPrimary));
+                              th::get_color(th::ColorToken::AccentPrimary));
 
     // An explicit refresh after a switch updates the global style too.
     th::set_theme(th::kThemeIdSage);

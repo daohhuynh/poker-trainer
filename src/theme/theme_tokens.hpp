@@ -12,114 +12,68 @@ struct ImVec4;
 
 namespace poker_trainer::theme {
 
-// Token identifiers. Every color-bearing element in the trainer
-// references one of these tokens. The enum value is also the index
+// Token identifiers. Every color-bearing element in the trainer references
+// one of these tokens. The set is the closed, semantic palette of
+// ARCHITECTURE's "Token Palette": tokens name what an element *means*, never a
+// specific UI widget, so a single token re-skins consistently across every
+// surface that uses it. Element-to-token assignments live in ARCHITECTURE's
+// "Token Application Rules", not in the enum. The enum value is also the index
 // into Theme::tokens below.
 enum class ColorToken : std::uint16_t {
     // --- Backgrounds ---
-    BgRoot = 0,                  // Root screen base background
-    BgGame = 1,                  // Game screen base background
-    BgPostRound = 2,             // Post-Round Screen base background
-    BgModalSurface = 3,          // Modal panel fill
-    BgModalScrim = 4,            // Dimming layer behind modals
-    BgTableFelt = 5,             // Poker table felt overlay tint
+    BgPrimary = 0,               // bg_primary: global screen background tint
+                                 // (one theme, no per-screen override)
+    BgModalSurface = 1,          // bg_modal: modal panel fill
+    BgModalTranslucent = 2,      // bg_modal_translucent: stat modal at 65% opacity
+    BgModalScrim = 3,            // dimming layer behind modals (ImGui dim bg)
+    BgTableFelt = 4,             // poker table felt overlay tint
+    InputBg = 5,                 // bg_input: input box fill
+
+    // --- Buttons (background states) ---
+    ButtonBg = 6,                // bg_button_default
+    ButtonBgHover = 7,           // bg_button_hover
+    ButtonBgActive = 8,          // bg_button_active
+    AgainButtonArmed = 9,        // bg_button_armed: Again button's armed state
 
     // --- Text ---
-    TextPrimary = 6,             // Default text color
-    TextSecondary = 7,           // Subdued text (labels, captions)
-    TextDisabled = 8,            // Greyed-out text
-    TextOnAccent = 9,            // Text on accent-colored elements (buttons)
+    TextPrimary = 10,            // text_primary: main body text
+    TextSecondary = 11,          // text_secondary: subdued text (labels, captions)
+    TextButton = 12,             // text_button: button text
+    TextPlaceholder = 13,        // text_placeholder: empty-input placeholder text
+    InputText = 14,              // text_input: text inside input fields
 
-    // --- Borders and separators ---
-    BorderDefault = 10,          // Default border for input fields, panels
-    BorderFocus = 11,            // 2px focus indicator outline
-    SeparatorLine = 12,          // Horizontal/vertical separator lines
-
-    // --- Buttons ---
-    ButtonBg = 13,               // Default button background
-    ButtonBgHover = 14,          // Button on hover
-    ButtonBgActive = 15,         // Button while being clicked
-    ButtonBgDisabled = 16,       // Disabled button
-    ButtonBgPrimary = 17,        // Primary call-to-action background
-    ButtonBgDanger = 18,         // Destructive action background (delete, reset)
-
-    // --- Inputs ---
-    InputBg = 19,                // Text input field background
-    InputBgFocused = 20,         // Text input when focused
-    InputText = 21,              // Text inside input fields
+    // --- Accents ---
+    AccentPrimary = 15,          // accent_primary: the theme's defining accent
+                                 // (selected/active highlight, focus outline,
+                                 // loading arc, active tier tab)
+    AccentSecondary = 16,        // accent_secondary: complementary accent
+                                 // (Leaderboard row highlight/tint at ~30%)
 
     // --- State colors ---
-    StatePass = 22,              // Success / pass color
-    StateFail = 23,              // Failure / error color
-    StateWarn = 24,              // Warning / caution color
-    StateOvertime = 25,          // Overtime countdown red
+    StatePass = 17,              // state_pass: success / undertime green
+    StateFail = 18,              // state_fail: failure / overtime / destructive red
 
-    // --- HUD on Game screen ---
-    HudPotText = 26,             // Pot amount text
-    HudBlindsText = 27,          // Blinds text
-    HudBetAmountText = 28,       // Floating bet amount text
-
-    // --- Cluster icons ---
-    ClusterIconTint = 29,        // Default cluster icon tint
-    ClusterIconHover = 30,       // Cluster icon on hover
-
-    // --- Offline indicator ---
-    OfflineIndicator = 31,       // The sync-failing indicator
-
-    // --- Outage banner ---
-    OutageBannerBg = 32,         // Service Outage Banner background
-    OutageBannerText = 33,       // Service Outage Banner text
-    OutageBannerCountdown = 34,  // Countdown bar fill
-
-    // --- Settings ---
-    SettingsSidebarBg = 35,      // Settings modal sidebar background
-    SettingsSectionHeader = 36,  // Section header text
-    SettingsSliderTrack = 37,    // Slider track background
-    SettingsSliderFill = 38,     // Slider fill before the handle
-    SettingsSliderHandle = 39,   // Slider handle
-
-    // --- Tutorial ---
-    TutorialScrim = 40,          // Tutorial overlay dim layer
-    TutorialCalloutBg = 41,      // Callout panel background
-    TutorialCalloutBorder = 42,  // Callout panel border
-
-    // --- Post-Round stat modal ---
-    StatModalBg = 43,            // Stat modal background (65% opacity)
-    StatModalTabBg = 44,         // Tier tab default background
-    StatModalTabActive = 45,     // Active tier tab background
-    TimeGradeUndertime = 46,     // Time grade row, under-time color
-    TimeGradeOvertime = 47,      // Time grade row, over-time color
-
-    // --- Again button (Post-Round) ---
-    AgainButtonDefault = 48,     // AGAIN default state
-    AgainButtonArmed = 49,       // AGAIN armed state
-    AgainButtonCommit = 50,      // CONFIRM commit state
+    // --- Borders and separators ---
+    BorderDefault = 19,          // border_default: input / panel borders
+    BorderFocus = 20,            // border_focus: focus outline (renders as accent_primary)
+    SeparatorLine = 21,          // separator: stat-modal row separators (low opacity)
 
     // --- Fixed across all themes ---
     // These tokens exist for API uniformity but their values are
     // identical in all four palettes. They cannot be themed.
-    ChipWhite = 51,
-    ChipRed = 52,
-    ChipGreen = 53,
-    ChipBlack = 54,
-    ChipPurple = 55,
-    ChipYellow = 56,
-    ChipBrown = 57,
-    ChipGold = 58,
-    DealerButtonBlue = 59,
-    DealerButtonGreen = 60,
-
-    // --- Appended post-Phase-0-seal (deliberate additive amendment) ---
-    // accent_secondary: the theme's complementary accent (ARCHITECTURE
-    // "Accent tokens"). Theme-controlled, NOT fixed. Appended at the end of
-    // the enum so no pre-existing token's integer value shifts — the 0..60
-    // layout is preserved. Consumed by the Leaderboard (Z11/Z13): the
-    // searched-match row highlight and the signed-in user's row tint, applied
-    // at ~30% opacity by the consumer. See PHASE0_CLEANUP.md for the record.
-    AccentSecondary = 61,
+    ChipWhite = 22,
+    ChipRed = 23,
+    ChipGreen = 24,
+    ChipBlack = 25,
+    ChipPurple = 26,
+    ChipYellow = 27,
+    ChipBrown = 28,
+    ChipGold = 29,
+    DealerButtonBlue = 30,
+    DealerButtonGreen = 31,
 
     // Sentinel.
-    Count = 62,
+    Count = 32,
 };
 
 inline constexpr std::size_t kColorTokenCount =
