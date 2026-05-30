@@ -1,0 +1,136 @@
+#include "persistence/auth.hpp"
+
+#include "persistence/clock.hpp"
+#include "persistence/idbfs.hpp"
+#include "persistence/migration.hpp"
+#include "persistence/sync.hpp"
+
+#include "persistence/auth0_config.hpp"
+#include "persistence/persistence_schema.hpp"
+
+#include <chrono>
+#include <expected>
+#include <string>
+#include <string_view>
+#include <utility>
+
+namespace poker_trainer::persistence {
+
+AuthManager::AuthManager(AuthBackend& auth, IdbfsStore& store,
+                         Migrator& migrator, SyncBackend& server,
+                         Clock& clock) noexcept
+    : auth_(auth),
+      store_(store),
+      migrator_(migrator),
+      server_(server),
+      clock_(clock) {}
+
+std::expected<void, AuthError> AuthManager::sign_in(
+    const AuthCredentials& credentials) {
+    std::expected<AuthSession, AuthError> result = auth_.sign_in(credentials);
+    if (!result.has_value()) {
+        return std::unexpected(result.error());
+    }
+    establish_session(std::move(result.value()));
+    return {};
+}
+
+std::expected<void, AuthError> AuthManager::sign_up(
+    const AuthCredentials& credentials, std::string_view display_name) {
+    std::expected<AuthSession, AuthError> result =
+        auth_.sign_up(credentials, display_name);
+    if (!result.has_value()) {
+        return std::unexpected(result.error());
+    }
+    establish_session(std::move(result.value()));
+    return {};
+}
+
+std::expected<void, AuthError> AuthManager::sign_out() {
+    std::expected<void, AuthError> result = auth_.sign_out();
+    if (!result.has_value()) {
+        return std::unexpected(result.error());
+    }
+    // IDBFS state remains intact for offline guest use; only the account
+    // linkage and the in-memory session are dropped.
+    store_.update_account(AccountState{});
+    session_.reset();
+    return {};
+}
+
+std::expected<void, AuthError> AuthManager::delete_account() {
+    if (!store_.state().account.is_authenticated) {
+        return std::unexpected(AuthError::NotAuthenticated);
+    }
+    const std::string user_id = store_.state().account.auth0_user_id;
+    std::expected<void, AuthError> result = auth_.delete_account(user_id);
+    if (!result.has_value()) {
+        return std::unexpected(result.error());
+    }
+    // Auth0 deletion succeeded: wipe local IDBFS and revert to a fresh guest.
+    store_.wipe();
+    session_.reset();
+    return {};
+}
+
+std::expected<void, AuthError> AuthManager::change_password() {
+    if (!store_.state().account.is_authenticated) {
+        return std::unexpected(AuthError::NotAuthenticated);
+    }
+    // Auth0 owns the reset flow end to end; Z04 only triggers the email.
+    return auth_.change_password(store_.state().account.email);
+}
+
+bool AuthManager::auth0_health_check() {
+    const std::chrono::steady_clock::time_point now = clock_.now();
+    if (health_ok_at_.has_value() &&
+        now - *health_ok_at_ < kAuth0HealthCheckCacheTtl) {
+        return true;  // a recent successful probe is still fresh
+    }
+    const bool healthy = auth_.health_check();
+    if (healthy) {
+        health_ok_at_ = now;
+    }
+    // Failures are never cached: the next modal-open re-probes immediately.
+    return healthy;
+}
+
+void AuthManager::reconcile_account(std::string_view auth0_user_id) {
+    const FetchResult fetched = server_.fetch(auth0_user_id);
+    switch (fetched.outcome) {
+        case FetchOutcome::Found:
+            // Server is the source of truth: IDBFS reconciles to match.
+            store_.adopt_server_state(fetched.state);
+            break;
+        case FetchOutcome::NotFound:
+            // Brand-new account: seed the server from the guest's local state.
+            // A failed upload is re-attempted on the next session-start
+            // reconcile rather than retried inline.
+            static_cast<void>(migrator_.migrate(store_.state(), auth0_user_id));
+            break;
+        case FetchOutcome::Failed:
+            // Offline / server error at session start: keep local state and
+            // proceed; reconciliation retries on the next session start.
+            break;
+    }
+}
+
+void AuthManager::establish_session(AuthSession session) {
+    session_ = std::move(session);
+
+    // Persist only the non-sensitive identity; the access token stays in the
+    // in-memory session and is never written through the storage seam.
+    AccountState account{};
+    account.is_authenticated = true;
+    account.auth0_user_id = session_->auth0_user_id;
+    account.display_name = session_->display_name;
+    account.email = session_->email;
+    store_.update_account(account);
+
+    // Copy the id before reconciling: a Found outcome replaces the cached
+    // state, which would otherwise invalidate a view into store_.state().
+    const std::string user_id = session_->auth0_user_id;
+    reconcile_account(user_id);
+}
+
+}  // namespace poker_trainer::persistence

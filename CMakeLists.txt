@@ -178,6 +178,7 @@ if(ENABLE_TESTS)
     add_test(NAME theme_test COMMAND theme_test)
 
     # -------------------------------------------------------------------------
+ HEAD
     # Zone 02 (Asset Pipeline) — native unit tests.
     # -------------------------------------------------------------------------
     #
@@ -214,4 +215,45 @@ if(ENABLE_TESTS)
     target_link_libraries(assets_test PRIVATE assets GTest::gtest_main)
 
     add_test(NAME assets_test COMMAND assets_test)
+
+    # Zone 04 (Persistence Layer) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # Project code held to the full warning baseline so the zone is proven to
+    # compile clean under -Werror. Like Z06, this is built for the test target
+    # only; the WebAssembly app target wires persistence in a later wave
+    # (Z05/Bridge), so the app build (the poker_trainer target above) is left
+    # untouched here. sync_state.cpp is the Phase 0 primitive Z04 writes; it is
+    # compiled into this library (its own object, distinct from the copy linked
+    # into phase0_integration_test).
+    add_library(persistence STATIC
+        src/persistence/sync_state.cpp
+        src/persistence/idbfs.cpp
+        src/persistence/sync.cpp
+        src/persistence/migration.cpp
+        src/persistence/auth.cpp
+        src/persistence/persistence_service.cpp
+    )
+    target_include_directories(persistence PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(persistence PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+
+    # Zone 04 unit tests (googletest). Test glue is not held to -Werror so that
+    # googletest macro expansions do not fight the strict baseline; the zone
+    # code under test is held to it via the `persistence` library above.
+    add_executable(persistence_test
+        tests/persistence/serialization_test.cpp
+        tests/persistence/idbfs_test.cpp
+        tests/persistence/sync_test.cpp
+        tests/persistence/migration_test.cpp
+        tests/persistence/auth_test.cpp
+        tests/persistence/credentials_test.cpp
+    )
+    target_include_directories(persistence_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests/persistence
+    )
+    target_link_libraries(persistence_test PRIVATE persistence GTest::gtest_main)
+
+    add_test(NAME persistence_test COMMAND persistence_test)
+ z04/persistence
 endif()
