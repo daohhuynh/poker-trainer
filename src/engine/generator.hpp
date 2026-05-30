@@ -55,17 +55,13 @@ inline constexpr int kStackMinBb = 20;
 inline constexpr int kStackMaxBb = 200;
 inline constexpr int kStackStepBb = 5;
 
-// Decision margin (Aggressor bet tiers): the max-EV tier must beat the
-// second-best by at least max($1.00, 3% * |EV|). Empirically (see the margin
-// probe behind the generator golden tests) the four fixed tiers run through the
-// V8.1 fold function separate the top two by at most ~4.65% of EV in the worst
-// case across the difficulty range, so a clean separation above the full +/-5%
-// EV grading band is geometrically impossible for every scenario; this floor is
-// the achievable "no near-ties" guarantee and is golden-tested. The max
-// separation always occurs at a difficulty-range boundary F, so a near-tie
-// scenario falls back to the best-separating boundary rather than a forced tie.
-inline constexpr double kBetTierEvFloor = 1.0;
-inline constexpr double kBetTierEvRelative = 0.03;
+// Aggressor bet tiers carry no separation invariant: bet-size grading is
+// tolerant (evaluator.cpp accepts any tier whose EV is within the EV grading
+// tolerance of the max-EV tier), so near-ties are correct behavior — they yield
+// more than one accepted tier rather than something to exclude. F is sampled
+// once per scenario from the difficulty range; the correct (reference) tier is
+// simply the max-EV tier. The call/fold decision margin (Caller, above) is the
+// only decision-margin invariant retained.
 
 // Deterministic rejection-sampling cap. If no candidate clears an invariant in
 // this many tries, the best candidate seen is used so generation always

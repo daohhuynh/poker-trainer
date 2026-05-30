@@ -6,6 +6,8 @@
 
 #include "engine/scenario.hpp"
 
+#include <array>
+#include <cstdint>
 #include <optional>
 
 #include <gtest/gtest.h>
@@ -173,7 +175,62 @@ pe::ScenarioState make_aggressor_multitier() {
     return s;
 }
 
+pe::ScenarioState make_aggressor_with_evs(const std::array<double, pe::kBetTierCount>& evs) {
+    pe::ScenarioState s{};
+    s.type = pe::ScenarioType::AggressorPureBluff;
+    s.pot = 100;
+    s.multi_tier = true;
+    std::uint8_t best = 0;
+    for (std::uint8_t t = 0; t < pe::kBetTierCount; ++t) {
+        pe::AggressorTier tier{};
+        tier.tier = static_cast<pe::BetTier>(t);
+        tier.fold_probability = 0.30 + 0.05 * static_cast<double>(t);
+        tier.call_probability = 1.0 - tier.fold_probability;
+        tier.ev = evs[t];
+        s.tiers[t] = tier;
+        if (evs[t] > evs[best]) {
+            best = t;
+        }
+    }
+    s.correct_bet_tier = static_cast<pe::BetTier>(best);
+    s.presented_tier = s.correct_bet_tier;
+    return s;
+}
+
+void fill_correct_tier_answers(const pe::ScenarioState& s, pe::UserAnswers& a) {
+    for (std::uint8_t t = 0; t < pe::kBetTierCount; ++t) {
+        a.tier_fold_pct[t] = s.tiers[t].fold_probability * 100.0;
+        a.tier_ev[t] = s.tiers[t].ev;
+    }
+}
+
 }  // namespace
+
+TEST(Grading, AggressorNonMaxTierWithinEvToleranceIsAccepted) {
+    // Max-EV tier is Full Pot (13.0); Half Pot (12.9) is within ev_margin(13)=0.65,
+    // so selecting it is graded correct (statistically tied with the best).
+    const pe::ScenarioState s = make_aggressor_with_evs({9.0, 12.9, 13.0, 8.0});
+    pe::UserAnswers a{};
+    fill_correct_tier_answers(s, a);
+    a.selected_bet_tier = pe::BetTier::HalfPot;
+    const pe::GradingResult r = pe::evaluate(s, a);
+    EXPECT_TRUE(find(r, pe::InputId::BetSize)->correct);
+    EXPECT_TRUE(r.all_correct);
+    // The reference exposed to Z13 is still the max-EV tier.
+    EXPECT_EQ(find(r, pe::InputId::BetSize)->correct_value,
+              static_cast<double>(static_cast<std::uint8_t>(pe::BetTier::FullPot)));
+}
+
+TEST(Grading, AggressorDominatedTierIsRejected) {
+    // One Third Pot (9.0) is far below 13.0 - 0.65, so it is graded wrong.
+    const pe::ScenarioState s = make_aggressor_with_evs({9.0, 12.9, 13.0, 8.0});
+    pe::UserAnswers a{};
+    fill_correct_tier_answers(s, a);
+    a.selected_bet_tier = pe::BetTier::OneThirdPot;
+    const pe::GradingResult r = pe::evaluate(s, a);
+    EXPECT_FALSE(find(r, pe::InputId::BetSize)->correct);
+    EXPECT_FALSE(r.all_correct);
+}
 
 TEST(Grading, AggressorPerTierAndBetSizeAllCorrect) {
     const pe::ScenarioState s = make_aggressor_multitier();

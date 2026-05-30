@@ -256,7 +256,10 @@ TEST(Generator, CallerPotOddsSpanTheTargetBand) {
     EXPECT_GT(max_odds, 38.0);  // some genuinely expensive calls
 }
 
-TEST(Generator, AggressorTierTruthAndMaxEvInvariant) {
+TEST(Generator, AggressorTierTruthAndMaxEvTier) {
+    // The full four-tier truth matches an independent recomputation and the
+    // correct (reference) tier is the true max-EV tier. There is no separation
+    // invariant: tolerant bet-size grading absorbs near-ties.
     const ps::Settings settings = default_settings();
     for (std::uint64_t id = 1; id <= kSampleSeeds; ++id) {
         const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{id}, settings);
@@ -276,19 +279,6 @@ TEST(Generator, AggressorTierTruthAndMaxEvInvariant) {
             }
         }
         EXPECT_EQ(static_cast<std::uint8_t>(s.correct_bet_tier), best) << "id=" << id;
-
-        // Decision margin: best beats the runner-up by more than the grading band.
-        double second = -1e18;
-        for (std::uint8_t t = 0; t < pe::kBetTierCount; ++t) {
-            if (t != best) {
-                second = std::max(second, s.tiers[t].ev);
-            }
-        }
-        const double margin = s.tiers[best].ev - second;
-        const double required = std::max(pe::kBetTierEvFloor,
-                                         pe::kBetTierEvRelative * std::max(std::abs(s.tiers[best].ev),
-                                                                          std::abs(second)));
-        EXPECT_GE(margin, required - 1e-6) << "id=" << id;
 
         if (s.type == pe::ScenarioType::AggressorSemiBluff) {
             EXPECT_NEAR(s.aggressor_equity_pct,

@@ -234,12 +234,11 @@ double tier_ev(ScenarioType type, double p_fold, double p_call, double equity_fr
     }
 }
 
-// Build the four-tier truth for a given F, returning the table plus the
-// max-EV tier index and the EV margin over the runner-up (ties -> smaller index).
+// Build the four-tier truth for a given F, returning the table plus the max-EV
+// tier index (the reference "correct" tier; ties -> smaller index).
 struct TierTable {
     std::array<AggressorTier, kBetTierCount> tiers{};
     std::uint8_t best_index{0};
-    double margin{0.0};
 };
 
 TierTable build_tiers(ScenarioType type, double f, double equity_frac, double pot) noexcept {
@@ -258,14 +257,7 @@ TierTable build_tiers(ScenarioType type, double f, double equity_frac, double po
             best = t;
         }
     }
-    double second = -1e18;
-    for (std::uint8_t t = 0; t < kBetTierCount; ++t) {
-        if (t != best) {
-            second = std::max(second, table.tiers[t].ev);
-        }
-    }
     table.best_index = best;
-    table.margin = table.tiers[best].ev - second;
     return table;
 }
 
@@ -280,55 +272,19 @@ void resolve_aggressor(RngEngine& eng, ScenarioState& s, const settings::Gamepla
         equity_frac = s.aggressor_equity_pct / 100.0;
     }
     const double pot_d = static_cast<double>(s.pot);
-    const double diff_min = static_cast<double>(g.difficulty_min);
-    const double diff_max = static_cast<double>(g.difficulty_max);
 
-    // The required separation for "no near-tie": above the EV grading floor and
-    // a small slice of the EV magnitude. Always achievable at a boundary F.
-    const auto required_for = [](const TierTable& t) {
-        const double best_ev = t.tiers[t.best_index].ev;
-        const double second_ev = best_ev - t.margin;
-        return std::max(kBetTierEvFloor,
-                        kBetTierEvRelative * std::max(std::abs(best_ev), std::abs(second_ev)));
-    };
+    // One F draw from the difficulty range — varied per scenario so the correct
+    // tier and P(fold) are not memorizable. No separation-based rejection: tolerant
+    // bet-size grading accepts any tier statistically tied with the max-EV tier,
+    // so a near-tie simply yields more than one accepted tier (correct behavior),
+    // not something to exclude. The correct (reference) tier is the max-EV tier.
+    const double f = sample_fold_baseline(eng, static_cast<double>(g.difficulty_min),
+                                          static_cast<double>(g.difficulty_max));
+    const TierTable table = build_tiers(s.type, f, equity_frac, pot_d);
 
-    double chosen_f = diff_min;
-    TierTable chosen{};
-    bool accepted = false;
-
-    // Accept path: a random F from the difficulty range, kept for variety so the
-    // correct tier and P(fold) are not memorizable. Accept the first F whose
-    // top-two-tier gap clears the required margin.
-    for (int attempt = 0; attempt < kMaxRejectionAttempts; ++attempt) {
-        const double f = sample_fold_baseline(eng, diff_min, diff_max);
-        const TierTable table = build_tiers(s.type, f, equity_frac, pot_d);
-        if (table.margin >= required_for(table)) {
-            chosen_f = f;
-            chosen = table;
-            accepted = true;
-            break;
-        }
-    }
-
-    // Fallback (rare near-tie): the gap is maximized at a difficulty-range
-    // boundary, so take the better boundary. This still clears the required
-    // margin for every default-settings scenario (golden-tested); a narrow
-    // custom difficulty range may yield a smaller best-effort gap.
-    if (!accepted) {
-        const TierTable lo = build_tiers(s.type, diff_min, equity_frac, pot_d);
-        const TierTable hi = build_tiers(s.type, diff_max, equity_frac, pot_d);
-        if (hi.margin > lo.margin) {
-            chosen_f = diff_max;
-            chosen = hi;
-        } else {
-            chosen_f = diff_min;
-            chosen = lo;
-        }
-    }
-
-    s.fold_baseline_f = chosen_f;
-    s.tiers = chosen.tiers;
-    s.correct_bet_tier = static_cast<BetTier>(chosen.best_index);
+    s.fold_baseline_f = f;
+    s.tiers = table.tiers;
+    s.correct_bet_tier = static_cast<BetTier>(table.best_index);
 
     // The single presented tier (used only when the Bet Sizing Engine is off) is
     // drawn regardless of the toggle, so the toggle changes presentation only,

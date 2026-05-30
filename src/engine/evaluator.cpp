@@ -1,7 +1,9 @@
 #include "engine/evaluator.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 
@@ -90,14 +92,24 @@ InputGrade grade_outs(std::optional<int> submitted, int correct_outs) noexcept {
     return g;
 }
 
-InputGrade grade_bet_size(std::optional<BetTier> submitted, BetTier correct_tier) noexcept {
+InputGrade grade_bet_size(std::optional<BetTier> submitted,
+                          const std::array<AggressorTier, kBetTierCount>& tiers,
+                          BetTier max_ev_tier) noexcept {
+    // Tolerant tier grading: the max-EV tier is the reference, and a chosen tier
+    // is correct iff its EV is within the EV grading tolerance of the max-EV
+    // tier's EV -- the SAME propagated tolerance used to grade the EV numeric
+    // answer (ev_margin). This absorbs the +/-5pp Rule-of-2&4 equity slop and
+    // scales with pot size, so tiers statistically tied with the best pass.
+    const double max_ev = tiers[static_cast<std::size_t>(max_ev_tier)].ev;
+    const double tol = ev_margin(max_ev);
     InputGrade g{};
     g.input = InputId::BetSize;
-    g.correct_value = static_cast<double>(static_cast<std::uint8_t>(correct_tier));
-    g.margin = 0.0;  // exact tier match
+    g.correct_value = static_cast<double>(static_cast<std::uint8_t>(max_ev_tier));
+    g.margin = tol;  // EV-space tolerance band (informational for Z13's recap)
     if (submitted.has_value()) {
         g.submitted = static_cast<double>(static_cast<std::uint8_t>(*submitted));
-        g.correct = (*submitted == correct_tier);
+        const double chosen_ev = tiers[static_cast<std::size_t>(*submitted)].ev;
+        g.correct = chosen_ev >= max_ev - tol;
     }
     return g;
 }
@@ -138,7 +150,7 @@ GradingResult evaluate(const ScenarioState& state, const UserAnswers& answers) {
                                                state.aggressor_equity_pct));
         }
 
-        grades.push_back(grade_bet_size(answers.selected_bet_tier, state.correct_bet_tier));
+        grades.push_back(grade_bet_size(answers.selected_bet_tier, state.tiers, state.correct_bet_tier));
     }
 
     result.all_correct = std::all_of(grades.begin(), grades.end(),
