@@ -118,8 +118,11 @@ public:
     [[nodiscard]] float tier_progress(AssetTier tier) const noexcept;
 
     // True once any asset in an error-screen tier (a tier whose TierConfig sets
-    // fatal_failure_shows_error_screen) has fatally failed. Z05 polls this to
-    // decide when to present the fatal error screen.
+    // fatal_failure_policy to anything other than Silent — Tier 1 immediate or
+    // Tier 2 deferred-on-use) has fatally failed. Z05 polls this and reads
+    // tier_config(...).fatal_failure_policy to decide whether to present the
+    // error screen now (Tier 1) or only when a blocked navigation needs the
+    // missing asset (Tier 2).
     [[nodiscard]] bool has_error_screen_failure() const noexcept;
 
 private:

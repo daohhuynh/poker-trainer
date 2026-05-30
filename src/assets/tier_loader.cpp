@@ -44,19 +44,6 @@ namespace {
     return count;
 }
 
-// Backoff before the (retry_index)-th retry, 0-based: initial * 2^retry_index.
-// Computed by repeated doubling so the schedule follows tier_config.hpp's
-// "this delay, then 2x, then 4x" without risking an integer-shift overflow for
-// large (hypothetical) retry counts.
-[[nodiscard]] std::chrono::milliseconds backoff_delay(std::chrono::milliseconds initial,
-                                                      std::uint8_t retry_index) noexcept {
-    std::chrono::milliseconds delay = initial;
-    for (std::uint8_t i = 0; i < retry_index; ++i) {
-        delay *= 2;
-    }
-    return delay;
-}
-
 }  // namespace
 
 DecodeFn make_png_decoder() {
@@ -205,7 +192,9 @@ void TierLoader::on_fetch_result(AssetTier tier, AssetId id, FetchResult result)
 void TierLoader::handle_attempt_failure(TierJob& job, AssetId id) {
     const TierConfig& cfg = tier_config(job.tier);
     if (job.retries_used < cfg.max_retries) {
-        job.backoff_deadline = clock_() + backoff_delay(cfg.initial_retry_delay, job.retries_used);
+        // retry_delays[i] is the backoff before the (i)-th retry, measured from
+        // this failure: immediate, then 2 s, then 10 s (tier_config.hpp).
+        job.backoff_deadline = clock_() + cfg.retry_delays[job.retries_used];
         job.retries_used += 1;
         job.phase = Phase::Backoff;
         return;
@@ -279,8 +268,12 @@ float TierLoader::tier_progress(AssetTier tier) const noexcept {
 bool TierLoader::has_error_screen_failure() const noexcept {
     for (std::size_t i = 0; i < kAssetCount; ++i) {
         const auto id = static_cast<AssetId>(i);
+        // An error-screen tier is one whose fatal-failure policy is not Silent
+        // (Tier 1 shows it immediately, Tier 2 defers until a navigation needs
+        // the asset). Z05 reads tier_config(...).fatal_failure_policy to tell the
+        // immediate case from the deferred one.
         if (registry_.is_unavailable(id) &&
-            tier_config(asset_tier(id)).fatal_failure_shows_error_screen) {
+            tier_config(asset_tier(id)).fatal_failure_policy != FatalFailurePolicy::Silent) {
             return true;
         }
     }

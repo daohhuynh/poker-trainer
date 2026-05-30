@@ -356,6 +356,17 @@ void draw_character(Canvas& cv, std::string_view label, Color body) {
     draw_text_centered(cv, cx, static_cast<int>(cv.h) - 14, label, scale, Color{225, 215, 200, 255});
 }
 
+// A labeled square UI glyph tile, shared by the cluster icons, the Post-Round
+// glyphs (Exit/Copy/Share/Tomato/side-pot chip), and the Tier-1 Home icon.
+void draw_icon_tile(Canvas& cv, std::string_view label) {
+    cv.fill(Color{0, 0, 0, 0});
+    cv.fill_rect(2, 2, static_cast<int>(cv.w) - 4, static_cast<int>(cv.h) - 4, Color{58, 50, 44, 255});
+    cv.stroke_rect(2, 2, static_cast<int>(cv.w) - 4, static_cast<int>(cv.h) - 4, 1, Color{120, 104, 88, 255});
+    const int scale = fit_scale(label, static_cast<int>(cv.w) - 8, 2);
+    draw_text_centered(cv, static_cast<int>(cv.w) / 2, static_cast<int>(cv.h) / 2 - 4 * scale, label, scale,
+                       Color{235, 225, 210, 255});
+}
+
 void render_asset(AssetId id, Canvas& cv) {
     using A = AssetId;
     const std::string base = basename_no_ext(asset_path(id));
@@ -422,101 +433,80 @@ void render_asset(AssetId id, Canvas& cv) {
         return;
     }
 
-    // Cluster icons.
-    if (id >= A::IconShop && id <= A::IconClose) {
-        static constexpr std::array<std::string_view, 5> labels{{"SHOP", "HELP", "SET", "HOME", "X"}};
+    // Cluster + Post-Round glyphs (Shop..SidePotChip) — labeled square tiles.
+    if (id >= A::IconShop && id <= A::IconSidePotChip) {
+        static constexpr std::array<std::string_view, 9> labels{
+            {"SHOP", "HELP", "SET", "X", "EXIT", "COPY", "SHARE", "TOM", "SPOT"}};
         const auto idx = static_cast<std::size_t>(id) - static_cast<std::size_t>(A::IconShop);
-        cv.fill(Color{0, 0, 0, 0});
-        cv.fill_rect(2, 2, static_cast<int>(cv.w) - 4, static_cast<int>(cv.h) - 4, Color{58, 50, 44, 255});
-        cv.stroke_rect(2, 2, static_cast<int>(cv.w) - 4, static_cast<int>(cv.h) - 4, 1, Color{120, 104, 88, 255});
-        const int scale = fit_scale(labels[idx], static_cast<int>(cv.w) - 8, 2);
-        draw_text_centered(cv, static_cast<int>(cv.w) / 2, static_cast<int>(cv.h) / 2 - 4 * scale, labels[idx],
-                           scale, Color{235, 225, 210, 255});
+        draw_icon_tile(cv, labels[idx]);
+        return;
+    }
+    if (id == A::IconHome) {
+        draw_icon_tile(cv, "HOME");
         return;
     }
 
-    // Position indicators.
-    if (id >= A::PositionUTG && id <= A::PositionBB) {
-        static constexpr std::array<std::string_view, 6> labels{{"UTG", "HJ", "CO", "BTN", "SB", "BB"}};
-        const auto idx = static_cast<std::size_t>(id) - static_cast<std::size_t>(A::PositionUTG);
-        cv.fill(Color{0, 0, 0, 0});
-        cv.fill_circle(static_cast<int>(cv.w) / 2, static_cast<int>(cv.h) / 2, static_cast<int>(cv.w) / 2 - 2,
-                       Color{44, 40, 38, 255});
-        const int scale = fit_scale(labels[idx], static_cast<int>(cv.w) - 6, 2);
-        draw_text_centered(cv, static_cast<int>(cv.w) / 2, static_cast<int>(cv.h) / 2 - 4 * scale, labels[idx],
-                           scale, Color{235, 225, 210, 255});
-        return;
-    }
-
-    // Root backgrounds (per theme) — solid dark tints.
-    if (id >= A::RootBackgroundNoLimit && id <= A::RootBackgroundSage) {
-        static constexpr std::array<Color, 4> tints{{
-            {26, 18, 16, 255},  // no limit (warm brown)
-            {22, 24, 28, 255},  // slate
-            {14, 28, 34, 255},  // ocean
-            {18, 26, 18, 255},  // sage
-        }};
-        static constexpr std::array<std::string_view, 4> names{
-            {"NO LIMIT", "SLATE", "OCEAN", "SAGE"}};
-        const auto idx = static_cast<std::size_t>(id) - static_cast<std::size_t>(A::RootBackgroundNoLimit);
-        cv.fill(tints[idx]);
-        draw_text_centered(cv, static_cast<int>(cv.w) / 2, static_cast<int>(cv.h) / 2 - 12, "ROOT BG", 2,
+    // Backgrounds (theme-independent blur variants) — solid dark tints.
+    if (id == A::BackgroundRoot || id == A::BackgroundMode || id == A::BackgroundGame) {
+        Color tint{22, 20, 18, 255};
+        std::string_view name = "MODE";
+        switch (id) {
+            case A::BackgroundRoot:
+                tint = Color{26, 18, 16, 255};
+                name = "ROOT";
+                break;
+            case A::BackgroundGame:
+                tint = Color{18, 26, 20, 255};
+                name = "GAME";
+                break;
+            case A::BackgroundMode:
+            default:
+                tint = Color{22, 20, 18, 255};
+                name = "MODE";
+                break;
+        }
+        cv.fill(tint);
+        draw_text_centered(cv, static_cast<int>(cv.w) / 2, static_cast<int>(cv.h) / 2 - 12, "BG", 2,
                            Color{120, 112, 104, 255});
-        draw_text_centered(cv, static_cast<int>(cv.w) / 2, static_cast<int>(cv.h) / 2 + 4, names[idx], 2,
+        draw_text_centered(cv, static_cast<int>(cv.w) / 2, static_cast<int>(cv.h) / 2 + 4, name, 2,
                            Color{120, 112, 104, 255});
         return;
     }
 
-    // Dealer characters and Frog (front/side portraits).
-    if (id == A::ButlerSideProfile) {
-        draw_character(cv, "BUTLER SIDE", Color{70, 60, 52, 255});
+    // Dealer character portraits (Butler side/front + Frog base).
+    if (id == A::ButlerProfile) {
+        draw_character(cv, "BUTLER PROFILE", Color{70, 60, 52, 255});
         return;
     }
-    if (id == A::ButlerFrontNeutral) {
+    if (id == A::ButlerNeutral) {
         draw_character(cv, "BUTLER NEUTRAL", Color{70, 60, 52, 255});
         return;
     }
-    if (id == A::ButlerFrontRaised) {
+    if (id == A::ButlerRaised) {
         draw_character(cv, "BUTLER RAISED", Color{70, 60, 52, 255});
         return;
     }
-    if (id == A::FrogSideProfile) {
-        draw_character(cv, "FROG SIDE", Color{70, 110, 64, 255});
-        return;
-    }
-    if (id == A::FrogFrontNeutral) {
-        draw_character(cv, "FROG NEUTRAL", Color{70, 110, 64, 255});
-        return;
-    }
-    if (id == A::FrogFrontRaised) {
-        draw_character(cv, "FROG RAISED", Color{70, 110, 64, 255});
+    if (id == A::FrogBase) {
+        draw_character(cv, "FROG BASE", Color{70, 110, 64, 255});
         return;
     }
 
     // Frog expression overlays — transparent but for the expression element.
-    if (id >= A::FrogExpressionPass && id <= A::FrogExpressionPerfect) {
+    if (id >= A::FrogExpressionPass && id <= A::FrogExpressionFail) {
         cv.fill(Color{0, 0, 0, 0});
         const int cx = static_cast<int>(cv.w) / 2;
         const int cy = static_cast<int>(cv.h) / 4;
         std::string_view label;
         switch (id) {
             case A::FrogExpressionPass:
-                cv.fill_circle(cx - 28, cy, 8, Color{255, 150, 170, 220});
+                cv.fill_circle(cx - 28, cy, 8, Color{255, 150, 170, 220});  // pink cheeks
                 cv.fill_circle(cx + 28, cy, 8, Color{255, 150, 170, 220});
                 label = "PASS";
                 break;
             case A::FrogExpressionFail:
-                cv.fill_rect(cx - 6, cy + 6, 12, 24, Color{210, 70, 80, 220});
-                label = "FAIL";
-                break;
-            case A::FrogExpressionOvertime:
-                cv.fill_circle(cx, cy, 10, Color{225, 140, 40, 220});
-                label = "OVERTIME";
-                break;
-            case A::FrogExpressionPerfect:
             default:
-                cv.fill_circle(cx, cy, 10, Color{212, 175, 55, 230});
-                label = "PERFECT";
+                cv.fill_rect(cx - 6, cy + 6, 12, 24, Color{210, 70, 80, 220});  // tongue
+                label = "FAIL";
                 break;
         }
         const int scale = fit_scale(label, static_cast<int>(cv.w) - 8, 2);
