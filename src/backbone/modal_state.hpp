@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace poker_trainer::backbone {
 
@@ -19,13 +20,21 @@ inline constexpr ModalId kNoModal{0};
 // tutorial-related modals.
 [[nodiscard]] bool is_any_modal_open() noexcept;
 
-// Returns the ID of the topmost modal, or kNoModal if none.
-// The topmost modal is the one most recently opened (or the only
+// Returns the ID of the topmost modal, or std::nullopt if no modal is
+// open. The topmost modal is the one most recently opened (or the only
 // one open if there's just one).
-[[nodiscard]] ModalId topmost_modal() noexcept;
+[[nodiscard]] std::optional<ModalId> current_modal_id() noexcept;
 
-// The current modal stack depth. 0 means no modals; each open
-// modal adds 1.
+// Returns true while modal interaction is locked — specifically while the
+// tutorial walkthrough is active. During the lock, modal open/close is
+// driven by the tutorial rather than the user (Z11/Z14 enforce this; Z10
+// observes it to gate the Delta Timer). Derived from the screen-state
+// tutorial phase.
+[[nodiscard]] bool is_modal_locked() noexcept;
+
+// The current modal stack depth. 0 means no modals; each open modal
+// adds 1. Not part of the architecture's required query set; retained as
+// a useful internal/debug query.
 [[nodiscard]] std::size_t modal_stack_depth() noexcept;
 
 // ----- Writer API (Z11 only) -----

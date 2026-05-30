@@ -1,6 +1,7 @@
 #pragma once
 
 #include "backbone/event_router.hpp"
+#include "backbone/screen_state.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -30,20 +31,20 @@ inline constexpr FocusableId kInvalidFocusableId{0};
 inline constexpr FocusableId kNoFocus{0};
 
 // Read the currently focused element. Returns kNoFocus when keyboard
-// mode is inactive or no element is focused.
-[[nodiscard]] FocusableId current_focus() noexcept;
+// mode is inactive or no element is focused. The event router consults
+// this to route enter-key activation to the focused element.
+[[nodiscard]] FocusableId get_focused_element() noexcept;
 
 // Returns true if keyboard navigation mode is currently active.
-// Becomes true on first Tab press; remains true until reset
-// (typically via mouse interaction returning the user to mouse mode,
-// though the trainer does not exit keyboard mode automatically per
-// the architecture spec).
+// Becomes true on the first Tab keypress OR the first mouse click on a
+// focusable element, and once true it persists for the remainder of the
+// session — it is never deactivated (per the architecture's focus spec).
 [[nodiscard]] bool is_keyboard_mode_active() noexcept;
 
-// Activate keyboard navigation mode. Called from Z05's Tab handler.
-// If the setting display.keyboard_mode_auto_activate is true, this
-// is called automatically on first Tab. Otherwise, the user must
-// explicitly activate via a separate keybind.
+// Activate keyboard navigation mode. Called automatically on the first
+// Tab keypress and on the first mouse click on a focusable element;
+// there is no setting gating this. Idempotent — subsequent calls are
+// no-ops.
 void activate_keyboard_mode() noexcept;
 
 // Snap focus to a specific element. Used when entering a new screen
@@ -57,10 +58,12 @@ void snap_focus_to(FocusableId target) noexcept;
 // Tab handler.
 void advance_focus(bool reverse) noexcept;
 
-// Register a focus list for the current screen. Replaces the
-// existing list (used at screen transitions). The order of the
-// span determines Tab order.
-void register_focus_list(std::span<const FocusableId> focusables) noexcept;
+// Register a focus list for the given screen. Replaces the existing
+// active list (used at screen transitions). The order of the span
+// determines Tab order. `screen_id` identifies the screen the list
+// belongs to.
+void register_focus_list(ScreenId screen_id,
+                         std::span<const FocusableId> focusables) noexcept;
 
 // Push a new focus context onto the stack. Used when a modal opens.
 // The current focus is saved; the new context starts with the

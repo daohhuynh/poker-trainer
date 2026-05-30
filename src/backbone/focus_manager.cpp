@@ -18,6 +18,7 @@ namespace {
 struct FocusContext {
     std::vector<FocusableId> list;
     std::size_t pointer{0};
+    ScreenId screen{ScreenId::Root};  // Screen the base list belongs to; N/A for modal contexts.
 };
 
 FocusContext g_active_context;
@@ -26,7 +27,7 @@ bool g_keyboard_mode_active{false};
 
 }  // namespace
 
-FocusableId current_focus() noexcept {
+FocusableId get_focused_element() noexcept {
     if (!g_keyboard_mode_active) return kNoFocus;
     if (g_active_context.list.empty()) return kNoFocus;
     return g_active_context.list[g_active_context.pointer];
@@ -63,9 +64,11 @@ void advance_focus(bool reverse) noexcept {
     g_keyboard_mode_active = true;
 }
 
-void register_focus_list(std::span<const FocusableId> focusables) noexcept {
+void register_focus_list(ScreenId screen_id,
+                         std::span<const FocusableId> focusables) noexcept {
     g_active_context.list.assign(focusables.begin(), focusables.end());
     g_active_context.pointer = 0;
+    g_active_context.screen = screen_id;
 }
 
 void push_focus_context(std::span<const FocusableId> focusables,

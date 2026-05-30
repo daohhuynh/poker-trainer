@@ -90,6 +90,19 @@ struct MouseEvent {
 using KeyHandler = std::function<bool(const KeyEvent&)>;
 using MouseHandler = std::function<bool(const MouseEvent&)>;
 
+// A context predicate. The router evaluates it on each dispatched event;
+// the handler is eligible to run only when the predicate returns true.
+// The predicate reads global backbone state (screen_state, modal_state,
+// tutorial state) to decide — e.g., "current screen is Game AND no modal
+// is open AND tutorial is not active". An empty (default-constructed)
+// predicate means the handler is always eligible.
+//
+// This is the `context` of the architecture's register_handler(context,
+// key, handler_fn) model: the bound KeyHandler/MouseHandler inspects the
+// event for the specific key and performs the action, while this
+// predicate gates eligibility by global state.
+using HandlerContext = std::function<bool()>;
+
 // Opaque handle for an installed handler. Returned by install_*
 // functions; passed to uninstall_handler to remove the handler.
 struct HandlerHandle {
@@ -101,29 +114,39 @@ inline constexpr HandlerHandle kInvalidHandlerHandle{0};
 
 // Handler priority levels. Lower numbers run first (higher priority).
 // The router walks the stack in ascending priority order; the first
-// handler that returns true consumes the event.
+// handler whose context predicate matches and that returns true consumes
+// the event. The order mirrors the architecture's Global Event Router
+// priority stack: the tutorial overlay is highest so it captures Escape,
+// Enter, etc. before any modal or screen sees them while a tutorial is
+// active.
 enum class HandlerPriority : std::uint8_t {
-    ModalLayer = 0,           // Top: modal handlers (Esc-to-close, etc.)
-    TutorialOverlay = 1,      // Z14's escape handler during tutorial
+    TutorialOverlay = 0,      // Highest: captures Escape/Enter while tutorial active (Z14)
+    ModalLayer = 1,           // Topmost modal handlers, below the tutorial overlay (Z11)
     ScreenContext = 2,        // Per-screen handlers (Z07, Z08, Z13)
     BackgroundCatchAll = 3,   // Lowest: catch-all (default behaviors)
 };
 
-// Install a keyboard handler at the given priority. Returns a handle
-// that can be used to uninstall the handler later. Handler is owned
-// by the router until uninstalled.
+// Register a keyboard handler. The handler runs only when `context`
+// evaluates true (or is empty) and it is the topmost matching handler in
+// the priority stack that consumes the event. Returns a handle that can
+// be used to uninstall the handler later. The handler is owned by the
+// router until uninstalled.
 //
-// The `tag` parameter is a human-readable string used for debugging
-// (printed in router logs when the handler is installed/uninstalled).
-// It does not affect behavior.
-HandlerHandle install_key_handler(KeyHandler handler,
-                                  HandlerPriority priority,
-                                  std::string_view tag) noexcept;
+// `context` is the state predicate (see HandlerContext); `priority`
+// selects the coarse layer (tutorial > modal > screen > background). The
+// `tag` parameter is a human-readable string used for debugging (printed
+// in router logs when the handler is registered/uninstalled). It does not
+// affect behavior.
+HandlerHandle register_key_handler(HandlerContext context,
+                                   KeyHandler handler,
+                                   HandlerPriority priority,
+                                   std::string_view tag) noexcept;
 
-// Install a mouse handler. Same semantics as install_key_handler.
-HandlerHandle install_mouse_handler(MouseHandler handler,
-                                    HandlerPriority priority,
-                                    std::string_view tag) noexcept;
+// Register a mouse handler. Same semantics as register_key_handler.
+HandlerHandle register_mouse_handler(HandlerContext context,
+                                     MouseHandler handler,
+                                     HandlerPriority priority,
+                                     std::string_view tag) noexcept;
 
 // Uninstall a previously-installed handler. The handle is invalidated
 // by this call. Calling uninstall on an invalid handle is a no-op.

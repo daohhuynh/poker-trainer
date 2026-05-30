@@ -60,9 +60,19 @@ void set_screen(ScreenId screen,
     if (screen != ScreenId::Game && screen != ScreenId::PostRound) {
         active_scenario.reset();
     }
-    ScreenStateSnapshot snap;
+    // Read-modify-write so the orthogonal tutorial_state survives a screen
+    // transition (e.g., the tutorial stays Active while moving onto Game).
+    ScreenStateSnapshot snap = read_screen_state();
     snap.current = screen;
     snap.active_scenario = active_scenario;
+    write_snapshot(storage(), snap);
+}
+
+void set_tutorial_state(TutorialState tutorial_state) noexcept {
+    // Read-modify-write so the current screen and active scenario survive
+    // a tutorial-state update.
+    ScreenStateSnapshot snap = read_screen_state();
+    snap.tutorial_state = tutorial_state;
     write_snapshot(storage(), snap);
 }
 

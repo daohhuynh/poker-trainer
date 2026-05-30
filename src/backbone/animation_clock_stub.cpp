@@ -2,22 +2,12 @@
 
 namespace poker_trainer::backbone {
 
-std::uint64_t wall_clock_ms() noexcept {
+std::uint64_t total_ms_since_app_start() noexcept {
     return 0;
 }
 
-std::uint64_t animation_time_ms() noexcept {
-    return 0;
-}
-
-bool is_animation_paused() noexcept {
-    return false;
-}
-
-void pause() noexcept {
-}
-
-void resume() noexcept {
+float delta_ms_since_last_frame() noexcept {
+    return 0.0f;
 }
 
 void tick(std::uint64_t /*delta_ms*/) noexcept {

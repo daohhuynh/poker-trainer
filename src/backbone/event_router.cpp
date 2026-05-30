@@ -9,10 +9,10 @@
 // - All install/uninstall/dispatch entry points are expected to be invoked
 //   on the browser main thread (Z05 forwards browser-native events synchronously).
 // - g_handler_counter is std::atomic as a defensive measure so handle minting
-//   stays well-defined if a non-main thread ever installs a handler. The
+//   stays well-defined if a non-main thread ever registers a handler. The
 //   storage vectors themselves are not mutex-protected; cross-thread mutation
 //   would be a contract violation.
-// - Handlers may reentrantly install or uninstall handlers from inside their
+// - Handlers may reentrantly register or uninstall handlers from inside their
 //   own callback. The dispatch loops snapshot the active vector before
 //   invoking, so concurrent mutation during dispatch is safe and never visits
 //   a handler that was uninstalled before this dispatch began.
@@ -29,12 +29,14 @@ namespace {
 struct KeyHandlerEntry {
     HandlerPriority priority;
     HandlerHandle handle;
+    HandlerContext context;
     KeyHandler handler;
 };
 
 struct MouseHandlerEntry {
     HandlerPriority priority;
     HandlerHandle handle;
+    HandlerContext context;
     MouseHandler handler;
 };
 
@@ -68,25 +70,29 @@ void insert_sorted(std::vector<Entry>& vec, Entry entry) {
 
 }  // namespace
 
-HandlerHandle install_key_handler(KeyHandler handler,
-                                  HandlerPriority priority,
-                                  std::string_view /*tag*/) noexcept {
+HandlerHandle register_key_handler(HandlerContext context,
+                                   KeyHandler handler,
+                                   HandlerPriority priority,
+                                   std::string_view /*tag*/) noexcept {
     const std::uint64_t counter =
         g_handler_counter.fetch_add(1, std::memory_order_relaxed);
     const HandlerHandle h{kKeyHandlerTag | counter};
-    insert_sorted(g_key_handlers,
-                  KeyHandlerEntry{priority, h, std::move(handler)});
+    insert_sorted(
+        g_key_handlers,
+        KeyHandlerEntry{priority, h, std::move(context), std::move(handler)});
     return h;
 }
 
-HandlerHandle install_mouse_handler(MouseHandler handler,
-                                    HandlerPriority priority,
-                                    std::string_view /*tag*/) noexcept {
+HandlerHandle register_mouse_handler(HandlerContext context,
+                                     MouseHandler handler,
+                                     HandlerPriority priority,
+                                     std::string_view /*tag*/) noexcept {
     const std::uint64_t counter =
         g_handler_counter.fetch_add(1, std::memory_order_relaxed);
     const HandlerHandle h{kMouseHandlerTag | counter};
-    insert_sorted(g_mouse_handlers,
-                  MouseHandlerEntry{priority, h, std::move(handler)});
+    insert_sorted(
+        g_mouse_handlers,
+        MouseHandlerEntry{priority, h, std::move(context), std::move(handler)});
     return h;
 }
 
@@ -118,6 +124,9 @@ void dispatch_key_event(const KeyEvent& event) noexcept {
     // invalidate iteration state.
     std::vector<KeyHandlerEntry> snapshot = g_key_handlers;
     for (const auto& entry : snapshot) {
+        if (entry.context && !entry.context()) {
+            continue;  // context predicate says this handler is not active now
+        }
         if (entry.handler && entry.handler(event)) {
             return;
         }
@@ -127,6 +136,9 @@ void dispatch_key_event(const KeyEvent& event) noexcept {
 void dispatch_mouse_event(const MouseEvent& event) noexcept {
     std::vector<MouseHandlerEntry> snapshot = g_mouse_handlers;
     for (const auto& entry : snapshot) {
+        if (entry.context && !entry.context()) {
+            continue;  // context predicate says this handler is not active now
+        }
         if (entry.handler && entry.handler(event)) {
             return;
         }

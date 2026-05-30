@@ -4,42 +4,30 @@
 
 namespace poker_trainer::backbone {
 
-// Monotonic wall-clock time since app start, in milliseconds. Never
-// pauses. Suitable for animations that must run regardless of modal
-// state (loading screen, offline indicator pulse, outage banner
-// countdown bar).
-[[nodiscard]] std::uint64_t wall_clock_ms() noexcept;
+// Monotonic time since app start, in milliseconds. Never pauses — this
+// is the single shared time source for all frame-level animations. Use
+// it for absolute timing (e.g., "the dealer arrived 600 ms ago"). Owned
+// and advanced by Z05 (once per frame, via tick).
+[[nodiscard]] std::uint64_t total_ms_since_app_start() noexcept;
 
-// Pausable animation time, in milliseconds. Pauses while any modal
-// is open; resumes when all modals close. Suitable for the bulk of
-// animations (button morphs, modal slides, chip pushes, dealer
-// fade-ins, countdown ticks). When paused, repeated calls return
-// the same value until resume() is called.
-[[nodiscard]] std::uint64_t animation_time_ms() noexcept;
-
-// Returns true if animation_time_ms() is currently paused.
-[[nodiscard]] bool is_animation_paused() noexcept;
-
-// Pause animation_time_ms(). Idempotent: calling pause() while
-// already paused is a no-op. Called by Z11 when a modal opens.
-// Multiple modal opens stack: the clock stays paused until all
-// modals have closed.
-void pause() noexcept;
-
-// Resume animation_time_ms(). Idempotent: calling resume() while
-// already running is a no-op. Called by Z11 when the last modal
-// closes. The internal pause counter decrements; when it hits
-// zero, the clock resumes.
-void resume() noexcept;
-
-// Advance the clock by the given delta. Called once per frame by
-// Z05 with the frame's elapsed time. The implementation maintains
-// separate counters for wall-clock and animation time; both
-// advance by `delta_ms` unless the animation time is paused.
+// Elapsed time of the most recent frame, in milliseconds, for
+// frame-rate-independent animation steps. Returned as a float so
+// sub-millisecond frame deltas are preserved.
 //
-// This function is part of the Z05-internal API surface, exposed
-// here so the integration test can drive the clock deterministically.
-// No other zone should call this.
+// Note: this clock never pauses. Pausing scenario time while a modal is
+// open is the Zone 10 Delta Timer's responsibility (Z10 subscribes to
+// modal_opened/modal_closed); the animation clock keeps running so modal
+// slide-in and dealer fade-in animations advance while a modal is open.
+[[nodiscard]] float delta_ms_since_last_frame() noexcept;
+
+// Advance the clock by the frame's elapsed time. Called once per frame
+// by Z05. Records `delta_ms` as the most recent frame delta (returned by
+// delta_ms_since_last_frame) and accumulates it into
+// total_ms_since_app_start.
+//
+// This function is part of the Z05-internal API surface, exposed here so
+// the integration test can drive the clock deterministically. No other
+// zone should call this.
 void tick(std::uint64_t delta_ms) noexcept;
 
 // Reset all clock state to zero. Used by the integration test to

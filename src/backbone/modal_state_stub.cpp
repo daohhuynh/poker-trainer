@@ -1,6 +1,9 @@
 #include "backbone/modal_state.hpp"
 
+#include "backbone/screen_state.hpp"
+
 #include <atomic>
+#include <optional>
 
 namespace poker_trainer::backbone {
 
@@ -13,8 +16,19 @@ bool is_any_modal_open() noexcept {
     return g_modal_depth.load(std::memory_order_acquire) > 0;
 }
 
-ModalId topmost_modal() noexcept {
-    return ModalId{g_topmost_value.load(std::memory_order_acquire)};
+std::optional<ModalId> current_modal_id() noexcept {
+    const std::uint32_t v = g_topmost_value.load(std::memory_order_acquire);
+    if (v == 0) {
+        return std::nullopt;
+    }
+    return ModalId{v};
+}
+
+bool is_modal_locked() noexcept {
+    // Modal interaction is locked while the tutorial walkthrough is active.
+    // Derived from the backbone tutorial phase rather than an independently
+    // set flag; Z11's full implementation may refine which phases lock.
+    return read_screen_state().tutorial_state.phase == TutorialPhase::Active;
 }
 
 std::size_t modal_stack_depth() noexcept {
