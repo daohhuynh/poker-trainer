@@ -106,4 +106,54 @@ if(ENABLE_TESTS)
     )
 
     add_test(NAME phase0_integration_test COMMAND phase0_integration_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 06 (Theme System) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # Dear ImGui core, vendored as a source drop under third_party/imgui (the
+    # approved mechanism per CLAUDE.md section 3). Built as a static library for
+    # the test target only; the WebAssembly app target wires ImGui plus a
+    # renderer backend in a later wave (Z05/Bridge), so the app build is left
+    # untouched here. Third-party code is not held to the project warning
+    # baseline, and its headers are exposed SYSTEM so including imgui.h never
+    # trips -Werror inside Z06 translation units.
+    add_library(imgui STATIC
+        third_party/imgui/imgui.cpp
+        third_party/imgui/imgui_draw.cpp
+        third_party/imgui/imgui_tables.cpp
+        third_party/imgui/imgui_widgets.cpp
+    )
+    target_include_directories(imgui SYSTEM PUBLIC
+        ${CMAKE_SOURCE_DIR}/third_party/imgui
+    )
+
+    # Zone 06 theme system. Project code: held to the full warning baseline so
+    # the zone is proven to compile clean under -Werror.
+    add_library(theme STATIC
+        src/theme/theme.cpp
+        src/theme/palette_no_limit.cpp
+        src/theme/palette_slate.cpp
+        src/theme/palette_ocean.cpp
+        src/theme/palette_sage.cpp
+        src/theme/imgui_style_refresh.cpp
+    )
+    target_include_directories(theme PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(theme PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(theme PUBLIC imgui)
+
+    # Zone 06 unit tests (googletest). Test glue is not held to -Werror so that
+    # googletest macro expansions do not fight the strict baseline; the zone
+    # code under test is held to it via the `theme` library above.
+    add_executable(theme_test
+        tests/theme/theme_test.cpp
+        tests/theme/imgui_style_refresh_test.cpp
+    )
+    target_include_directories(theme_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests/theme
+    )
+    target_link_libraries(theme_test PRIVATE theme GTest::gtest_main)
+
+    add_test(NAME theme_test COMMAND theme_test)
 endif()
