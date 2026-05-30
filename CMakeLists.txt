@@ -59,6 +59,26 @@ target_include_directories(poker_trainer PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_options(poker_trainer PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
 
 # -------------------------------------------------------------------------
+# Host tools (native only; never part of the WebAssembly app build)
+# -------------------------------------------------------------------------
+#
+# Zone 02 placeholder generator. Emits a valid stand-in PNG at every path in the
+# asset_paths.hpp contract so the asset pipeline can load canonical paths today.
+# It iterates kAssetEntries directly (reusing the contract), is self-contained
+# (its own PNG writer, no third-party dependency), and runs at development time;
+# real art overwrites assets/ with no code change. Held to -Wall -Wextra -Werror
+# rather than the full project baseline: it is dev tooling, and -Wconversion would
+# bury the bit/font code in casts without catching real defects.
+if(NOT EMSCRIPTEN)
+    add_executable(gen_placeholders tools/gen_placeholders.cpp)
+    target_include_directories(gen_placeholders PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}
+    )
+    target_compile_options(gen_placeholders PRIVATE -Wall -Wextra -Werror)
+endif()
+
+# -------------------------------------------------------------------------
 # Tests (native compile only)
 # -------------------------------------------------------------------------
 
@@ -156,4 +176,42 @@ if(ENABLE_TESTS)
     target_link_libraries(theme_test PRIVATE theme GTest::gtest_main)
 
     add_test(NAME theme_test COMMAND theme_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 02 (Asset Pipeline) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # Project code: held to the full warning baseline so the zone is proven to
+    # compile clean under -Werror. stb_image is the PNG decoder, exposed SYSTEM so
+    # its single-TU implementation in loader.cpp never trips -Werror (the same
+    # mechanism used for ImGui above).
+    add_library(assets STATIC
+        src/assets/loader.cpp
+        src/assets/registry.cpp
+        src/assets/tier_loader.cpp
+    )
+    target_include_directories(assets PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_include_directories(assets SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/third_party/stb)
+    target_compile_options(assets PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+
+    # Zone 02 unit tests (googletest). Test glue is not held to -Werror so the
+    # macro expansions do not fight the strict baseline; the zone code under test
+    # is held to it via the `assets` library above. POKER_TRAINER_SOURCE_DIR lets
+    # the loader/integration tests locate the committed placeholder PNGs.
+    add_executable(assets_test
+        tests/assets/loader_test.cpp
+        tests/assets/registry_test.cpp
+        tests/assets/tier_loader_test.cpp
+    )
+    target_include_directories(assets_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/tests/assets
+    )
+    target_compile_definitions(assets_test PRIVATE
+        POKER_TRAINER_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+    target_link_libraries(assets_test PRIVATE assets GTest::gtest_main)
+
+    add_test(NAME assets_test COMMAND assets_test)
 endif()
