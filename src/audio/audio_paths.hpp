@@ -7,61 +7,63 @@
 
 namespace poker_trainer::audio {
 
-// Identifiers for each sound effect in the trainer. The enum value
-// is also the index into kSfxPaths below.
+// Identifiers for each sound effect in the trainer. The enum value is also the
+// index into kSfxPaths below. The set and ordering follow the architecture's
+// SFX library. Note: there is deliberately no correct/incorrect (Pass/Fail)
+// performance-feedback SFX — the Post-Round Screen plays only the Slide In SFX
+// on entry.
 enum class SfxId : std::uint8_t {
-    // Chip slide / push (Caller scenarios when the active opponent
-    // pushes chips toward the pot).
-    ChipPush = 0,
+    // Plays once when a scenario spawns. A single sound for the entire deal
+    // (hole + community), not per-card.
+    CardDeal = 0,
 
-    // Chip stack landing in the pot (used at scenario resolution
-    // when chips animate from their source to the pot).
-    ChipLand = 1,
+    // Plays when the user presses 1-6 to focus a math input box. Subtle and
+    // fast; confirms keyboard input registered (especially valuable when the
+    // HUD is hidden).
+    ButtonClickConfirmation = 1,
 
-    // Side pot split (used when a side pot resolves in a multi-way
-    // all-in scenario).
-    SidePotSplit = 2,
+    // Chip slide / push (Caller scenarios when the active opponent pushes
+    // chips toward the pot).
+    ChipPush = 2,
+
+    // Side pot split (used when an All-In side pot triggers and chips
+    // visualize splitting into the two pots).
+    SidePotSplit = 3,
 
     // Modal open (any modal entering the screen).
-    ModalSwooshOpen = 3,
+    ModalSwooshOpen = 4,
 
     // Modal close (any modal leaving the screen).
-    ModalSwooshClose = 4,
+    ModalSwooshClose = 5,
 
-    // Scenario spawn (used at the start of every scenario; played
-    // as part of the audio choreography sequence).
-    ScenarioSpawn = 5,
+    // Frog easter egg trigger (played once when 22 consecutive dealer clicks
+    // complete the Butler <-> Frog toggle).
+    FrogToggle = 6,
 
-    // Pass result (played when the user passes a scenario, on the
-    // Post-Round Screen entry).
-    Pass = 6,
+    // Slide in (Game -> Post-Round 350ms slide transition, played at scenario
+    // submission as the screen content slides right-to-left).
+    SlideIn = 7,
 
-    // Fail result (played when the user fails a scenario, on the
-    // Post-Round Screen entry).
-    Fail = 7,
-
-    // Frog easter egg toggle click (played when the user clicks
-    // the dealer asset the trigger number of times to toggle to
-    // the Frog).
-    FrogToggle = 8,
+    // Slide out (Post-Round -> Game 350ms slide transition, played when the
+    // user commits the Again button as the content slides left-to-right).
+    SlideOut = 8,
 };
 
 // The total number of SFX samples. Used to size arrays.
 inline constexpr std::size_t kSfxCount = 9;
 
-// Path to each SFX file, indexed by SfxId. All paths are relative
-// to the asset root, which is the directory served as the CDN root
-// in production builds.
+// Path to each SFX file, indexed by SfxId. All paths are relative to the asset
+// root, which is the directory served as the CDN root in production builds.
 inline constexpr std::array<std::string_view, kSfxCount> kSfxPaths = {
+    "assets/audio/sfx/card_deal.ogg",
+    "assets/audio/sfx/button_click_confirmation.ogg",
     "assets/audio/sfx/chip_push.ogg",
-    "assets/audio/sfx/chip_land.ogg",
     "assets/audio/sfx/side_pot_split.ogg",
     "assets/audio/sfx/modal_swoosh_open.ogg",
     "assets/audio/sfx/modal_swoosh_close.ogg",
-    "assets/audio/sfx/scenario_spawn.ogg",
-    "assets/audio/sfx/pass.ogg",
-    "assets/audio/sfx/fail.ogg",
     "assets/audio/sfx/frog_toggle.ogg",
+    "assets/audio/sfx/slide_in.ogg",
+    "assets/audio/sfx/slide_out.ogg",
 };
 
 // Helper to look up the path for a given SfxId.
@@ -120,45 +122,46 @@ struct MusicTrackInfo {
     std::string_view display_name;
     std::string_view path;
     MusicGenre genre;
-    bool is_starter;            // true if free / unlocked by default
-    std::uint32_t price_cents;  // 0 for starters, 2500 ($25) for paid unlocks
+    bool is_starter;               // true if free / unlocked by default
+    std::uint32_t price_tomatoes;  // 0 for starters, 25 for paid unlocks
 };
 
-// Per-track metadata indexed by MusicTrackId. The path field gives
-// the asset-root-relative path to the streaming file. The display_name
-// field is used for Shop and Settings rendering.
+// Per-track metadata indexed by MusicTrackId. The path field gives the
+// asset-root-relative path to the streaming file (tracks are transcoded to
+// ~3MB MP3 during asset preparation). The display_name field is used for Shop
+// and Settings rendering.
 inline constexpr std::array<MusicTrackInfo, kMusicTrackCount> kMusicTracks = {{
     // Lounge Jazz
-    {"After Hours",       "assets/audio/music/lounge_jazz/after_hours.ogg",
+    {"After Hours",       "assets/audio/music/lounge_jazz/after_hours.mp3",
         MusicGenre::LoungeJazz, true,  0},
-    {"Smoke and Mirrors", "assets/audio/music/lounge_jazz/smoke_and_mirrors.ogg",
-        MusicGenre::LoungeJazz, false, 2500},
-    {"Penthouse Suite",   "assets/audio/music/lounge_jazz/penthouse_suite.ogg",
-        MusicGenre::LoungeJazz, false, 2500},
+    {"Smoke and Mirrors", "assets/audio/music/lounge_jazz/smoke_and_mirrors.mp3",
+        MusicGenre::LoungeJazz, false, 25},
+    {"Penthouse Suite",   "assets/audio/music/lounge_jazz/penthouse_suite.mp3",
+        MusicGenre::LoungeJazz, false, 25},
 
     // Classical
-    {"Nocturne",          "assets/audio/music/classical/nocturne.ogg",
+    {"Nocturne",          "assets/audio/music/classical/nocturne.mp3",
         MusicGenre::Classical, true,  0},
-    {"Counterpoint",      "assets/audio/music/classical/counterpoint.ogg",
-        MusicGenre::Classical, false, 2500},
-    {"Adagio",            "assets/audio/music/classical/adagio.ogg",
-        MusicGenre::Classical, false, 2500},
+    {"Counterpoint",      "assets/audio/music/classical/counterpoint.mp3",
+        MusicGenre::Classical, false, 25},
+    {"Adagio",            "assets/audio/music/classical/adagio.mp3",
+        MusicGenre::Classical, false, 25},
 
     // Bossa Nova
-    {"Ipanema Night",     "assets/audio/music/bossa_nova/ipanema_night.ogg",
+    {"Ipanema Night",     "assets/audio/music/bossa_nova/ipanema_night.mp3",
         MusicGenre::BossaNova, true,  0},
-    {"Sao Paulo",         "assets/audio/music/bossa_nova/sao_paulo.ogg",
-        MusicGenre::BossaNova, false, 2500},
-    {"Copacabana",        "assets/audio/music/bossa_nova/copacabana.ogg",
-        MusicGenre::BossaNova, false, 2500},
+    {"Sao Paulo",         "assets/audio/music/bossa_nova/sao_paulo.mp3",
+        MusicGenre::BossaNova, false, 25},
+    {"Copacabana",        "assets/audio/music/bossa_nova/copacabana.mp3",
+        MusicGenre::BossaNova, false, 25},
 
     // Ambient
-    {"Velvet Room",       "assets/audio/music/ambient/velvet_room.ogg",
+    {"Velvet Room",       "assets/audio/music/ambient/velvet_room.mp3",
         MusicGenre::Ambient,   true,  0},
-    {"Slow Tide",         "assets/audio/music/ambient/slow_tide.ogg",
-        MusicGenre::Ambient,   false, 2500},
-    {"Distant Lights",    "assets/audio/music/ambient/distant_lights.ogg",
-        MusicGenre::Ambient,   false, 2500},
+    {"Slow Tide",         "assets/audio/music/ambient/slow_tide.mp3",
+        MusicGenre::Ambient,   false, 25},
+    {"Distant Lights",    "assets/audio/music/ambient/distant_lights.mp3",
+        MusicGenre::Ambient,   false, 25},
 }};
 
 // Helper to look up info for a given track.
