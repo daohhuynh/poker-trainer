@@ -46,17 +46,192 @@ set(POKER_TRAINER_WARNING_FLAGS
     -Werror
 )
 
-# -------------------------------------------------------------------------
-# App target
-# -------------------------------------------------------------------------
-#
-# Placeholder executable: src/main.cpp is a stub until Z05 supplies the real
-# entry point and Emscripten link configuration. Phase 0 only needs this
-# target to be declared so the rest of the configuration parses cleanly.
+# Reduced baseline for low-level binding code (Emscripten/WebGL/DOM plumbing and
+# the dev-tool placeholder generator). Still -Werror (0 warnings), but without
+# -Wconversion / -Wold-style-cast / -Wcast-align / -Wshadow, which would bury the
+# binding code in casts without catching real defects (see gen_placeholders and
+# the Z05 bridge_platform library below).
+set(POKER_TRAINER_BINDING_WARNING_FLAGS
+    -Wall
+    -Wextra
+    -Werror
+)
 
+# =========================================================================
+# Shared libraries
+# =========================================================================
+#
+# Built whenever the WebAssembly app (EMSCRIPTEN) or the native test binaries
+# (ENABLE_TESTS) are configured. The app links these into the wasm bundle; the
+# test executables link the same libraries so a zone is proven to build clean
+# under the project warning baseline exactly once.
+if(EMSCRIPTEN OR ENABLE_TESTS)
+    # ---------------------------------------------------------------------
+    # Dear ImGui core (vendored source drop; the approved mechanism per
+    # CLAUDE.md section 3). Third-party code is not held to the project warning
+    # baseline; its headers are exposed SYSTEM so including imgui.h never trips
+    # -Werror inside project translation units. The Z05 bridge supplies its own
+    # WebGL2 renderer (src/bridge/gl_renderer.cpp), so no third-party ImGui
+    # backend is vendored.
+    add_library(imgui STATIC
+        third_party/imgui/imgui.cpp
+        third_party/imgui/imgui_draw.cpp
+        third_party/imgui/imgui_tables.cpp
+        third_party/imgui/imgui_widgets.cpp
+    )
+    target_include_directories(imgui SYSTEM PUBLIC
+        ${CMAKE_SOURCE_DIR}/third_party/imgui
+    )
+
+    # ---------------------------------------------------------------------
+    # Backbone primitives (Phase 0 contracts; implementations owned by Z05,
+    # except modal_state which is Zone 11's).
+    #
+    # The real Z05 animation clock (animation_clock.cpp) is compiled here and is
+    # what the app and the Z05 tests link. The no-op animation_clock_stub.cpp is
+    # deliberately NOT in this library: it stays bound solely to
+    # phase0_integration_test, whose sign-off gate asserts the stub's behavior.
+    # Zone 11 will append its modal_state.cpp here later; until then
+    # modal_state_stub.cpp supplies the modal-state symbols.
+    add_library(backbone STATIC
+        src/backbone/animation_clock.cpp
+        src/backbone/event_router.cpp
+        src/backbone/screen_state.cpp
+        src/backbone/scenario_events.cpp
+        src/backbone/focus_manager.cpp
+        src/backbone/modal_state_stub.cpp  # SEAM(Z11): swapped for modal_state.cpp later
+    )
+    target_include_directories(backbone PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(backbone PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+
+    # ---------------------------------------------------------------------
+    # Zone 01 (Core Scenario Engine). scenario_id.cpp and rng_seed.cpp are
+    # compiled here as their own objects, distinct from the copies linked into
+    # phase0_integration_test.
+    add_library(engine STATIC
+        src/engine/scenario_id.cpp
+        src/engine/rng_seed.cpp
+        src/engine/deck.cpp
+        src/engine/fold_function.cpp
+        src/engine/hand_eval.cpp
+        src/engine/side_pot.cpp
+        src/engine/evaluator.cpp
+        src/engine/generator.cpp
+    )
+    target_include_directories(engine PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(engine PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+
+    # ---------------------------------------------------------------------
+    # Zone 02 (Asset Pipeline). stb_image is the PNG decoder, exposed SYSTEM so
+    # its single-TU implementation in loader.cpp never trips -Werror.
+    add_library(assets STATIC
+        src/assets/loader.cpp
+        src/assets/registry.cpp
+        src/assets/tier_loader.cpp
+    )
+    target_include_directories(assets PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_include_directories(assets SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/third_party/stb)
+    target_compile_options(assets PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+
+    # ---------------------------------------------------------------------
+    # Zone 04 (Persistence Layer). sync_state.cpp is the Phase 0 primitive Z04
+    # writes; it is compiled here as its own object, distinct from the copy
+    # linked into phase0_integration_test.
+    add_library(persistence STATIC
+        src/persistence/sync_state.cpp
+        src/persistence/idbfs.cpp
+        src/persistence/sync.cpp
+        src/persistence/migration.cpp
+        src/persistence/auth.cpp
+        src/persistence/persistence_service.cpp
+    )
+    target_include_directories(persistence PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(persistence PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+
+    # ---------------------------------------------------------------------
+    # Zone 06 (Theme System). Links ImGui (it writes the active theme into the
+    # ImGui style on switch).
+    add_library(theme STATIC
+        src/theme/theme.cpp
+        src/theme/palette_no_limit.cpp
+        src/theme/palette_slate.cpp
+        src/theme/palette_ocean.cpp
+        src/theme/palette_sage.cpp
+        src/theme/imgui_style_refresh.cpp
+    )
+    target_include_directories(theme PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(theme PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(theme PUBLIC imgui)
+
+    # ---------------------------------------------------------------------
+    # Zone 05 (Bridge) — pure-logic library (native-testable, no ImGui /
+    # Emscripten). Every bridge translation unit guards its ImGui / Emscripten
+    # code behind `#ifdef __EMSCRIPTEN__`, so under the native test compiler
+    # these objects contain only the pure logic: the screen-dispatch registry,
+    # the mode->id reject loop, canvas sizing / min-size / mobile-UA decisions,
+    # shared-scenario URL routing, and the loading-arc fraction.
+    add_library(bridge STATIC
+        src/bridge/screen_dispatch.cpp
+        src/bridge/game_launch.cpp
+        src/bridge/canvas_sizing.cpp
+        src/bridge/shared_scenario.cpp
+        src/bridge/loading_screen.cpp
+    )
+    target_include_directories(bridge PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(bridge PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(bridge PUBLIC backbone engine)
+endif()
+
+# =========================================================================
+# WebAssembly app target
+# =========================================================================
+#
+# src/main.cpp guards the boot call behind __EMSCRIPTEN__, so in a native build
+# this target links as an empty success (the app is exercised through the test
+# binaries). In the Emscripten build it links the bridge platform layer and the
+# zone libraries into the wasm bundle.
 add_executable(poker_trainer src/main.cpp)
 target_include_directories(poker_trainer PRIVATE ${CMAKE_SOURCE_DIR}/src)
 target_compile_options(poker_trainer PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+
+if(EMSCRIPTEN)
+    # Zone 05 render / platform / boot layer. Binding code (WebGL2 renderer, DOM
+    # input, canvas binding, CDN fetch, ImGui-render bodies, main loop, boot):
+    # held to the reduced binding baseline, compiled only into the wasm app.
+    add_library(bridge_platform STATIC
+        src/bridge/platform.cpp
+        src/bridge/gl_renderer.cpp
+        src/bridge/cdn_fetch.cpp
+        src/bridge/render_screens.cpp
+        src/bridge/error_screen.cpp
+        src/bridge/main_loop.cpp
+        src/bridge/boot.cpp
+    )
+    target_include_directories(bridge_platform PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(bridge_platform PRIVATE ${POKER_TRAINER_BINDING_WARNING_FLAGS})
+    target_link_libraries(bridge_platform PUBLIC
+        bridge backbone engine assets persistence theme imgui)
+
+    target_link_libraries(poker_trainer PRIVATE bridge_platform)
+    target_link_options(poker_trainer PRIVATE
+        "-sMIN_WEBGL_VERSION=2"
+        "-sMAX_WEBGL_VERSION=2"
+        "-sFULL_ES3=1"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sEXIT_RUNTIME=0"
+        "-sASSERTIONS=1"
+    )
+
+    # Serve the service worker from the bundle directory so the boot-time
+    # navigator.serviceWorker.register('service_worker.js') resolves (a worker
+    # only controls pages at or below its own scope).
+    add_custom_command(TARGET poker_trainer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/src/bridge/service_worker.js
+            $<TARGET_FILE_DIR:poker_trainer>/service_worker.js
+        COMMENT "Copying service_worker.js next to the wasm bundle"
+    )
+endif()
 
 # -------------------------------------------------------------------------
 # Host tools (native only; never part of the WebAssembly app build)
@@ -66,16 +241,16 @@ target_compile_options(poker_trainer PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
 # asset_paths.hpp contract so the asset pipeline can load canonical paths today.
 # It iterates kAssetEntries directly (reusing the contract), is self-contained
 # (its own PNG writer, no third-party dependency), and runs at development time;
-# real art overwrites assets/ with no code change. Held to -Wall -Wextra -Werror
-# rather than the full project baseline: it is dev tooling, and -Wconversion would
-# bury the bit/font code in casts without catching real defects.
+# real art overwrites assets/ with no code change. Held to the reduced binding
+# baseline: it is dev tooling, and -Wconversion would bury the bit/font code in
+# casts without catching real defects.
 if(NOT EMSCRIPTEN)
     add_executable(gen_placeholders tools/gen_placeholders.cpp)
     target_include_directories(gen_placeholders PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}
     )
-    target_compile_options(gen_placeholders PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(gen_placeholders PRIVATE ${POKER_TRAINER_BINDING_WARNING_FLAGS})
 endif()
 
 # -------------------------------------------------------------------------
@@ -103,9 +278,11 @@ if(ENABLE_TESTS)
 
     # The Phase 0 sign-off gate is a standalone plain-assert program (its own
     # main(), no GoogleTest) that links directly against every Phase 0 .cpp.
-    # See the header comment in tests/all_headers_test.cpp. It therefore does
-    # not link the googletest libraries fetched above; those serve the
-    # unit-tested zones (Z01, Z10) that come online in later waves.
+    # See the header comment in tests/all_headers_test.cpp. It links its OWN copy
+    # of the backbone primitives — including animation_clock_stub.cpp, whose
+    # no-op behavior the gate asserts — so this source list is left untouched by
+    # the Z05 wave (the real animation_clock.cpp lives in the `backbone` library
+    # above).
     add_executable(phase0_integration_test
         tests/all_headers_test.cpp
         src/backbone/event_router.cpp
@@ -127,41 +304,6 @@ if(ENABLE_TESTS)
 
     add_test(NAME phase0_integration_test COMMAND phase0_integration_test)
 
-    # -------------------------------------------------------------------------
-    # Zone 06 (Theme System) — native unit tests.
-    # -------------------------------------------------------------------------
-    #
-    # Dear ImGui core, vendored as a source drop under third_party/imgui (the
-    # approved mechanism per CLAUDE.md section 3). Built as a static library for
-    # the test target only; the WebAssembly app target wires ImGui plus a
-    # renderer backend in a later wave (Z05/Bridge), so the app build is left
-    # untouched here. Third-party code is not held to the project warning
-    # baseline, and its headers are exposed SYSTEM so including imgui.h never
-    # trips -Werror inside Z06 translation units.
-    add_library(imgui STATIC
-        third_party/imgui/imgui.cpp
-        third_party/imgui/imgui_draw.cpp
-        third_party/imgui/imgui_tables.cpp
-        third_party/imgui/imgui_widgets.cpp
-    )
-    target_include_directories(imgui SYSTEM PUBLIC
-        ${CMAKE_SOURCE_DIR}/third_party/imgui
-    )
-
-    # Zone 06 theme system. Project code: held to the full warning baseline so
-    # the zone is proven to compile clean under -Werror.
-    add_library(theme STATIC
-        src/theme/theme.cpp
-        src/theme/palette_no_limit.cpp
-        src/theme/palette_slate.cpp
-        src/theme/palette_ocean.cpp
-        src/theme/palette_sage.cpp
-        src/theme/imgui_style_refresh.cpp
-    )
-    target_include_directories(theme PUBLIC ${CMAKE_SOURCE_DIR}/src)
-    target_compile_options(theme PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
-    target_link_libraries(theme PUBLIC imgui)
-
     # Zone 06 unit tests (googletest). Test glue is not held to -Werror so that
     # googletest macro expansions do not fight the strict baseline; the zone
     # code under test is held to it via the `theme` library above.
@@ -177,27 +319,8 @@ if(ENABLE_TESTS)
 
     add_test(NAME theme_test COMMAND theme_test)
 
-    # -------------------------------------------------------------------------
-    # Zone 02 (Asset Pipeline) — native unit tests.
-    # -------------------------------------------------------------------------
-    #
-    # Project code: held to the full warning baseline so the zone is proven to
-    # compile clean under -Werror. stb_image is the PNG decoder, exposed SYSTEM so
-    # its single-TU implementation in loader.cpp never trips -Werror (the same
-    # mechanism used for ImGui above).
-    add_library(assets STATIC
-        src/assets/loader.cpp
-        src/assets/registry.cpp
-        src/assets/tier_loader.cpp
-    )
-    target_include_directories(assets PUBLIC ${CMAKE_SOURCE_DIR}/src)
-    target_include_directories(assets SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/third_party/stb)
-    target_compile_options(assets PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
-
-    # Zone 02 unit tests (googletest). Test glue is not held to -Werror so the
-    # macro expansions do not fight the strict baseline; the zone code under test
-    # is held to it via the `assets` library above. POKER_TRAINER_SOURCE_DIR lets
-    # the loader/integration tests locate the committed placeholder PNGs.
+    # Zone 02 unit tests. POKER_TRAINER_SOURCE_DIR lets the loader/integration
+    # tests locate the committed placeholder PNGs.
     add_executable(assets_test
         tests/assets/loader_test.cpp
         tests/assets/registry_test.cpp
@@ -215,30 +338,7 @@ if(ENABLE_TESTS)
 
     add_test(NAME assets_test COMMAND assets_test)
 
-    # Zone 04 (Persistence Layer) — native unit tests.
-    # -------------------------------------------------------------------------
-    #
-    # Project code held to the full warning baseline so the zone is proven to
-    # compile clean under -Werror. Like Z06, this is built for the test target
-    # only; the WebAssembly app target wires persistence in a later wave
-    # (Z05/Bridge), so the app build (the poker_trainer target above) is left
-    # untouched here. sync_state.cpp is the Phase 0 primitive Z04 writes; it is
-    # compiled into this library (its own object, distinct from the copy linked
-    # into phase0_integration_test).
-    add_library(persistence STATIC
-        src/persistence/sync_state.cpp
-        src/persistence/idbfs.cpp
-        src/persistence/sync.cpp
-        src/persistence/migration.cpp
-        src/persistence/auth.cpp
-        src/persistence/persistence_service.cpp
-    )
-    target_include_directories(persistence PUBLIC ${CMAKE_SOURCE_DIR}/src)
-    target_compile_options(persistence PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
-
-    # Zone 04 unit tests (googletest). Test glue is not held to -Werror so that
-    # googletest macro expansions do not fight the strict baseline; the zone
-    # code under test is held to it via the `persistence` library above.
+    # Zone 04 unit tests.
     add_executable(persistence_test
         tests/persistence/serialization_test.cpp
         tests/persistence/idbfs_test.cpp
@@ -255,34 +355,7 @@ if(ENABLE_TESTS)
 
     add_test(NAME persistence_test COMMAND persistence_test)
 
-    # -------------------------------------------------------------------------
-    # Zone 01 (Core Scenario Engine) — native unit tests.
-    # -------------------------------------------------------------------------
-    #
-    # Project code held to the full warning baseline so the zone is proven to
-    # compile clean under -Werror. Built for the test target only; the
-    # WebAssembly app wires the engine in a later wave (Z05/Bridge), so the app
-    # target above is left untouched. Depends only on Phase 0 headers
-    # (scenario_id / rng_seed / settings, the last pulling in the header-only
-    # theme_tokens) via the src include path. scenario_id.cpp and rng_seed.cpp
-    # are compiled here as their own objects, distinct from the copies linked
-    # into phase0_integration_test.
-    add_library(engine STATIC
-        src/engine/scenario_id.cpp
-        src/engine/rng_seed.cpp
-        src/engine/deck.cpp
-        src/engine/fold_function.cpp
-        src/engine/hand_eval.cpp
-        src/engine/side_pot.cpp
-        src/engine/evaluator.cpp
-        src/engine/generator.cpp
-    )
-    target_include_directories(engine PUBLIC ${CMAKE_SOURCE_DIR}/src)
-    target_compile_options(engine PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
-
-    # Zone 01 unit tests (googletest). Test glue is not held to -Werror so that
-    # googletest macro expansions do not fight the strict baseline; the zone code
-    # under test is held to it via the `engine` library above.
+    # Zone 01 unit tests.
     add_executable(engine_test
         tests/engine/deck_test.cpp
         tests/engine/fold_function_test.cpp
@@ -298,4 +371,77 @@ if(ENABLE_TESTS)
     target_link_libraries(engine_test PRIVATE engine GTest::gtest_main)
 
     add_test(NAME engine_test COMMAND engine_test)
+
+    # Backbone primitive unit tests (Z05). Test glue is not held to -Werror; the
+    # primitives under test are held to it via the `backbone` library above.
+    add_executable(backbone_test
+        tests/backbone/animation_clock_test.cpp
+        tests/backbone/event_router_test.cpp
+        tests/backbone/focus_manager_test.cpp
+        tests/backbone/screen_state_test.cpp
+        tests/backbone/scenario_events_test.cpp
+    )
+    target_include_directories(backbone_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests/backbone
+    )
+    target_link_libraries(backbone_test PRIVATE backbone GTest::gtest_main)
+
+    add_test(NAME backbone_test COMMAND backbone_test)
+
+    # Zone 05 bridge pure-logic unit tests. Test glue is not held to -Werror; the
+    # zone code under test is held to it via the `bridge` library above.
+    add_executable(bridge_test
+        tests/bridge/canvas_sizing_test.cpp
+        tests/bridge/loading_arc_test.cpp
+        tests/bridge/shared_scenario_test.cpp
+        tests/bridge/game_launch_test.cpp
+        tests/bridge/screen_dispatch_test.cpp
+    )
+    target_include_directories(bridge_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests/bridge
+    )
+    target_link_libraries(bridge_test PRIVATE bridge GTest::gtest_main)
+
+    add_test(NAME bridge_test COMMAND bridge_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 07 (Root + Mode Selection Screens) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # Project code held to the full warning baseline so the zone is proven to
+    # compile clean under -Werror (including the ImGui render TUs). Built for the
+    # test target only, like every other zone; Zone 05 links the screens into the
+    # wasm app via its render-dispatch seam (Zone 07 stays in its lane and does not
+    # touch src/bridge/*). The render TUs call bridge::request_game_launch (defined
+    # in the bridge lib) — the unit tests pull only the pure-logic objects, never
+    # the render/launch ones, so the bridge link is not needed here.
+    add_library(screens STATIC
+        src/animations/button_morph.cpp
+        src/screens/root_screen.cpp
+        src/screens/mode_selection_screen.cpp
+        src/screens/custom_popup.cpp
+    )
+    target_include_directories(screens PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(screens PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(screens PUBLIC backbone theme)  # theme brings imgui transitively
+
+    # Zone 07 unit tests (googletest). Test glue is not held to -Werror so the
+    # macro expansions do not fight the strict baseline; the zone code under test is
+    # held to it via the `screens` library above. The tests reference only the pure
+    # logic (morph math + controller, coupled solver, keystroke rules, action
+    # semantics) plus the focus-list registration — never the render/launch TUs.
+    add_executable(screens_test
+        tests/animations/button_morph_test.cpp
+        tests/screens/custom_popup_test.cpp
+        tests/screens/focus_lists_test.cpp
+    )
+    target_include_directories(screens_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(screens_test PRIVATE screens GTest::gtest_main)
+
+    add_test(NAME screens_test COMMAND screens_test)
 endif()
