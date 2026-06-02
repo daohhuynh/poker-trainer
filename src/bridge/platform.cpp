@@ -71,6 +71,21 @@ namespace {
     return 0;
 }
 
+// True when a mouse event should reach the backbone event router (the screen +
+// modal handler stack). ImGui::GetIO().WantCaptureMouse (from the last NewFrame)
+// is set whenever the cursor is over an ImGui window or an ImGui item is active —
+// i.e. over an open modal, or dragging one of its widgets — so gating the router
+// feed on it here is the single arbitration point: a click over a modal never
+// reaches a screen handler, and a modal's own click-outside dismissal only ever
+// sees genuine outside clicks. The app's screens draw through the background draw
+// list (not ImGui windows), so their buttons keep routing normally. This is the
+// reusable root every Z11 modal inherits instead of re-implementing — and
+// re-breaking — per-modal click-outside arbitration. ImGui IO is fed
+// unconditionally above the gate, so the modal's widgets stay fully interactive.
+[[nodiscard]] bool router_should_see_mouse() noexcept {
+    return !ImGui::GetIO().WantCaptureMouse;
+}
+
 EM_BOOL on_key_down(int, const EmscriptenKeyboardEvent* e, void*) {
     const backbone::KeyCode code = map_key_code(e->code);
     backbone::dispatch_key_event(
@@ -103,36 +118,44 @@ void feed_imgui_mouse_pos(const EmscriptenMouseEvent* e) {
 
 EM_BOOL on_mouse_move(int, const EmscriptenMouseEvent* e, void*) {
     feed_imgui_mouse_pos(e);
-    backbone::dispatch_mouse_event(
-        {backbone::MouseEventType::MouseMove, static_cast<float>(e->targetX),
-         static_cast<float>(e->targetY), 0, 0.0f});
+    if (router_should_see_mouse()) {
+        backbone::dispatch_mouse_event(
+            {backbone::MouseEventType::MouseMove, static_cast<float>(e->targetX),
+             static_cast<float>(e->targetY), 0, 0.0f});
+    }
     return EM_FALSE;
 }
 
 EM_BOOL on_mouse_down(int, const EmscriptenMouseEvent* e, void*) {
     feed_imgui_mouse_pos(e);
     ImGui::GetIO().AddMouseButtonEvent(imgui_mouse_button(e->button), true);
-    backbone::dispatch_mouse_event(
-        {backbone::MouseEventType::MouseDown, static_cast<float>(e->targetX),
-         static_cast<float>(e->targetY), static_cast<int>(e->button), 0.0f});
+    if (router_should_see_mouse()) {
+        backbone::dispatch_mouse_event(
+            {backbone::MouseEventType::MouseDown, static_cast<float>(e->targetX),
+             static_cast<float>(e->targetY), static_cast<int>(e->button), 0.0f});
+    }
     return EM_TRUE;
 }
 
 EM_BOOL on_mouse_up(int, const EmscriptenMouseEvent* e, void*) {
     feed_imgui_mouse_pos(e);
     ImGui::GetIO().AddMouseButtonEvent(imgui_mouse_button(e->button), false);
-    backbone::dispatch_mouse_event(
-        {backbone::MouseEventType::MouseUp, static_cast<float>(e->targetX),
-         static_cast<float>(e->targetY), static_cast<int>(e->button), 0.0f});
+    if (router_should_see_mouse()) {
+        backbone::dispatch_mouse_event(
+            {backbone::MouseEventType::MouseUp, static_cast<float>(e->targetX),
+             static_cast<float>(e->targetY), static_cast<int>(e->button), 0.0f});
+    }
     return EM_TRUE;
 }
 
 EM_BOOL on_wheel(int, const EmscriptenWheelEvent* e, void*) {
     ImGui::GetIO().AddMouseWheelEvent(0.0f, static_cast<float>(-e->deltaY) * 0.01f);
-    backbone::dispatch_mouse_event(
-        {backbone::MouseEventType::Wheel, static_cast<float>(e->mouse.targetX),
-         static_cast<float>(e->mouse.targetY), 0,
-         static_cast<float>(e->deltaY)});
+    if (router_should_see_mouse()) {
+        backbone::dispatch_mouse_event(
+            {backbone::MouseEventType::Wheel, static_cast<float>(e->mouse.targetX),
+             static_cast<float>(e->mouse.targetY), 0,
+             static_cast<float>(e->deltaY)});
+    }
     return EM_TRUE;
 }
 

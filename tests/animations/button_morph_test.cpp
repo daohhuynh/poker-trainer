@@ -112,6 +112,45 @@ TEST(MorphButtonRect, LandsAtStartAndTargetEndpoints) {
                      anim::standard_button_rect(c));
 }
 
+// ----- Morph -> Mode Selection handoff (single source of truth) -----
+//
+// The live Mode Selection screen renders/hit-tests STANDARD and the cluster icons
+// at exactly the morph's target rects, so the morph must land every button there
+// at global progress 1 (visible == clickable; no pop at handoff).
+
+TEST(MorphHandoff, EveryButtonLandsAtItsLiveTargetRect) {
+    const anim::Canvas c{1920.0f, 1080.0f};
+    using anim::MorphButton;
+    for (const MorphButton b :
+         {MorphButton::Play, MorphButton::Settings, MorphButton::Shop, MorphButton::Help}) {
+        expect_rect_near(anim::morph_button_rect(b, 1.0f, c), anim::mode_button_target_rect(b, c));
+    }
+    // Play's target is the live STANDARD button rect.
+    expect_rect_near(anim::mode_button_target_rect(MorphButton::Play, c),
+                     anim::standard_button_rect(c));
+}
+
+TEST(MorphHandoff, ClusterRowIsShopHelpSettingsHomeLeftToRight) {
+    const anim::Canvas c{1920.0f, 1080.0f};
+    using anim::MorphButton;
+    const anim::Rect shop = anim::mode_button_target_rect(MorphButton::Shop, c);
+    const anim::Rect help = anim::mode_button_target_rect(MorphButton::Help, c);
+    const anim::Rect settings = anim::mode_button_target_rect(MorphButton::Settings, c);
+    const anim::Rect home = anim::home_icon_rect(c);
+    // Left -> right: Shop, Help, Settings, Home (Home the stationary right anchor).
+    EXPECT_LT(shop.x, help.x);
+    EXPECT_LT(help.x, settings.x);
+    EXPECT_LT(settings.x, home.x);
+    // The three morphing icons form a horizontal row aligned with Home: same y,
+    // same square size, each strictly to Home's left.
+    for (const anim::Rect& icon : {shop, help, settings}) {
+        EXPECT_FLOAT_EQ(icon.y, home.y);
+        EXPECT_FLOAT_EQ(icon.w, home.w);
+        EXPECT_FLOAT_EQ(icon.h, home.h);
+        EXPECT_LT(icon.x + icon.w, home.x + home.w);
+    }
+}
+
 // ----- MorphController -----
 
 TEST(MorphController, ProgressAndCompletion) {

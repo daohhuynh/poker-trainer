@@ -33,19 +33,22 @@ namespace ru = render_util;
 
 }  // namespace
 
+// The Root screen's full-canvas background rect (the blurred-background image
+// slot, drawn as a bg_primary wash until the texture seam is wired).
+[[nodiscard]] animations::Rect canvas_rect(const animations::Canvas& canvas) {
+    return animations::Rect{0.0f, 0.0f, canvas.width, canvas.height};
+}
+
 void render_root_screen() {
     const animations::Canvas canvas = viewport_canvas();
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
-    // Atmospheric background wash (bg_primary) over the blurred Root background.
-    // The blurred background_root.png itself is drawn by the Zone 05 render layer
-    // once the asset registry it owns is GPU-uploaded; see the texture seam note
-    // in render_util.hpp.
-    dl->AddRectFilled(ImVec2{0.0f, 0.0f}, ImVec2{canvas.width, canvas.height},
-                      ru::token_u32(theme::ColorToken::BgPrimary));
+    // Atmospheric background wash over the blurred Root background image slot
+    // (single texture-bind seam in render_util.hpp).
+    ru::draw_image_slot(dl, canvas_rect(canvas), ru::ImageSlot::Background, /*focused=*/false);
 
-    // Logo (top-left) — placeholder until the texture seam is wired.
-    ru::icon_placeholder(dl, animations::logo_rect(canvas), /*focused=*/false);
+    // Logo (top-left) image slot.
+    ru::draw_image_slot(dl, animations::logo_rect(canvas), ru::ImageSlot::Logo, /*focused=*/false);
 
     // Middle 2x2 grid: Play=TL, Settings=TR, Shop=BL, Help=BR.
     ru::button(dl, animations::root_grid_button_rect(animations::MorphButton::Play, canvas), "PLAY",
@@ -57,8 +60,53 @@ void render_root_screen() {
     ru::button(dl, animations::root_grid_button_rect(animations::MorphButton::Help, canvas), "Help",
                focus_on(kFocusRootHelp));
 
-    // Home icon (top-right, stationary anchor of the cluster).
-    ru::icon_placeholder(dl, animations::home_icon_rect(canvas), focus_on(kFocusRootHome));
+    // Home icon (top-right, stationary anchor of the cluster) image slot.
+    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), ru::ImageSlot::HomeIcon,
+                        focus_on(kFocusRootHome));
+}
+
+void render_root_morph_frame(float global_t) {
+    const animations::Canvas canvas = viewport_canvas();
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+
+    // Background + the two stationary anchors stay put through the morph.
+    // SEAM(visual-pass): the synchronized background-blur crossfade goes here.
+    // Once Z02's background art and Z05's GPU-upload seam land, blend the Root
+    // background into the Mode Selection background using the morph's own ~300 ms
+    // ease-out crossfade alpha (animations::MorphController::crossfade). Today both
+    // slots resolve to a bg_primary wash, so the crossfade is a visual no-op and
+    // is drawn as a single background slot.
+    ru::draw_image_slot(dl, canvas_rect(canvas), ru::ImageSlot::Background, /*focused=*/false);
+    ru::draw_image_slot(dl, animations::logo_rect(canvas), ru::ImageSlot::Logo, /*focused=*/false);
+    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), ru::ImageSlot::HomeIcon,
+                        /*focused=*/false);
+
+    // Play travels to its STANDARD target on its own eased + staggered timeline.
+    // Its filled body morphs the whole way (filled, not just an outline) and its
+    // label crossfades "PLAY" -> "STANDARD" across the button's own eased progress,
+    // per "As it slides, its visual label transforms from PLAY into STANDARD." At
+    // progress 1 the rect equals standard_button_rect and the label reads STANDARD,
+    // so the live Mode Selection screen takes over with no pop (visible == drawn).
+    const animations::Rect play_rect =
+        animations::morph_button_rect(animations::MorphButton::Play, global_t, canvas);
+    const float play_t =
+        animations::button_eased_progress(global_t, animations::MorphButton::Play);
+    ru::fill_rect(dl, play_rect, theme::ColorToken::ButtonBg, 6.0f);
+    ru::centered_label(dl, play_rect, "PLAY", theme::ColorToken::TextButton, 1.0f - play_t);
+    ru::centered_label(dl, play_rect, "STANDARD", theme::ColorToken::TextButton, play_t);
+
+    // Settings / Shop / Help shrink into the top-right cluster icon slots, each on
+    // its own staggered timeline, filled throughout. Their morph targets are the
+    // exact rects the live Mode Selection cluster renders/hit-tests
+    // (mode_button_target_rect), so the handoff is seamless. No focus outline
+    // during the transition.
+    ru::button(dl,
+               animations::morph_button_rect(animations::MorphButton::Settings, global_t, canvas),
+               "Settings", /*focused=*/false);
+    ru::button(dl, animations::morph_button_rect(animations::MorphButton::Shop, global_t, canvas),
+               "Shop", /*focused=*/false);
+    ru::button(dl, animations::morph_button_rect(animations::MorphButton::Help, global_t, canvas),
+               "Help", /*focused=*/false);
 }
 
 void install_root_handlers(animations::MorphController& morph) {

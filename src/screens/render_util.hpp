@@ -33,11 +33,20 @@ inline void fill_rect(ImDrawList* dl, const animations::Rect& r, theme::ColorTok
     dl->AddRectFilled(top_left(r), bottom_right(r), token_u32(fill), rounding);
 }
 
+// alpha multiplies the token color's alpha channel — used for the
+// "PLAY" -> "STANDARD" label crossfade during the Root -> Mode Selection morph.
+// Defaults to 1.0 (fully opaque), so existing call sites are unchanged; alpha <= 0
+// draws nothing.
 inline void centered_label(ImDrawList* dl, const animations::Rect& r, const char* text,
-                           theme::ColorToken color) {
+                           theme::ColorToken color, float alpha = 1.0f) {
+    if (alpha <= 0.0f) {
+        return;
+    }
     const ImVec2 size = ImGui::CalcTextSize(text);
     const ImVec2 pos{r.x + (r.w - size.x) * 0.5f, r.y + (r.h - size.y) * 0.5f};
-    dl->AddText(pos, token_u32(color), text);
+    ImVec4 color_rgba = theme::get_color(color);
+    color_rgba.w *= alpha;
+    dl->AddText(pos, ImGui::ColorConvertFloat4ToU32(color_rgba), text);
 }
 
 // 2px focus outline in border_focus. The caller is responsible for only drawing
@@ -58,13 +67,36 @@ inline void button(ImDrawList* dl, const animations::Rect& r, const char* label,
     }
 }
 
-// A small placeholder glyph box for an icon whose texture binding is the Zone 05
-// GPU-upload seam (the asset registry is injected by Zone 05; CPU TextureHandles
-// from get_texture are not yet bound to ImTextureIDs). Drawn so the layout reads
-// correctly and never crashes when art is absent.
-inline void icon_placeholder(ImDrawList* dl, const animations::Rect& r, bool focused) {
-    dl->AddRect(top_left(r), bottom_right(r), token_u32(theme::ColorToken::TextPrimary), 0.0f, 0,
-                1.0f);
+// The Zone 07 image slots that will hold real PNG art once it exists. Each maps
+// to one authored asset (logo.png, the Home cluster icon, the blurred Root/Mode
+// background); see asset_paths.hpp for the canonical paths.
+enum class ImageSlot : std::uint8_t {
+    Logo,
+    HomeIcon,
+    Background,
+};
+
+// ===== SEAM(visual-pass / Z05 GPU upload): the ONE texture-bind point ========
+// Every Zone 07 image slot (logo, Home icon, blurred background) routes through
+// this single function, so dropping real art in later is a one-touch change.
+//
+// Today no PNG is GPU-uploaded: Z02 decodes pixels into CPU TextureHandles, but
+// binding those to ImTextureIDs is Z05's deferred GPU-upload seam. Until that
+// lands, this draws a token-colored placeholder (an outlined box for icons, a
+// bg_primary wash for the background) so every layout reads correctly and never
+// crashes when art is absent. When textures are bound, replace the body below
+// with a single `dl->AddImage(tex_for(slot), top_left(r), bottom_right(r))` and
+// keep the focus outline — one edit here re-skins all three slots.
+inline void draw_image_slot(ImDrawList* dl, const animations::Rect& r, ImageSlot slot,
+                            bool focused) {
+    // <-- bind real art here: if a texture exists for `slot`, AddImage and skip
+    //     the placeholder branch below.
+    if (slot == ImageSlot::Background) {
+        fill_rect(dl, r, theme::ColorToken::BgPrimary);
+    } else {
+        dl->AddRect(top_left(r), bottom_right(r), token_u32(theme::ColorToken::TextPrimary), 0.0f,
+                    0, 1.0f);
+    }
     if (focused) {
         focus_outline(dl, r);
     }

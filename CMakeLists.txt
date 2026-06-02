@@ -176,10 +176,33 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/bridge/canvas_sizing.cpp
         src/bridge/shared_scenario.cpp
         src/bridge/loading_screen.cpp
+        src/bridge/settings_persistence.cpp
+        src/bridge/persistent_weights_store.cpp
     )
     target_include_directories(bridge PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(bridge PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
-    target_link_libraries(bridge PUBLIC backbone engine)
+    # persistence: the persistent Custom-weights store wraps Zone 04's IdbfsStore.
+    target_link_libraries(bridge PUBLIC backbone engine persistence)
+
+    # ---------------------------------------------------------------------
+    # Zone 07 (Root + Mode Selection Screens). Built here in the shared section
+    # (not just for tests) so Z05 can link the real screens into the wasm app via
+    # its render-dispatch seam. Held to the full warning baseline (proven clean
+    # under -Werror, including the ImGui render TUs). The render / registration
+    # TUs reference bridge symbols (request_game_launch, register_screen_renderer)
+    # resolved at final link; declaring bridge as a link dependency keeps the
+    # static-lib link order correct. bridge does NOT depend on screens, so this is
+    # a one-way edge (no cycle).
+    add_library(screens STATIC
+        src/animations/button_morph.cpp
+        src/screens/root_screen.cpp
+        src/screens/mode_selection_screen.cpp
+        src/screens/custom_popup.cpp
+        src/screens/screen_registration.cpp
+    )
+    target_include_directories(screens PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(screens PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(screens PUBLIC backbone theme bridge)  # theme brings imgui
 endif()
 
 # =========================================================================
@@ -204,13 +227,15 @@ if(EMSCRIPTEN)
         src/bridge/cdn_fetch.cpp
         src/bridge/render_screens.cpp
         src/bridge/error_screen.cpp
+        src/bridge/idbfs_backend.cpp
         src/bridge/main_loop.cpp
         src/bridge/boot.cpp
     )
     target_include_directories(bridge_platform PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(bridge_platform PRIVATE ${POKER_TRAINER_BINDING_WARNING_FLAGS})
+    # screens: boot installs Zone 07's renders into the dispatch registry.
     target_link_libraries(bridge_platform PUBLIC
-        bridge backbone engine assets persistence theme imgui)
+        bridge screens backbone engine assets persistence theme imgui)
 
     target_link_libraries(poker_trainer PRIVATE bridge_platform)
     target_link_options(poker_trainer PRIVATE
@@ -220,6 +245,7 @@ if(EMSCRIPTEN)
         "-sALLOW_MEMORY_GROWTH=1"
         "-sEXIT_RUNTIME=0"
         "-sASSERTIONS=1"
+        "-lidbfs.js"  # IDBFS filesystem backend for durable guest-mode persistence
     )
 
     # Serve the service worker from the bundle directory so the boot-time
@@ -410,28 +436,11 @@ if(ENABLE_TESTS)
     # Zone 07 (Root + Mode Selection Screens) — native unit tests.
     # -------------------------------------------------------------------------
     #
-    # Project code held to the full warning baseline so the zone is proven to
-    # compile clean under -Werror (including the ImGui render TUs). Built for the
-    # test target only, like every other zone; Zone 05 links the screens into the
-    # wasm app via its render-dispatch seam (Zone 07 stays in its lane and does not
-    # touch src/bridge/*). The render TUs call bridge::request_game_launch (defined
-    # in the bridge lib) — the unit tests pull only the pure-logic objects, never
-    # the render/launch ones, so the bridge link is not needed here.
-    add_library(screens STATIC
-        src/animations/button_morph.cpp
-        src/screens/root_screen.cpp
-        src/screens/mode_selection_screen.cpp
-        src/screens/custom_popup.cpp
-    )
-    target_include_directories(screens PUBLIC ${CMAKE_SOURCE_DIR}/src)
-    target_compile_options(screens PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
-    target_link_libraries(screens PUBLIC backbone theme)  # theme brings imgui transitively
-
-    # Zone 07 unit tests (googletest). Test glue is not held to -Werror so the
-    # macro expansions do not fight the strict baseline; the zone code under test is
-    # held to it via the `screens` library above. The tests reference only the pure
-    # logic (morph math + controller, coupled solver, keystroke rules, action
-    # semantics) plus the focus-list registration — never the render/launch TUs.
+    # The `screens` library is defined in the shared section above (it is now built
+    # for the wasm app too, since Z05 links the real screens in). Its code is held
+    # to the full -Werror baseline there. These tests reference only the pure logic
+    # (morph math + controller, coupled solver, keystroke rules, action semantics)
+    # plus the focus-list registration — never the render/launch TUs.
     add_executable(screens_test
         tests/animations/button_morph_test.cpp
         tests/screens/custom_popup_test.cpp
@@ -444,4 +453,27 @@ if(ENABLE_TESTS)
     target_link_libraries(screens_test PRIVATE screens GTest::gtest_main)
 
     add_test(NAME screens_test COMMAND screens_test)
+
+    # -------------------------------------------------------------------------
+    # Pass-1 integration wiring tests (Z05 <-> Z07 <-> Z04 finalization).
+    # -------------------------------------------------------------------------
+    #
+    # Cross-zone wiring that no single zone's test owns: the Zone 07 render
+    # registration into the Z05 dispatch registry, the interim settings-blob codec,
+    # the theme-at-boot read, and the persistence-backed Custom-weights round-trip.
+    # Links screens + bridge + persistence + theme (all already held to -Werror via
+    # their libraries); the test glue itself is not held to -Werror.
+    add_executable(wiring_test
+        tests/screens/screen_registration_test.cpp
+        tests/bridge/settings_persistence_test.cpp
+    )
+    target_include_directories(wiring_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+        ${CMAKE_SOURCE_DIR}/tests/persistence
+    )
+    target_link_libraries(wiring_test PRIVATE
+        screens bridge persistence theme GTest::gtest_main)
+
+    add_test(NAME wiring_test COMMAND wiring_test)
 endif()

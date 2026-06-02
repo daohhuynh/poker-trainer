@@ -108,12 +108,15 @@ TEST_F(FocusListTest, CloseCustomPopupClearsOpenAndPopsFocus) {
     bb::snap_focus_to(sc::kFocusStandard);
 
     sc::CustomPopupState state;
+    EXPECT_FALSE(state.just_opened);  // opening-frame guard defaults clear (B1)
     state.open = true;
+    state.just_opened = true;
     sc::push_custom_popup_focus();
     EXPECT_EQ(bb::context_depth(), 1u);
 
     sc::close_custom_popup(state);  // X / click-outside / Escape dismissal path
     EXPECT_FALSE(state.open);
+    EXPECT_FALSE(state.just_opened);  // guard cleared on close so a reopen re-arms (B1)
     EXPECT_EQ(bb::context_depth(), 0u);
     EXPECT_EQ(focused(), sc::kFocusStandard.value);  // focus restored to the screen
 }

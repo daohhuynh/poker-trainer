@@ -81,6 +81,11 @@ void render_custom_popup(CustomPopupState& state, CustomWeightsStore& store) {
         ImGui::TextUnformatted("%");
 
         // Aggressor slider (full modal width).
+        // SEAM(visual-pass): per Color Tint Theme — Token Application Rules the
+        // sliders should read as track=border_default, fill=accent_primary,
+        // handle=bg_button_default, with the redundant centered value dropped (the %
+        // field already shows it). ImGui's SliderInt has no native fill bar, so this
+        // needs a custom token-colored draw and is deferred to the visual pass.
         {
             int aggr = state.weights.aggressor_weight;
             ImGui::SetNextItemWidth(-1.0f);
@@ -128,10 +133,25 @@ void render_custom_popup(CustomPopupState& state, CustomWeightsStore& store) {
             dismissed = true;
         }
 
-        // Click-outside dismissal (the modal's own background).
-        if (!ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup |
-                                    ImGuiHoveredFlags_ChildWindows) &&
-            ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        // Click-outside dismissal — but never the click that opened the popup.
+        // While the opening-frame guard is raised, keep it raised until the opening
+        // mouse button is released, then arm outside-dismiss for any subsequent
+        // click. "Outside" is tested via ImGui::GetIO().WantCaptureMouse: it is true
+        // whenever the cursor is over the modal window OR an ImGui item is active,
+        // so a click on the slider / inputs / buttons (which makes that widget the
+        // active item) is correctly NOT treated as outside. IsWindowHovered cannot
+        // be used here — it returns false while any item is active, so it misreads
+        // an in-modal widget click as outside and self-dismisses the popup. The
+        // bridge applies the same WantCaptureMouse gate to the event router
+        // (platform.cpp::router_should_see_mouse), so screen handlers beneath the
+        // modal never see these clicks either. See CustomPopupState::just_opened for
+        // the opening-frame guard.
+        if (state.just_opened) {
+            if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+                state.just_opened = false;
+            }
+        } else if (!ImGui::GetIO().WantCaptureMouse &&
+                   ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
             dismissed = true;
         }
     }

@@ -51,6 +51,15 @@ inline void register_root_focus_list() noexcept {
 // ZONES.md export. Draws the Root body (logo, 2x2 grid, Home icon). Stateless.
 void render_root_screen();
 
+// Draws one frame of the in-flight Root -> Mode Selection morph at global
+// progress `global_t` in [0, 1]: the static logo / Home icon plus the four
+// grid buttons interpolated toward their Mode Selection targets (Play ->
+// STANDARD; Settings/Shop/Help -> the top-right cluster slots). Stateless; the
+// caller (Z05's main loop, via the screen-dispatch registry) owns the
+// MorphController and supplies the progress. Drawn instead of render_root_screen
+// while a morph is active.
+void render_root_morph_frame(float global_t);
+
 // Install the Root event-router handlers (Escape -> no-op; Play -> start the
 // morph on the caller-owned MorphController; Settings/Shop/Help -> open their
 // modals [Zone 11 seam]; Home -> reload the page [Zone 05 seam]). Deferred wiring

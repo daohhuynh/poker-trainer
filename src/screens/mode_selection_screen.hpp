@@ -9,6 +9,8 @@
 // via bridge::request_game_launch — Zone 07 never selects scenario types or
 // touches the engine.
 
+#include "screens/custom_popup.hpp"
+
 #include "backbone/focus_manager.hpp"
 #include "backbone/game_mode.hpp"
 #include "backbone/screen_state.hpp"
@@ -100,9 +102,11 @@ inline void register_mode_selection_focus_list() noexcept {
 void render_mode_selection_screen();
 
 // Install the Mode Selection event-router handlers (Escape -> Root; STANDARD/
-// Aggressor/Caller -> emit_launch; Custom -> open popup; Home -> Root). Deferred
-// wiring seam: registers handlers via the event router; called by Zone 05's main
-// loop, not this wave.
-void install_mode_selection_handlers();
+// Aggressor/Caller -> emit_launch; Custom -> open popup; Home -> Root). Takes the
+// main-loop-owned CustomPopupState (the Custom button opens it) and the weights
+// store (the popup seeds from the last-saved split). All Mode Selection handlers
+// no-op while the popup is open, so the modal captures interaction. Registers via
+// the event router; called once from Z05 boot.
+void install_mode_selection_handlers(CustomPopupState& popup, const CustomWeightsStore& store);
 
 }  // namespace poker_trainer::screens

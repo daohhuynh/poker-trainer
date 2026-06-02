@@ -32,6 +32,29 @@ namespace ru = render_util;
     return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
 
+// The persistent top-right cluster (left -> right: Shop, Help, Settings, Home).
+//
+// SEAM(Z11): Zone 11 (Wave 3) owns the shared cross-screen cluster component
+// (render_persistent_cluster) and the modal-open behavior of Shop/Help/Settings.
+// Until it lands, Zone 07 renders the cluster locally on Mode Selection at the
+// morph's exact target rects (animations::mode_button_target_rect for the three
+// morphing icons, home_icon_rect for the stationary Home anchor). Rendering at
+// those same rects is what makes the Root -> Mode morph hand off to a live,
+// hit-testable element: the thing that animates in IS the thing that renders and
+// is clicked at rest (visible == clickable). The three icons render as the morph
+// produces them at progress 1 — a filled button with its label — so there is no
+// pop at handoff; Home renders through the shared HomeIcon image slot.
+void render_cluster(ImDrawList* dl, const animations::Canvas& canvas) {
+    ru::button(dl, animations::mode_button_target_rect(animations::MorphButton::Shop, canvas),
+               "Shop", focus_on(kFocusModeShop));
+    ru::button(dl, animations::mode_button_target_rect(animations::MorphButton::Help, canvas),
+               "Help", focus_on(kFocusModeHelp));
+    ru::button(dl, animations::mode_button_target_rect(animations::MorphButton::Settings, canvas),
+               "Settings", focus_on(kFocusModeSettings));
+    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), ru::ImageSlot::HomeIcon,
+                        focus_on(kFocusModeHome));
+}
+
 }  // namespace
 
 void emit_launch(const LaunchRequest& request) {
@@ -61,14 +84,19 @@ void render_mode_selection_screen() {
     ru::button(dl, animations::mode_middle_button_rect(2, canvas), "Custom",
                focus_on(kFocusCustomButton));
 
-    // The top-right persistent cluster (Shop/Help/Settings/Home) is Zone 11's;
-    // Zone 07 only reserves its four focus slots (see kModeSelectionFocusOrder).
+    render_cluster(dl, canvas);
 }
 
-void install_mode_selection_handlers() {
+void install_mode_selection_handlers(CustomPopupState& popup, const CustomWeightsStore& store) {
     // Escape on Mode Selection: return to Root (Notes — Escape Key Behavior).
+    // While the popup is open it captures Escape at the higher ModalLayer
+    // priority (install_custom_popup_handlers), so this screen handler never sees
+    // it; the popup.open guard is belt-and-suspenders.
     backbone::register_key_handler(
-        [] { return backbone::read_screen_state().current == backbone::ScreenId::ModeSelection; },
+        [&popup] {
+            return !popup.open &&
+                   backbone::read_screen_state().current == backbone::ScreenId::ModeSelection;
+        },
         [](const backbone::KeyEvent& e) {
             if (e.type == backbone::KeyEventType::KeyDown && e.code == backbone::KeyCode::Escape) {
                 on_mode_selection_escape();
@@ -78,10 +106,15 @@ void install_mode_selection_handlers() {
         },
         backbone::HandlerPriority::ScreenContext, "mode.escape");
 
-    // Click routing for the four launch paths + Custom popup open.
+    // Click routing for the four launch paths + Custom popup open. Suppressed
+    // while the popup is open so clicks on the modal never reach the screen
+    // beneath it (Zone 11's modal infra refines this arbitration later).
     backbone::register_mouse_handler(
-        [] { return backbone::read_screen_state().current == backbone::ScreenId::ModeSelection; },
-        [](const backbone::MouseEvent& e) {
+        [&popup] {
+            return !popup.open &&
+                   backbone::read_screen_state().current == backbone::ScreenId::ModeSelection;
+        },
+        [&popup, &store](const backbone::MouseEvent& e) {
             if (e.type != backbone::MouseEventType::MouseDown || e.button != 0) {
                 return false;
             }
@@ -99,11 +132,33 @@ void install_mode_selection_handlers() {
                 return true;
             }
             if (point_in_rect(e.x, e.y, animations::mode_middle_button_rect(2, canvas))) {
-                // Custom does NOT launch; it opens the configuration popup.
-                static_cast<void>(open_custom_popup());
+                // Custom does NOT launch; it opens the configuration popup, seeded
+                // with the last-saved split (or 50/50 if Save has never run).
+                popup.weights = reset_weights(store.load());
+                popup.open = true;
+                popup.just_opened = true;  // suppress same-frame click-outside dismiss (B1)
+                static_cast<void>(open_custom_popup());  // push the modal focus trap
                 return true;
             }
-            // Cluster (Shop/Help/Settings/Home) -> Zone 11 seam, not this wave.
+            // Persistent top-right cluster. Hit-tested at the exact rects
+            // render_cluster draws (mode_button_target_rect / home_icon_rect), so
+            // visible == clickable.
+            if (point_in_rect(e.x, e.y, animations::home_icon_rect(canvas))) {
+                // Home returns to Root (Notes — Escape Key Behavior: from Mode
+                // Selection, Home and Escape share the return-to-Root path).
+                on_mode_selection_escape();
+                return true;
+            }
+            for (const animations::MorphButton icon :
+                 {animations::MorphButton::Shop, animations::MorphButton::Help,
+                  animations::MorphButton::Settings}) {
+                if (point_in_rect(e.x, e.y, animations::mode_button_target_rect(icon, canvas))) {
+                    // SEAM(Z11): Shop / Help / Settings each open their centered
+                    // modal. Zone 11 (Wave 3) owns the modal system; until it lands
+                    // the hit is consumed as a graceful no-op (no crash, no effect).
+                    return true;
+                }
+            }
             return false;
         },
         backbone::HandlerPriority::ScreenContext, "mode.click");

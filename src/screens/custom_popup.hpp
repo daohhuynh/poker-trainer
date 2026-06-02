@@ -176,6 +176,16 @@ struct CustomPopupState {
     std::array<char, 4> aggressor_buf{};
     std::array<char, 4> caller_buf{};
     bool open{false};
+
+    // Opening-frame guard. The DOM mousedown that opens the popup (the Custom
+    // button click, routed through the event router) is also queued into ImGui's
+    // IO, so on the popup's first rendered frame ImGui reports IsMouseClicked at a
+    // point outside the just-appeared window — which the click-outside path would
+    // otherwise read as a dismiss, closing the popup the same frame it opened.
+    // Set true on open; render_custom_popup keeps it raised (suppressing
+    // click-outside dismissal) until that mouse button is released, then arms the
+    // dismissal for any subsequent click outside the modal.
+    bool just_opened{false};
 };
 
 // ZONES.md export. Opens the popup: pushes the focus context and returns the
@@ -188,6 +198,7 @@ CustomConfig open_custom_popup();
 // Escape; also called after Play launches. Never persists, never launches.
 inline void close_custom_popup(CustomPopupState& state) {
     state.open = false;
+    state.just_opened = false;
     pop_custom_popup_focus();
 }
 

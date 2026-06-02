@@ -2,9 +2,14 @@
 
 #include "bridge/bridge_runtime.hpp"
 #include "bridge/cdn_fetch.hpp"
+#include "bridge/idbfs_backend.hpp"
 #include "bridge/main_loop.hpp"
+#include "bridge/persistent_weights_store.hpp"
 #include "bridge/platform.hpp"
+#include "bridge/settings_persistence.hpp"
 #include "bridge/shared_scenario.hpp"
+
+#include "screens/screen_registration.hpp"
 
 #include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
@@ -19,13 +24,9 @@
 #include "persistence/persistence_schema.hpp"
 
 #include "theme/theme.hpp"
-#include "theme/theme_tokens.hpp"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
-#include <span>
-#include <vector>
 
 #include <emscripten/emscripten.h>
 
@@ -37,18 +38,19 @@ namespace {
 
 std::unique_ptr<BridgeRuntime> g_runtime;
 
-// SEAM: production IDBFS StorageBackend (Emscripten FS + FS.syncfs) deferred.
-// Auth0 + server sync are out of V1 client scope (CLAUDE.md §1), so boot does a
-// guest-mode reconcile only. Until the durable IDBFS backend lands, read()
-// returns no blob and load_state() yields fresh guest defaults.
-class NullStorageBackend final : public persistence::StorageBackend {
- public:
-    [[nodiscard]] std::optional<std::vector<std::uint8_t>> read() const override {
-        return std::nullopt;
-    }
-    void write(std::span<const std::uint8_t> /*bytes*/) override {}
-    void clear() override {}
+// App-lifetime state owned by boot, alongside g_runtime (the bridge's app-root
+// state per CLAUDE.md §10): the production IDBFS storage backend, the Zone 04
+// store over it, the persistence-backed Custom-weights store, and the Zone 07
+// screen runtime (morph + popup + focus tracker) threaded into the render
+// registry. Populated in finish_boot_after_persistence once the initial IDBFS
+// sync completes.
+struct BootState {
+    std::unique_ptr<persistence::StorageBackend> storage;
+    std::optional<persistence::IdbfsStore> store;
+    std::optional<PersistentCustomWeightsStore> weights_store;
+    screens::ScreensRuntime screens;
 };
+BootState g_boot;
 
 // Universal Tab / Shift-Tab focus navigation: the backbone spec routes Tab to
 // focus_manager.advance_focus and activates keyboard mode on first Tab. This is
@@ -84,11 +86,11 @@ void init_backbone() {
     // modal_state_stub.cpp), so this step is intentionally a no-op for now.
 }
 
-void init_zones(BootRoute route) {
+// Zone 02 bring-up: construct the asset registry + tier loader (Z05 owns the CDN
+// fetch wrapper) and kick the synchronous Tier-1 load. Runs in app_init, in
+// parallel with the async IDBFS sync.
+void init_assets(BootRoute route) {
     BridgeRuntime& rt = *g_runtime;
-
-    // Zone 02: construct the asset registry + tier loader (Z05 owns the CDN
-    // fetch wrapper) and kick the synchronous Tier-1 load.
     rt.tier_loader = std::make_unique<assets::TierLoader>(
         rt.registry, make_cdn_fetch(), assets::make_png_decoder(),
         assets::make_steady_clock());
@@ -98,20 +100,69 @@ void init_zones(BootRoute route) {
         // when the user lands directly on Game (Notes — Shared Scenario URL).
         (void)rt.tier_loader->load_tier(assets::AssetTier::Tier3);
     }
+}
 
-    // Zone 04: guest-mode persistence reconcile via load_state().
-    static NullStorageBackend storage;  // SEAM: see NullStorageBackend above.
-    persistence::IdbfsStore store{storage};
-    (void)store.load_state();
+// Second half of boot, run once the initial IDBFS FS.syncfs(true) has populated
+// the mount (see begin_persistence_load / pt_boot_on_idbfs_ready). Loads the
+// persisted guest state, applies the saved theme before the first frame, wires
+// Zone 07's screens into the render registry, and starts the main loop.
+void finish_boot_after_persistence() {
+    // Zone 04 guest-mode load over the production IDBFS backend. Auth0 + server
+    // sync are out of V1 client scope (CLAUDE.md §1), so boot does a guest-mode
+    // IdbfsStore load only — the guest's local IDBFS is authoritative, there is
+    // no session-start server reconcile to run. A corrupt / missing blob yields
+    // fresh guest defaults rather than bricking the app.
+    g_boot.storage = make_idbfs_storage_backend();
+    g_boot.store.emplace(*g_boot.storage);
+    const persistence::AppState state = g_boot.store->load_state();
 
-    // Seed the ImGui style with the default theme. Applying the *persisted* theme
-    // needs Zone 12's settings (de)serialization; deferred there. // SEAM(Z12)
-    theme::set_theme(theme::kThemeIdNoLimit);
+    // Apply the persisted theme before the first frame (default No Limit when
+    // nothing valid is saved). A boot responsibility: Zone 12's Settings page
+    // changes the theme at runtime, but restoring the saved one at launch is the
+    // boot path's job (it owns the persistence read and runs before any frame).
+    theme::set_theme(read_persisted_theme_id(state));
+
+    // Persistence-backed Custom-weights store (Mode Selection popup Save/Reset),
+    // reading/writing the custom_*_weight settings through the interim codec.
+    g_boot.weights_store.emplace(*g_boot.store);
+
+    // Zone 07 self-registers its real Root / Mode Selection renders + handlers,
+    // replacing the blank default in the dispatch registry.
+    screens::install_screens(g_boot.screens, *g_boot.weights_store);
+
+    start_main_loop();
+}
+
+// Mount IDBFS and kick the initial load. The mount's data is empty until
+// FS.syncfs(true) completes (asynchronously), so the rest of boot runs in the
+// completion callback (pt_boot_on_idbfs_ready) — this is what lets the saved
+// theme be applied before the first frame. EXIT_RUNTIME=0 keeps the runtime alive
+// after app_init / main return, so the callback (and the RAF loop it starts) fire
+// from the browser event loop.
+void begin_persistence_load() {
+    // clang-format off
+    EM_ASM({
+        var dir = UTF8ToString($0);
+        try { FS.mkdir(dir); } catch (e) { /* already exists */ }
+        FS.mount(IDBFS, {}, dir);
+        FS.syncfs(true, function(err) {
+            if (err) { console.warn('IDBFS initial load failed', err); }
+            _pt_boot_on_idbfs_ready();
+        });
+    }, kIdbfsMountDir);
+    // clang-format on
 }
 
 }  // namespace
 
 BridgeRuntime& runtime() noexcept { return *g_runtime; }
+
+// Exported for the IDBFS FS.syncfs(true) completion callback in
+// begin_persistence_load (invoked as _pt_boot_on_idbfs_ready from JS).
+// EMSCRIPTEN_KEEPALIVE forces the wasm export.
+extern "C" EMSCRIPTEN_KEEPALIVE void pt_boot_on_idbfs_ready() {
+    finish_boot_after_persistence();
+}
 
 void app_init() {
     g_runtime = std::make_unique<BridgeRuntime>();
@@ -137,8 +188,8 @@ void app_init() {
         g_runtime->shared_id = *shared;
     }
 
-    // Then zone-level init (assets, persistence).
-    init_zones(g_runtime->route);
+    // Kick the asset load now so it downloads in parallel with the IDBFS sync.
+    init_assets(g_runtime->route);
 
     // Versioned asset caching for returning visitors (best-effort).
     EM_ASM({
@@ -148,7 +199,9 @@ void app_init() {
         }
     });
 
-    start_main_loop();
+    // Begin the async persistence load; finish_boot_after_persistence (theme +
+    // Zone 07 screens + main loop) runs once the initial IDBFS sync completes.
+    begin_persistence_load();
 }
 
 }  // namespace poker_trainer::bridge

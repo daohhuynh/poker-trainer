@@ -54,9 +54,15 @@ void render_loading_screen() {
                         token_u32(theme::ColorToken::DealerButtonGreen), 32);
 
     // Progress arc along the inset dashed ring: clockwise from the top, filling
-    // proportionally to Tier-1 download progress. accent_primary per the theme
-    // token rules (Module 3's "white arc" prose is superseded by the no-hardcoded
-    // -colors invariant).
+    // proportionally to Tier-1 download progress.
+    //
+    // DELIBERATE DOC DIVERGENCE: the color is accent_primary, NOT white. The
+    // authority is ARCHITECTURE's "Color Tint Theme" token section, which names
+    // this exact element ("Loading screen dashed progress arc: accent_primary"),
+    // together with CLAUDE.md §5's no-hardcoded-colors invariant. ARCHITECTURE's
+    // Module 3 prose still calls it a "white arc" — a stale doc-vs-doc conflict.
+    // The token section wins; the code stays on accent_primary. The Module 3
+    // prose fix is a human §14 action item (we may not edit ARCHITECTURE.md).
     float fraction = 0.0f;
     if (rt.tier_loader != nullptr) {
         fraction = loading_arc_fraction(

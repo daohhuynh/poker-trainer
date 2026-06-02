@@ -104,9 +104,13 @@ void frame() {
 }  // namespace
 
 void start_main_loop() {
-    // fps = 0 -> drive from requestAnimationFrame; simulate_infinite_loop = true
-    // so this does not return and the per-frame state above persists.
-    emscripten_set_main_loop(frame, 0, EM_TRUE);
+    // fps = 0 -> drive from requestAnimationFrame. simulate_infinite_loop = false:
+    // start_main_loop is called from the async IDBFS sync callback (not from
+    // main()), so it must register the RAF loop and return normally rather than
+    // throw to unwind the stack. The per-frame state above is file-scope static,
+    // so it persists across the return; EXIT_RUNTIME=0 keeps the runtime alive
+    // after app_init / main return so the RAF loop keeps firing.
+    emscripten_set_main_loop(frame, 0, EM_FALSE);
 }
 
 }  // namespace poker_trainer::bridge
