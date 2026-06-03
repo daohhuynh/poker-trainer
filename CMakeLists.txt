@@ -203,6 +203,25 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_include_directories(screens PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(screens PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
     target_link_libraries(screens PUBLIC backbone theme bridge)  # theme brings imgui
+
+    # ---------------------------------------------------------------------
+    # Zone 09 (Math Interrogator). Built here in the shared section so Z05 / Z08
+    # can link the math inputs into the wasm app, and so the native tests exercise
+    # the same -Werror-clean objects. Held to the full warning baseline (including
+    # the ImGui render TUs). The submission TU calls Z01's locked evaluator (Z09
+    # owns no truth/margin math); the render + keybind TUs reference theme tokens,
+    # the backbone (focus / router / scenario bus), and bridge
+    # (register_screen_renderer), resolved at final link. backbone / engine / theme
+    # / bridge do NOT depend on interrogator, so this is a one-way edge (no cycle).
+    add_library(interrogator STATIC
+        src/math/input_boxes.cpp
+        src/math/bet_size_buttons.cpp
+        src/math/submission.cpp
+        src/math/keybinds.cpp
+    )
+    target_include_directories(interrogator PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(interrogator PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(interrogator PUBLIC backbone engine theme bridge)  # theme brings imgui
 endif()
 
 # =========================================================================
@@ -234,8 +253,10 @@ if(EMSCRIPTEN)
     target_include_directories(bridge_platform PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(bridge_platform PRIVATE ${POKER_TRAINER_BINDING_WARNING_FLAGS})
     # screens: boot installs Zone 07's renders into the dispatch registry.
+    # interrogator: Z09's math inputs; boot adds one install_interrogator(runtime)
+    # call at pass-2 integration (boot.cpp is not edited by the Z09 wave).
     target_link_libraries(bridge_platform PUBLIC
-        bridge screens backbone engine assets persistence theme imgui)
+        bridge screens interrogator backbone engine assets persistence theme imgui)
 
     target_link_libraries(poker_trainer PRIVATE bridge_platform)
     target_link_options(poker_trainer PRIVATE
@@ -476,4 +497,26 @@ if(ENABLE_TESTS)
         screens bridge persistence theme GTest::gtest_main)
 
     add_test(NAME wiring_test COMMAND wiring_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 09 (Math Interrogator) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # The `interrogator` library (shared section above) is held to -Werror,
+    # including its ImGui render TUs. These tests reference only the pure logic
+    # (numeric filter, per-branch spawning, focus segment, parsing, gather/grade,
+    # pass/fail) plus the installed event-router handlers driven through dispatch;
+    # they never invoke the render TUs.
+    add_executable(interrogator_test
+        tests/math/input_boxes_test.cpp
+        tests/math/submission_test.cpp
+        tests/math/keybinds_test.cpp
+    )
+    target_include_directories(interrogator_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(interrogator_test PRIVATE interrogator GTest::gtest_main)
+
+    add_test(NAME interrogator_test COMMAND interrogator_test)
 endif()
