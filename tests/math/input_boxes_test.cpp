@@ -224,3 +224,92 @@ TEST(BufferParse, IntParsesDigitsOnly) {
     EXPECT_EQ(it::parse_box_int(box_with(eng::InputId::Outs, false, false, "8")), 8);
     EXPECT_EQ(it::parse_box_int(box_with(eng::InputId::Outs, false, false, "012")), 12);
 }
+
+// ----- ImGui keyboard-focus reconciliation (pure decision) -----
+
+namespace {
+
+it::InterrogatorState aggressor_interrogator_state() {
+    it::InterrogatorState state{};
+    it::configure_for_scenario(
+        state, aggressor_state(eng::ScenarioType::AggressorPureBluff, /*multi_tier=*/false));
+    return state;  // boxes: Fold(t1), EV(t1); bet group present
+}
+
+}  // namespace
+
+TEST(FocusReconcile, NavToTextBoxRequestsImGuiKeyboardFocus) {
+    const it::InterrogatorState state = aggressor_interrogator_state();
+    const bb::FocusableId box0 = state.boxes.front().focus_id;
+    // Outline moved onto a numeric box this frame -> steer ImGui's text focus there.
+    const it::FocusReconcile r = it::reconcile_imgui_focus(state, bb::kNoFocus, box0);
+    EXPECT_EQ(r.action, it::ImGuiFocusAction::FocusTextBox);
+    EXPECT_EQ(r.target, box0);
+}
+
+TEST(FocusReconcile, NavToBetGroupYieldsKeyboardCapture) {
+    const it::InterrogatorState state = aggressor_interrogator_state();
+    const bb::FocusableId box0 = state.boxes.front().focus_id;
+    // Outline moved onto the bet group (a non-text stop) -> release any active box
+    // so WantCaptureKeyboard goes false and digits 1-4 select buttons.
+    const it::FocusReconcile r = it::reconcile_imgui_focus(state, box0, it::kFocusBetSizeGroup);
+    EXPECT_EQ(r.action, it::ImGuiFocusAction::YieldKeyboard);
+}
+
+TEST(FocusReconcile, BetGroupYieldsEveryFrameNotJustOnChange) {
+    // Bug B: a pending SetKeyboardFocusHere from the box we left re-activates that
+    // box AFTER a one-shot ClearActiveID, leaving it the active InputText forever
+    // (digits then type into it). The yield must therefore fire EVERY frame the
+    // group is focused -- including when focus is unchanged from the prior frame --
+    // so the re-activated box is released on the next frame. (The earlier
+    // change-gated behavior, returning None here, was the root cause and is wrong.)
+    const it::InterrogatorState state = aggressor_interrogator_state();
+    EXPECT_EQ(
+        it::reconcile_imgui_focus(state, it::kFocusBetSizeGroup, it::kFocusBetSizeGroup).action,
+        it::ImGuiFocusAction::YieldKeyboard);
+}
+
+TEST(FocusReconcile, UnchangedTextBoxFocusIsNoOp) {
+    const it::InterrogatorState state = aggressor_interrogator_state();
+    const bb::FocusableId box0 = state.boxes.front().focus_id;
+    // Same numeric box both frames -> never re-grab (would trap the text caret).
+    EXPECT_EQ(it::reconcile_imgui_focus(state, box0, box0).action, it::ImGuiFocusAction::None);
+}
+
+TEST(FocusReconcile, FocusOnNonZoneElementLeavesImGuiAlone) {
+    const it::InterrogatorState state = aggressor_interrogator_state();
+    // kFocusPotOdds is a Caller box, absent here -- a stand-in for a future
+    // Z08/Z11 cluster stop Z09 does not own. Z09 must not touch ImGui's state.
+    const it::FocusReconcile r =
+        it::reconcile_imgui_focus(state, it::kFocusBetSizeGroup, it::kFocusPotOdds);
+    EXPECT_EQ(r.action, it::ImGuiFocusAction::None);
+}
+
+// ----- Mouse-click -> focus_manager coupling -----
+
+TEST(FocusClick, ClickOnBoxMovesOutlineToIt) {
+    bb::reset_focus_manager_for_testing();
+    it::InterrogatorState state = aggressor_interrogator_state();
+    bb::register_focus_list(bb::ScreenId::Game, state.focus_segment);
+    bb::snap_focus_to(it::kFocusBetSizeGroup);  // outline elsewhere first
+
+    it::focus_box_on_click(state.boxes.front());
+
+    EXPECT_TRUE(bb::is_keyboard_mode_active());
+    EXPECT_EQ(bb::get_focused_element(), state.boxes.front().focus_id);
+    bb::reset_focus_manager_for_testing();
+}
+
+TEST(FocusClick, ClickOnBetButtonSelectsTierAndFocusesGroup) {
+    bb::reset_focus_manager_for_testing();
+    it::InterrogatorState state = aggressor_interrogator_state();
+    bb::register_focus_list(bb::ScreenId::Game, state.focus_segment);
+    bb::snap_focus_to(state.boxes.front().focus_id);  // outline on a box first
+
+    it::select_bet_tier_on_click(state.bet_group, eng::BetTier::FullPot);
+
+    EXPECT_EQ(state.bet_group.selected, eng::BetTier::FullPot);
+    EXPECT_TRUE(bb::is_keyboard_mode_active());
+    EXPECT_EQ(bb::get_focused_element(), it::kFocusBetSizeGroup);
+    bb::reset_focus_manager_for_testing();
+}

@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <optional>
 
+#include "bridge/game_launch.hpp"
 #include "bridge/screen_dispatch.hpp"
 
 namespace poker_trainer::interrogator {
@@ -67,23 +68,43 @@ namespace {
     return runtime.settings_source ? runtime.settings_source() : settings::Settings{};
 }
 
+// Resolve the authoritative ScenarioState for `id`. Single source of truth: the
+// scenario is generated exactly once at launch and stored in the bridge, so read
+// it back here -- no consumer regenerates in the normal flow.
+//
+// FALLBACK: when the bridge store holds no matching scenario, regenerate from the
+// seed with the injected LIVE settings. This covers the shared-scenario boot path
+// (Z05 enters Game directly with the URL id, without a launch -- out of scope to
+// wire this window) and unit tests that drive the bus directly. The fallback uses
+// the same live settings the launch generates under, so it is consistent with the
+// authoritative state, not divergent.
+[[nodiscard]] engine::ScenarioState resolve_scenario(const InterrogatorRuntime& runtime,
+                                                     engine::ScenarioId id) {
+    const engine::ScenarioState* active = bridge::active_scenario();
+    if (active != nullptr && active->id == id) {
+        return *active;
+    }
+    return engine::generate_scenario(id, settings_or_default(runtime));
+}
+
+// Reconfigure Z09's inputs for `scenario` and (re)register the Game focus segment
+// (boxes then the bet group). The single place a new scenario takes effect. Z08
+// composes the full list (segment then Shop/Help/Settings/X) in W3 — SEAM(Z08/Z11).
+void apply_scenario(InterrogatorRuntime& runtime, const engine::ScenarioState& scenario) {
+    configure_for_scenario(runtime.state, scenario);
+    backbone::register_focus_list(backbone::ScreenId::Game, runtime.state.focus_segment);
+}
+
 // Bring the cached scenario in sync with the active scenario id, (re)spawning
-// inputs and registering the Game focus segment on change. Regenerates from the
-// seed via Z01 (truth source). SEAM: a single shared active-ScenarioState
-// (generated once at launch and read by Z08/Z09/Z13) would avoid regenerating;
-// until that exists, Z09 regenerates with the injected settings.
+// inputs and registering the Game focus segment on change. Reads the single
+// authoritative state from the bridge (resolve_scenario).
 void sync_scenario(InterrogatorRuntime& runtime, engine::ScenarioId id) {
     const bool changed =
         !runtime.state.scenario.has_value() || runtime.state.scenario->id != id;
     if (!changed) {
         return;
     }
-    const engine::ScenarioState scenario =
-        engine::generate_scenario(id, settings_or_default(runtime));
-    configure_for_scenario(runtime.state, scenario);
-    // Register Z09's segment as the Game focus list (W2). Z08 composes the full
-    // list (segment then Shop/Help/Settings/X) in W3 — SEAM(Z08/Z11).
-    backbone::register_focus_list(backbone::ScreenId::Game, runtime.state.focus_segment);
+    apply_scenario(runtime, resolve_scenario(runtime, id));
 }
 
 // The Game-screen render hook (W2 placeholder). In W3 Z08 owns ScreenId::Game's
@@ -115,9 +136,10 @@ bool on_enter_key(InterrogatorRuntime& runtime, const backbone::KeyEvent& e) {
         return true;  // consumed; submission suppressed until all filled
     }
     (void)on_submit(runtime);
-    // SEAM(Z14): trigger the Game->Post-Round slide transition here once Z14
-    // owns it. SEAM(Z11): Enter-to-activate dispatch across screens is a known
-    // router gap; this handler fires once Enter reaches the screen context.
+    // SEAM(Z14): trigger the Game->Post-Round slide transition here once Z14 owns
+    // it. Enter now reaches this handler reliably even while a box is active — the
+    // platform gate routes Tab/Enter/Escape through (bridge/input_routing.hpp);
+    // per-screen Enter-to-activate handlers for Root / Mode Selection are Zone 07's.
     return true;
 }
 
@@ -169,14 +191,13 @@ void install_interrogator(InterrogatorRuntime& runtime) {
     // SEAM(Z05)); arrow keys are intentionally not bound (math boxes are
     // unbounded decimals).
 
-    // Reset + respawn inputs on a new scenario. scenario_spawned is not fired by
-    // any zone yet (the launch->generate path is a SEAM owned by Z05/Z01/Z14);
-    // this subscription is exercised by tests and fires at integration.
+    // Reset + respawn inputs on a new scenario. Fired by the launch path
+    // (bridge::request_game_launch) after it generates + stores the authoritative
+    // ScenarioState; this handler reads that single state back (resolve_scenario)
+    // and reconfigures + re-registers the focus segment.
     (void)backbone::subscribe_scenario_spawned(
         [&runtime](const backbone::ScenarioSpawnedEvent& ev) {
-            const engine::ScenarioState scenario =
-                engine::generate_scenario(ev.scenario_id, settings_or_default(runtime));
-            configure_for_scenario(runtime.state, scenario);
+            apply_scenario(runtime, resolve_scenario(runtime, ev.scenario_id));
         },
         "interrogator.scenario_spawned");
 }

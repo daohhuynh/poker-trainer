@@ -14,6 +14,7 @@
 #include "backbone/screen_state.hpp"
 #include "engine/scenario.hpp"
 
+#include "bridge/game_launch.hpp"
 #include "bridge/screen_dispatch.hpp"
 
 #include <cstdint>
@@ -112,6 +113,7 @@ protected:
         bb::reset_screen_state_for_testing();
         bb::reset_scenario_events_for_testing();
         bridge::reset_screen_dispatch_for_testing();
+        bridge::reset_game_launch_for_testing();
         bb::activate_keyboard_mode();
         it::install_interrogator(runtime_);
     }
@@ -121,6 +123,7 @@ protected:
         bb::reset_screen_state_for_testing();
         bb::reset_scenario_events_for_testing();
         bridge::reset_screen_dispatch_for_testing();
+        bridge::reset_game_launch_for_testing();
     }
 
     // Put the runtime on the Game screen with `s` active + its focus list live.
@@ -168,6 +171,23 @@ TEST_F(InstalledHandlerTest, EnterSubmitsRegardlessOfFocusedElement) {
     bb::unsubscribe(h);
 }
 
+TEST_F(InstalledHandlerTest, EnterSubmitsFromBetGroupFocus) {
+    // The Module 5 submit-all override fires from ANY focus state -- including the
+    // bet-size group (a non-text stop), not just a text box. Enter is the sole
+    // Game-context Enter handler, so it submits without a focused-element gate.
+    bool fired = false;
+    const bb::SubscriberHandle h = bb::subscribe_answers_submitted(
+        [&](const bb::AnswersSubmittedEvent&) { fired = true; }, "test");
+
+    enter_game(pure_bluff_state());
+    bb::snap_focus_to(it::kFocusBetSizeGroup);  // outline on the bet group
+    bb::dispatch_key_event(key(bb::KeyCode::Enter));
+
+    EXPECT_TRUE(fired);
+    EXPECT_TRUE(runtime_.state.last_result.has_value());
+    bb::unsubscribe(h);
+}
+
 TEST_F(InstalledHandlerTest, ScenarioSpawnedResetsAndRespawnsInputs) {
     enter_game(caller_state());
     set_box(runtime_.state, eng::InputId::PotOdds, std::nullopt, "99");  // stale entry
@@ -183,6 +203,34 @@ TEST_F(InstalledHandlerTest, ScenarioSpawnedResetsAndRespawnsInputs) {
     }
     EXPECT_FALSE(runtime_.state.bet_group.selected.has_value());
     EXPECT_FALSE(runtime_.state.last_result.has_value());
+}
+
+TEST_F(InstalledHandlerTest, ScenarioSpawnedReadsAuthoritativeStateFromBridge) {
+    // The bridge holds a stored ScenarioState carrying a sentinel pot-odds value
+    // (99.0) that no generated Caller produces (generation keeps pot odds in
+    // 20-44%). On scenario_spawned for that id, Z09 must read the stored state,
+    // not regenerate from the seed.
+    eng::ScenarioState stored{};
+    stored.id = eng::ScenarioId{777};
+    stored.type = eng::ScenarioType::Caller;
+    stored.caller_pot_odds_pct = 99.0;
+    bridge::set_active_scenario(stored);
+
+    bb::fire_scenario_spawned(bb::ScenarioSpawnedEvent{eng::ScenarioId{777}});
+
+    ASSERT_TRUE(runtime_.state.scenario.has_value());
+    EXPECT_EQ(runtime_.state.scenario->id, eng::ScenarioId{777});
+    EXPECT_DOUBLE_EQ(runtime_.state.scenario->caller_pot_odds_pct, 99.0);  // read, not regenerated
+}
+
+TEST_F(InstalledHandlerTest, ScenarioSpawnedFallsBackToRegenerationWhenStoreEmpty) {
+    // No stored scenario for this id (store cleared in SetUp): Z09 falls back to a
+    // seed regeneration so the zone stays self-contained for the shared-scenario
+    // path and direct-bus tests.
+    bb::fire_scenario_spawned(bb::ScenarioSpawnedEvent{eng::ScenarioId{54321}});
+    ASSERT_TRUE(runtime_.state.scenario.has_value());
+    EXPECT_EQ(runtime_.state.scenario->id, eng::ScenarioId{54321});
+    EXPECT_FALSE(runtime_.state.boxes.empty());
 }
 
 TEST_F(InstalledHandlerTest, TutorialSuppressesEnterUntilAllInputsFilled) {

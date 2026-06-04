@@ -173,6 +173,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     add_library(bridge STATIC
         src/bridge/screen_dispatch.cpp
         src/bridge/game_launch.cpp
+        src/bridge/input_routing.cpp
         src/bridge/canvas_sizing.cpp
         src/bridge/shared_scenario.cpp
         src/bridge/loading_screen.cpp
@@ -444,6 +445,7 @@ if(ENABLE_TESTS)
         tests/bridge/shared_scenario_test.cpp
         tests/bridge/game_launch_test.cpp
         tests/bridge/screen_dispatch_test.cpp
+        tests/bridge/input_routing_test.cpp
     )
     target_include_directories(bridge_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src

@@ -2,6 +2,7 @@
 
 #include "bridge/bridge_runtime.hpp"
 #include "bridge/cdn_fetch.hpp"
+#include "bridge/game_launch.hpp"
 #include "bridge/idbfs_backend.hpp"
 #include "bridge/main_loop.hpp"
 #include "bridge/persistent_weights_store.hpp"
@@ -10,6 +11,10 @@
 #include "bridge/shared_scenario.hpp"
 
 #include "screens/screen_registration.hpp"
+
+#include "math/interrogator.hpp"
+
+#include "settings/settings.hpp"
 
 #include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
@@ -49,6 +54,12 @@ struct BootState {
     std::optional<persistence::IdbfsStore> store;
     std::optional<PersistentCustomWeightsStore> weights_store;
     screens::ScreensRuntime screens;
+    // The app's live settings snapshot (the one source the scenario generator
+    // reads), and the Zone 09 runtime (math inputs + grading) install reads from
+    // it. SEAM(Z12): runtime settings mutation lands with the Settings page (W4);
+    // until then this is the boot-time snapshot built from persisted state.
+    settings::Settings live_settings;
+    interrogator::InterrogatorRuntime interrogator;
 };
 BootState g_boot;
 
@@ -129,6 +140,27 @@ void finish_boot_after_persistence() {
     // Zone 07 self-registers its real Root / Mode Selection renders + handlers,
     // replacing the blank default in the dispatch registry.
     screens::install_screens(g_boot.screens, *g_boot.weights_store);
+
+    // Build the app's live settings from persisted state. Until Zone 12 (W4) ships
+    // the full settings serializer, only the theme id and the Custom split
+    // round-trip (the interim codec); the rest are the documented Settings{}
+    // defaults. This single snapshot is what the scenario generator reads, both at
+    // launch and in Z09's fallback — one source of truth for settings.
+    g_boot.live_settings = settings::Settings{};
+    g_boot.live_settings.display.active_theme_id = read_persisted_theme_id(state);
+    if (const auto custom = read_persisted_custom_weights(state)) {
+        g_boot.live_settings.gameplay.custom_aggressor_weight = custom->aggressor_weight;
+        g_boot.live_settings.gameplay.custom_caller_weight = custom->caller_weight;
+    }
+    const auto live_settings_source = [] { return g_boot.live_settings; };
+
+    // Wire the LIVE settings into the launch path (scenario generation) and into
+    // Zone 09 (its fallback regeneration), then install Zone 09: its Game-screen
+    // render hook, the Enter-submit + number-key handlers, and the scenario_spawned
+    // reset subscription. The math inputs are now live on the Game screen.
+    set_launch_settings_source(live_settings_source);
+    g_boot.interrogator.settings_source = live_settings_source;
+    interrogator::install_interrogator(g_boot.interrogator);
 
     start_main_loop();
 }

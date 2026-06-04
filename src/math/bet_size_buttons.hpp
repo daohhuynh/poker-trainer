@@ -26,10 +26,17 @@ namespace poker_trainer::interrogator {
 // focus, so the caller treats 5/6 as no-ops there -- handled in keybinds.cpp.
 bool select_bet_tier_by_digit(BetSizeGroup& group, int digit) noexcept;
 
+// Mouse click on a bet-size button: select `tier` (identical to the 1-4 keys) and
+// move the focus_manager outline onto the group, activating keyboard mode. This
+// is the previously-missing mouse->select path; the render loop calls it when a
+// button reports a click, giving clicks the same visual feedback as the keys.
+void select_bet_tier_on_click(BetSizeGroup& group, engine::BetTier tier) noexcept;
+
 // Render the four-button bet-size row for `group` (no-op when not present).
 // Selected button fills with accent_primary; when the group holds focus a 2px
 // border_focus outline is drawn around the whole row's bounding box (not any
-// single button), per Notes -- Keyboard Focus Behavior. Render-only; untested.
-void render_bet_size_group(const BetSizeGroup& group);
+// single button), per Notes -- Keyboard Focus Behavior. A button click selects
+// its tier (select_bet_tier_on_click). Render-only; untested.
+void render_bet_size_group(BetSizeGroup& group);
 
 }  // namespace poker_trainer::interrogator

@@ -120,3 +120,36 @@ TEST_F(FocusListTest, CloseCustomPopupClearsOpenAndPopsFocus) {
     EXPECT_EQ(bb::context_depth(), 0u);
     EXPECT_EQ(focused(), sc::kFocusStandard.value);  // focus restored to the screen
 }
+
+// ----- Keyboard activation (Space / Enter) classifiers (pure) -----
+//
+// The installed Space/Enter handlers (root.activate / mode.activate) map the
+// focused element to the action a click performs; these test that pure mapping.
+// The handler wiring itself (router dispatch -> side effects) is verified in the
+// browser, per CLAUDE.md sec.9 (UI behavior is not unit-tested).
+
+TEST(KeyboardActivation, RootOnlyPlayActivatesMorph) {
+    EXPECT_TRUE(sc::root_focus_activates_morph(sc::kFocusRootPlay));
+    EXPECT_FALSE(sc::root_focus_activates_morph(sc::kFocusRootSettings));
+    EXPECT_FALSE(sc::root_focus_activates_morph(sc::kFocusRootShop));
+    EXPECT_FALSE(sc::root_focus_activates_morph(sc::kFocusRootHelp));
+    EXPECT_FALSE(sc::root_focus_activates_morph(sc::kFocusRootHome));
+    EXPECT_FALSE(sc::root_focus_activates_morph(bb::kNoFocus));  // nothing focused
+}
+
+TEST(KeyboardActivation, ModeFocusMapsToClickAction) {
+    EXPECT_EQ(sc::mode_activation_for_focus(sc::kFocusStandard),
+              sc::ModeActivation::LaunchStandard);
+    EXPECT_EQ(sc::mode_activation_for_focus(sc::kFocusAggressorButton),
+              sc::ModeActivation::LaunchAggressor);
+    EXPECT_EQ(sc::mode_activation_for_focus(sc::kFocusCallerButton),
+              sc::ModeActivation::LaunchCaller);
+    EXPECT_EQ(sc::mode_activation_for_focus(sc::kFocusCustomButton),
+              sc::ModeActivation::OpenCustomPopup);
+    EXPECT_EQ(sc::mode_activation_for_focus(sc::kFocusModeHome), sc::ModeActivation::ReturnToRoot);
+    // The persistent cluster (Shop/Help/Settings) is a Z11 seam -> no-op activation.
+    EXPECT_EQ(sc::mode_activation_for_focus(sc::kFocusModeShop), sc::ModeActivation::None);
+    EXPECT_EQ(sc::mode_activation_for_focus(sc::kFocusModeHelp), sc::ModeActivation::None);
+    EXPECT_EQ(sc::mode_activation_for_focus(sc::kFocusModeSettings), sc::ModeActivation::None);
+    EXPECT_EQ(sc::mode_activation_for_focus(bb::kNoFocus), sc::ModeActivation::None);
+}

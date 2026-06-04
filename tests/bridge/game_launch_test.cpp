@@ -1,6 +1,8 @@
 #include "bridge/game_launch.hpp"
 
 #include "backbone/game_mode.hpp"
+#include "backbone/scenario_events.hpp"
+#include "backbone/screen_state.hpp"
 #include "engine/generator.hpp"
 #include "engine/rng_seed.hpp"
 #include "engine/scenario.hpp"
@@ -13,6 +15,7 @@
 namespace br = poker_trainer::bridge;
 namespace bb = poker_trainer::backbone;
 namespace eng = poker_trainer::engine;
+namespace st = poker_trainer::settings;
 
 namespace {
 constexpr int kDraws = 2000;
@@ -103,4 +106,76 @@ TEST(RejectLoop, CustomAllCallerWeightNeverDrawsAggressor) {
             br::select_scenario_id(bb::GameMode::Custom, cfg, rng);
         EXPECT_EQ(eng::peek_type(id), eng::ScenarioType::Caller);
     }
+}
+
+// ----- request_game_launch: generate -> store -> fire scenario_spawned -----
+
+class LaunchTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        bb::reset_screen_state_for_testing();
+        bb::reset_scenario_events_for_testing();
+        br::reset_game_launch_for_testing();
+    }
+    void TearDown() override {
+        bb::reset_screen_state_for_testing();
+        bb::reset_scenario_events_for_testing();
+        br::reset_game_launch_for_testing();
+    }
+};
+
+TEST_F(LaunchTest, StoresActiveScenarioAndFiresSpawnedThenEntersGame) {
+    bool fired = false;
+    eng::ScenarioId fired_id{};
+    const bb::SubscriberHandle h = bb::subscribe_scenario_spawned(
+        [&](const bb::ScenarioSpawnedEvent& ev) {
+            fired = true;
+            fired_id = ev.scenario_id;
+        },
+        "test");
+
+    EXPECT_EQ(br::active_scenario(), nullptr);  // nothing launched yet
+    br::request_game_launch(bb::GameMode::Caller, std::nullopt);
+
+    // The single authoritative state exists, is a Caller (the launched mode), and
+    // its id agrees with the screen state and the fired event — one id, one state.
+    const eng::ScenarioState* active = br::active_scenario();
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->type, eng::ScenarioType::Caller);
+
+    const bb::ScreenStateSnapshot snap = bb::read_screen_state();
+    EXPECT_EQ(snap.current, bb::ScreenId::Game);
+    ASSERT_TRUE(snap.active_scenario.has_value());
+    EXPECT_EQ(*snap.active_scenario, active->id);
+
+    EXPECT_TRUE(fired);
+    EXPECT_EQ(fired_id, active->id);
+    bb::unsubscribe(h);
+}
+
+TEST_F(LaunchTest, LaunchSettingsSourceFeedsGeneration) {
+    // The bet-sizing toggle (a generation input) flows through the injected
+    // settings source: off -> the Aggressor scenario is single-tier.
+    br::set_launch_settings_source([] {
+        st::Settings s{};
+        s.gameplay.bet_sizing_engine_enabled = false;
+        return s;
+    });
+    br::request_game_launch(bb::GameMode::Aggressor, std::nullopt);
+    const eng::ScenarioState* active = br::active_scenario();
+    ASSERT_NE(active, nullptr);
+    EXPECT_TRUE(eng::is_aggressor(active->type));
+    EXPECT_FALSE(active->multi_tier);  // proves the injected settings reached generate_scenario
+}
+
+TEST_F(LaunchTest, SetActiveScenarioRoundTrips) {
+    eng::ScenarioState s{};
+    s.id = eng::ScenarioId{321};
+    s.type = eng::ScenarioType::Caller;
+    s.caller_pot_odds_pct = 99.0;  // a sentinel no generated Caller produces
+    br::set_active_scenario(s);
+    const eng::ScenarioState* active = br::active_scenario();
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->id, eng::ScenarioId{321});
+    EXPECT_DOUBLE_EQ(active->caller_pot_odds_pct, 99.0);
 }

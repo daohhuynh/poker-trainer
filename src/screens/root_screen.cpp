@@ -121,6 +121,30 @@ void install_root_handlers(animations::MorphController& morph) {
         },
         backbone::HandlerPriority::ScreenContext, "root.escape");
 
+    // Keyboard activation: Space (and Enter, on this non-Game screen) activates the
+    // focused element, the same as clicking it. Only Play has an action (start the
+    // morph); other focused elements are Z11/Z05 seams, so the key is left
+    // unconsumed for them (a no-op, matching their click behavior today). The
+    // platform's WantCaptureKeyboard gate already ensures Space/Enter only reach the
+    // router when no text field is capturing — and Root has no text fields anyway.
+    backbone::register_key_handler(
+        [] { return backbone::read_screen_state().current == backbone::ScreenId::Root; },
+        [&morph](const backbone::KeyEvent& e) {
+            if (e.type != backbone::KeyEventType::KeyDown) {
+                return false;
+            }
+            if (e.code != backbone::KeyCode::Space && e.code != backbone::KeyCode::Enter) {
+                return false;
+            }
+            if (!backbone::is_keyboard_mode_active() ||
+                !root_focus_activates_morph(backbone::get_focused_element())) {
+                return false;  // nothing focused, or a focused seam element: no-op
+            }
+            morph.start(backbone::total_ms_since_app_start());  // identical to a Play click
+            return true;
+        },
+        backbone::HandlerPriority::ScreenContext, "root.activate");
+
     // Click routing. Play starts the morph (on the caller-owned controller);
     // Settings/Shop/Help open their modals (Zone 11 seam); Home reloads the page
     // (Zone 05 / window.location.reload seam).

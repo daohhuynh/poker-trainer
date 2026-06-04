@@ -102,13 +102,26 @@ PassState compute_pass(const engine::GradingResult& result, bool within_target_t
 
 engine::GradingResult on_submit(InterrogatorRuntime& runtime) {
     InterrogatorState& state = runtime.state;
-    if (state.scenario.has_value()) {
-        // Z09 fires AnswersSubmitted (the submission gesture). GradingComplete is
-        // fired by the transition layer once Z10 supplies elapsed_ms -- SEAM(Z10).
-        backbone::fire_answers_submitted(
-            backbone::AnswersSubmittedEvent{state.scenario->id});
+    if (!state.scenario.has_value()) {
+        return grade(state);  // no active scenario: empty result, no bus events
     }
-    return grade(state);
+    const engine::ScenarioId id = state.scenario->id;
+
+    // AnswersSubmitted fires first (the submission gesture, before grading runs).
+    backbone::fire_answers_submitted(backbone::AnswersSubmittedEvent{id});
+
+    const engine::GradingResult result = grade(state);
+
+    // GradingComplete fires once the True Evaluator has produced the result. Z09
+    // is the firer: it owns the evaluate() call, holds the GradingResult, and owns
+    // the single SEAM(Z10) elapsed-time injection point (see the report's firer
+    // decision). `passed` carries the math verdict (is_pass); consumers combine it
+    // with elapsed_ms (against the target time) for the time-aware overall pass.
+    const std::uint32_t elapsed_ms =
+        runtime.elapsed_ms_source ? runtime.elapsed_ms_source() : 0U;  // SEAM(Z10)
+    backbone::fire_grading_complete(
+        backbone::GradingCompleteEvent{id, engine::is_pass(result), elapsed_ms});
+    return result;
 }
 
 }  // namespace poker_trainer::interrogator

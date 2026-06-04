@@ -30,9 +30,12 @@ inline constexpr FocusableId kInvalidFocusableId{0};
 // or when a context has no focusable elements.
 inline constexpr FocusableId kNoFocus{0};
 
-// Read the currently focused element. Returns kNoFocus when keyboard
-// mode is inactive or no element is focused. The event router consults
-// this to route enter-key activation to the focused element.
+// Read the currently focused element. Returns kNoFocus when keyboard mode is
+// inactive, the active context has no focusables, OR the active context is not
+// yet armed (a freshly registered screen context starts unarmed — nothing is
+// focused until the first Tab/digit/click into it; see register_focus_list and
+// advance_focus). The event router consults this to route enter/space activation
+// to the focused element, and rendering consults it to draw the focus indicator.
 [[nodiscard]] FocusableId get_focused_element() noexcept;
 
 // Returns true if keyboard navigation mode is currently active.
@@ -47,27 +50,34 @@ inline constexpr FocusableId kNoFocus{0};
 // no-ops.
 void activate_keyboard_mode() noexcept;
 
-// Snap focus to a specific element. Used when entering a new screen
-// or modal to set the initial focus, and when arrow keys move focus
-// within a bounded group (like the bet size tier buttons or a
-// coupled-slider group).
+// Snap focus to a specific element. Used by the digit-focus keys (1-6), mouse
+// clicks on a focusable, and arrow-key movement within a bounded group (bet size
+// tiers, coupled-slider group). Arms the active context AND activates keyboard
+// mode, so the focused element shows immediately (both gates set, not just armed).
+// A target not in the active list is a silent no-op (context stays as it was).
 void snap_focus_to(FocusableId target) noexcept;
 
-// Advance focus to the next element in the current context. Wraps
-// to the first element when called past the last. Called by Z05's
-// Tab handler.
+// Advance focus to the next element in the current context. The FIRST advance
+// into a freshly registered (relocked) context arms it and lands on the first
+// element (or the last, when reverse) WITHOUT advancing past it — so the first
+// Tab on a screen lands on item 1, not item 2. Subsequent advances move one step
+// and wrap at the list boundaries. Always activates keyboard mode. Called by
+// Z05's Tab handler.
 void advance_focus(bool reverse) noexcept;
 
-// Register a focus list for the given screen. Replaces the existing
-// active list (used at screen transitions). The order of the span
-// determines Tab order. `screen_id` identifies the screen the list
-// belongs to.
+// Register a focus list for the given screen. Replaces the existing active list
+// and RELOCKS the context (marks it unarmed): the screen starts with nothing
+// focused until the first Tab/digit/click arms it. Called once per screen entry
+// (not per frame). The order of the span determines Tab order. `screen_id`
+// identifies the screen the list belongs to.
 void register_focus_list(ScreenId screen_id,
                          std::span<const FocusableId> focusables) noexcept;
 
-// Push a new focus context onto the stack. Used when a modal opens.
-// The current focus is saved; the new context starts with the
-// provided focusables and the provided initial focus.
+// Push a new focus context onto the stack. Used when a modal opens. The current
+// focus is saved; the new context starts with the provided focusables and the
+// provided initial focus, ARMED — a modal focus trap presents its initial focus
+// immediately (no priming Tab). Popping restores the prior context with its prior
+// armed state intact.
 //
 // The `tag` parameter is a human-readable string for debugging.
 void push_focus_context(std::span<const FocusableId> focusables,

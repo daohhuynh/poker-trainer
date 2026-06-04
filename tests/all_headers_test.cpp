@@ -583,8 +583,13 @@ static void test_focus_manager() {
     constexpr auto kC = pt::backbone::make_focusable_id("test.c");
 
     const pt::backbone::FocusableId base_list[] = {kA, kB, kC};
-    // register_focus_list() now takes the owning ScreenId (B4).
+    // register_focus_list() takes the owning ScreenId (B4) and RELOCKS the
+    // context: nothing is focused until the first navigation, even with keyboard
+    // mode already active (the per-context armed latch).
     pt::backbone::register_focus_list(pt::backbone::ScreenId::Root, base_list);
+    assert(pt::backbone::get_focused_element() == pt::backbone::kNoFocus);
+
+    pt::backbone::advance_focus(false);  // first Tab arms + lands on item 1 (kA)
     assert(pt::backbone::get_focused_element() == kA);
 
     pt::backbone::advance_focus(false);  // forward

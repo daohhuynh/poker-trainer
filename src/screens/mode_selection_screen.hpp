@@ -95,6 +95,31 @@ inline void register_mode_selection_focus_list() noexcept {
     backbone::register_focus_list(backbone::ScreenId::ModeSelection, kModeSelectionFocusOrder);
 }
 
+// ----- Keyboard activation (Space / Enter) ------------------------------------
+//
+// Space (and Enter, on this non-Game screen) activates the focused element, the
+// same as a click. This classifies the focused id into the action a click would
+// perform; the installed handler applies it. The cluster slots (Shop/Help/
+// Settings) are Z11 seams -> None (no-op, as clicking them is today). Pure (no
+// ImGui / router / launch), so it is unit-tested directly.
+enum class ModeActivation : std::uint8_t {
+    None,            // nothing focused, or a Z11 cluster seam slot
+    LaunchStandard,
+    LaunchAggressor,
+    LaunchCaller,
+    OpenCustomPopup,
+    ReturnToRoot,    // Home
+};
+
+[[nodiscard]] constexpr ModeActivation mode_activation_for_focus(backbone::FocusableId id) noexcept {
+    if (id == kFocusStandard) return ModeActivation::LaunchStandard;
+    if (id == kFocusAggressorButton) return ModeActivation::LaunchAggressor;
+    if (id == kFocusCallerButton) return ModeActivation::LaunchCaller;
+    if (id == kFocusCustomButton) return ModeActivation::OpenCustomPopup;
+    if (id == kFocusModeHome) return ModeActivation::ReturnToRoot;
+    return ModeActivation::None;  // Shop / Help / Settings -> Z11 seam
+}
+
 // ----- Render + handler wiring -------------------------------------------------
 
 // ZONES.md export. Draws the Mode Selection body (STANDARD + Aggressor/Caller/

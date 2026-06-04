@@ -20,7 +20,7 @@ class FocusManagerTest : public ::testing::Test {
     void TearDown() override { bb::reset_focus_manager_for_testing(); }
 };
 
-TEST_F(FocusManagerTest, NoFocusUntilKeyboardModeActive) {
+TEST_F(FocusManagerTest, NoFocusUntilKeyboardModeActiveAndArmed) {
     const std::array<bb::FocusableId, 3> list{kA, kB, kC};
     bb::register_focus_list(bb::ScreenId::Root, list);
     // Keyboard mode inactive -> the indicator is suppressed (kNoFocus) even
@@ -28,9 +28,15 @@ TEST_F(FocusManagerTest, NoFocusUntilKeyboardModeActive) {
     EXPECT_FALSE(bb::is_keyboard_mode_active());
     EXPECT_EQ(bb::get_focused_element(), bb::kNoFocus);
 
+    // Activating keyboard mode is NOT enough: a freshly registered context is
+    // unarmed (relocked), so nothing is focused until the first navigation in.
     bb::activate_keyboard_mode();
     EXPECT_TRUE(bb::is_keyboard_mode_active());
-    EXPECT_EQ(bb::get_focused_element(), kA);  // pointer defaults to 0
+    EXPECT_EQ(bb::get_focused_element(), bb::kNoFocus);
+
+    // The first Tab arms the context and lands on item 1 (kA), not item 2.
+    bb::advance_focus(/*reverse=*/false);
+    EXPECT_EQ(bb::get_focused_element(), kA);
 }
 
 TEST_F(FocusManagerTest, AdvanceWrapsForwardAndBackward) {
@@ -38,8 +44,9 @@ TEST_F(FocusManagerTest, AdvanceWrapsForwardAndBackward) {
     bb::register_focus_list(bb::ScreenId::Root, list);
     bb::activate_keyboard_mode();
 
+    bb::advance_focus(/*reverse=*/false);  // first advance arms + lands on kA
     EXPECT_EQ(bb::get_focused_element(), kA);
-    bb::advance_focus(/*reverse=*/false);
+    bb::advance_focus(false);
     EXPECT_EQ(bb::get_focused_element(), kB);
     bb::advance_focus(false);
     EXPECT_EQ(bb::get_focused_element(), kC);
@@ -52,11 +59,37 @@ TEST_F(FocusManagerTest, AdvanceWrapsForwardAndBackward) {
     EXPECT_EQ(bb::get_focused_element(), kB);
 }
 
+TEST_F(FocusManagerTest, FirstReverseTabArmsToLastElement) {
+    const std::array<bb::FocusableId, 3> list{kA, kB, kC};
+    bb::register_focus_list(bb::ScreenId::Root, list);
+    bb::activate_keyboard_mode();
+    EXPECT_EQ(bb::get_focused_element(), bb::kNoFocus);  // unarmed
+    bb::advance_focus(/*reverse=*/true);  // first nav is Shift-Tab -> last element
+    EXPECT_EQ(bb::get_focused_element(), kC);
+}
+
+TEST_F(FocusManagerTest, RegisterRelocksTheContext) {
+    const std::array<bb::FocusableId, 3> list{kA, kB, kC};
+    bb::register_focus_list(bb::ScreenId::Root, list);
+    bb::snap_focus_to(kB);
+    EXPECT_EQ(bb::get_focused_element(), kB);
+    // Re-registering (screen re-entry) relocks: nothing focused until the next
+    // navigation, even though keyboard mode stays active for the session.
+    bb::register_focus_list(bb::ScreenId::Root, list);
+    EXPECT_TRUE(bb::is_keyboard_mode_active());
+    EXPECT_EQ(bb::get_focused_element(), bb::kNoFocus);
+    bb::advance_focus(false);
+    EXPECT_EQ(bb::get_focused_element(), kA);  // first Tab -> item 1 again
+}
+
 TEST_F(FocusManagerTest, SnapFocusSetsPointerAndActivatesKeyboardMode) {
     const std::array<bb::FocusableId, 3> list{kA, kB, kC};
     bb::register_focus_list(bb::ScreenId::Root, list);
-    // snap_focus_to also activates keyboard mode (mouse-click path).
+    // snap_focus_to (digit-focus 1-6 / mouse-click path) arms the context AND
+    // activates keyboard mode, so the focus outline shows immediately with no
+    // priming Tab. Verifies the indicator needs keyboard_mode, not just armed.
     EXPECT_FALSE(bb::is_keyboard_mode_active());
+    EXPECT_EQ(bb::get_focused_element(), bb::kNoFocus);  // unarmed before snap
     bb::snap_focus_to(kC);
     EXPECT_TRUE(bb::is_keyboard_mode_active());
     EXPECT_EQ(bb::get_focused_element(), kC);
@@ -94,7 +127,7 @@ TEST_F(FocusManagerTest, PushAndPopContextRestoresPointer) {
 TEST_F(FocusManagerTest, PopAtBaseContextIsNoOp) {
     const std::array<bb::FocusableId, 3> base{kA, kB, kC};
     bb::register_focus_list(bb::ScreenId::Root, base);
-    bb::activate_keyboard_mode();
+    bb::snap_focus_to(kA);  // arm the base context (+ activate keyboard mode)
     bb::pop_focus_context();  // nothing pushed; must not crash or change state
     EXPECT_EQ(bb::context_depth(), 0u);
     EXPECT_EQ(bb::get_focused_element(), kA);

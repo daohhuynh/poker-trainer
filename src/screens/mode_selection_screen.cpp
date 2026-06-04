@@ -55,6 +55,16 @@ void render_cluster(ImDrawList* dl, const animations::Canvas& canvas) {
                         focus_on(kFocusModeHome));
 }
 
+// Open the Custom configuration popup, seeded with the last-saved split (or 50/50
+// if Save has never run). Shared by the Custom button's click and its keyboard
+// activation so both open it identically (no copy-paste of the open sequence).
+void open_custom_popup_for(CustomPopupState& popup, const CustomWeightsStore& store) {
+    popup.weights = reset_weights(store.load());
+    popup.open = true;
+    popup.just_opened = true;  // suppress same-frame click-outside dismiss (B1)
+    static_cast<void>(open_custom_popup());  // push the modal focus trap
+}
+
 }  // namespace
 
 void emit_launch(const LaunchRequest& request) {
@@ -106,6 +116,50 @@ void install_mode_selection_handlers(CustomPopupState& popup, const CustomWeight
         },
         backbone::HandlerPriority::ScreenContext, "mode.escape");
 
+    // Keyboard activation: Space (and Enter, on this non-Game screen) activates the
+    // focused element, the same as clicking it — STANDARD/Aggressor/Caller launch,
+    // Custom opens the popup, Home returns to Root. Cluster slots are a Z11 seam
+    // (None -> unconsumed no-op). Gated identically to the click/escape handlers
+    // (suppressed while the popup is open). The platform's WantCaptureKeyboard gate
+    // ensures these keys only reach the router when no text field is capturing.
+    backbone::register_key_handler(
+        [&popup] {
+            return !popup.open &&
+                   backbone::read_screen_state().current == backbone::ScreenId::ModeSelection;
+        },
+        [&popup, &store](const backbone::KeyEvent& e) {
+            if (e.type != backbone::KeyEventType::KeyDown) {
+                return false;
+            }
+            if (e.code != backbone::KeyCode::Space && e.code != backbone::KeyCode::Enter) {
+                return false;
+            }
+            if (!backbone::is_keyboard_mode_active()) {
+                return false;  // nothing focused yet
+            }
+            switch (mode_activation_for_focus(backbone::get_focused_element())) {
+                case ModeActivation::LaunchStandard:
+                    emit_launch(launch_request_for_standard());
+                    return true;
+                case ModeActivation::LaunchAggressor:
+                    emit_launch(launch_request_for_aggressor());
+                    return true;
+                case ModeActivation::LaunchCaller:
+                    emit_launch(launch_request_for_caller());
+                    return true;
+                case ModeActivation::OpenCustomPopup:
+                    open_custom_popup_for(popup, store);
+                    return true;
+                case ModeActivation::ReturnToRoot:
+                    on_mode_selection_escape();
+                    return true;
+                case ModeActivation::None:
+                    return false;  // Z11 cluster seam: leave the key unconsumed
+            }
+            return false;
+        },
+        backbone::HandlerPriority::ScreenContext, "mode.activate");
+
     // Click routing for the four launch paths + Custom popup open. Suppressed
     // while the popup is open so clicks on the modal never reach the screen
     // beneath it (Zone 11's modal infra refines this arbitration later).
@@ -132,12 +186,8 @@ void install_mode_selection_handlers(CustomPopupState& popup, const CustomWeight
                 return true;
             }
             if (point_in_rect(e.x, e.y, animations::mode_middle_button_rect(2, canvas))) {
-                // Custom does NOT launch; it opens the configuration popup, seeded
-                // with the last-saved split (or 50/50 if Save has never run).
-                popup.weights = reset_weights(store.load());
-                popup.open = true;
-                popup.just_opened = true;  // suppress same-frame click-outside dismiss (B1)
-                static_cast<void>(open_custom_popup());  // push the modal focus trap
+                // Custom does NOT launch; it opens the configuration popup.
+                open_custom_popup_for(popup, store);
                 return true;
             }
             // Persistent top-right cluster. Hit-tested at the exact rects

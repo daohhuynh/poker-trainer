@@ -34,6 +34,12 @@ bool select_bet_tier_by_digit(BetSizeGroup& group, int digit) noexcept {
     return true;
 }
 
+void select_bet_tier_on_click(BetSizeGroup& group, engine::BetTier tier) noexcept {
+    group.selected = tier;
+    backbone::activate_keyboard_mode();
+    backbone::snap_focus_to(group.focus_id);
+}
+
 // ===== Render (Module 5) — not unit-tested (CLAUDE.md sec.9) =====
 
 namespace {
@@ -51,7 +57,7 @@ constexpr std::array<const char*, engine::kBetTierCount> kTierLabels = {
 
 }  // namespace
 
-void render_bet_size_group(const BetSizeGroup& group) {
+void render_bet_size_group(BetSizeGroup& group) {
     if (!group.present) {
         return;
     }
@@ -64,13 +70,30 @@ void render_bet_size_group(const BetSizeGroup& group) {
         }
         const auto tier = static_cast<engine::BetTier>(static_cast<std::uint8_t>(i));
         const bool selected = group.selected.has_value() && *group.selected == tier;
-        // Selected button fills with accent_primary; others use the default button
-        // fill. (Mouse-click selection is wired by the event-router handler.)
-        const theme::ColorToken fill =
-            selected ? theme::ColorToken::AccentPrimary : theme::ColorToken::ButtonBg;
-        ImGui::PushStyleColor(ImGuiCol_Button, theme::get_color(fill));
-        ImGui::Button(kTierLabels[i]);
-        ImGui::PopStyleColor();
+        // Selected button fills with accent_primary across all three button states
+        // (so the highlight persists on hover, not just at rest) and overrides the
+        // label to bg_primary -- a dark, high-contrast token in every theme. The
+        // default text_button (a near-white cream) is illegible on the bright
+        // amber-gold / sage / ocean accents; ARCHITECTURE specifies the accent fill
+        // for the selected button but is silent on its label color, so the
+        // contrasting text token is chosen here (no literal colors). A click
+        // selects the tier with the same feedback as keys 1-4 and moves the focus
+        // outline onto the group.
+        int pushed = 1;
+        if (selected) {
+            const ImVec4 accent = theme::get_color(theme::ColorToken::AccentPrimary);
+            ImGui::PushStyleColor(ImGuiCol_Button, accent);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, accent);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, accent);
+            ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::BgPrimary));
+            pushed = 4;
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, theme::get_color(theme::ColorToken::ButtonBg));
+        }
+        if (ImGui::Button(kTierLabels[i])) {
+            select_bet_tier_on_click(group, tier);
+        }
+        ImGui::PopStyleColor(pushed);
     }
     const ImVec2 row_max = ImGui::GetItemRectMax();
 

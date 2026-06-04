@@ -2,8 +2,11 @@
 
 #include "backbone/game_mode.hpp"
 #include "engine/rng_seed.hpp"
+#include "engine/scenario.hpp"
 #include "engine/scenario_id.hpp"
+#include "settings/settings.hpp"
 
+#include <functional>
 #include <optional>
 
 // The mode -> scenario-id seam (the master ID stream + reject loop).
@@ -43,9 +46,39 @@ inline constexpr int kMaxSelectAttempts = 4096;
     engine::RngEngine& rng) noexcept;
 
 // Launch a game in the given mode: select a matching scenario id from the master
-// stream and transition the screen state toward Game with that id. Custom mode
-// honors the supplied split weights.
+// stream, generate the ScenarioState once (with the live settings), store it as
+// the single authoritative active scenario, fire scenario_spawned, then transition
+// the screen state toward Game with that id. Custom mode honors the supplied split
+// weights.
 void request_game_launch(backbone::GameMode mode,
                          std::optional<backbone::CustomConfig> custom);
+
+// ----- Live-settings source (the launch's generation input) -----
+
+// Inject the app's live-settings provider, used by request_game_launch to
+// generate the scenario. Boot wires this to the same provider it injects into
+// Zone 09 (InterrogatorRuntime::settings_source) so both read one source of
+// truth for settings. Unset -> Settings{} defaults (keeps the pure bridge lib
+// self-contained for tests).
+void set_launch_settings_source(std::function<settings::Settings()> source);
+
+// ----- Single authoritative active scenario -----
+//
+// The active ScenarioState is generated exactly once at launch and stored here.
+// Every consumer (Z08 render, Z09 grading, Z13 recap) reads it instead of
+// regenerating from the seed, so the whole app shares one state under one set of
+// settings (the ScenarioSpawned bus event carries only the id; the full state
+// lives here).
+
+// The authoritative active ScenarioState, or nullptr when none has been launched.
+[[nodiscard]] const engine::ScenarioState* active_scenario() noexcept;
+
+// Replace the authoritative active scenario. Called by request_game_launch (and
+// any future transition/replay path that produces a fresh state); also used by
+// tests that drive consumers without going through the full launch.
+void set_active_scenario(const engine::ScenarioState& scenario);
+
+// Clear the active scenario + the injected settings source. Used by tests.
+void reset_game_launch_for_testing() noexcept;
 
 }  // namespace poker_trainer::bridge

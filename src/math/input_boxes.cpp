@@ -13,6 +13,7 @@
 #include <system_error>
 
 #include <imgui.h>
+#include <imgui_internal.h>  // ImGui::ClearActiveID -- release an active InputText
 
 #include "theme/theme_tokens.hpp"
 
@@ -168,6 +169,9 @@ void configure_for_scenario(InterrogatorState& state, const engine::ScenarioStat
     state.last_result.reset();
     state.last_math_pass = false;
     state.focus_segment = build_focus_segment(state);
+    // New focus segment: forget the prior frame's reconciliation target so the
+    // render path re-syncs ImGui to whatever focus_manager now reports.
+    state.last_synced_focus = backbone::kNoFocus;
 }
 
 std::optional<double> parse_box_double(const NumericBox& box) noexcept {
@@ -197,14 +201,55 @@ std::optional<int> parse_box_int(const NumericBox& box) noexcept {
     return value;
 }
 
+FocusReconcile reconcile_imgui_focus(const InterrogatorState& state,
+                                     backbone::FocusableId prev,
+                                     backbone::FocusableId current) noexcept {
+    // Bet-size group (a non-text stop) holds focus -> yield ImGui keyboard capture.
+    // Decided EVERY frame the group is focused, NOT only on the change frame, so it
+    // sits ABOVE the unchanged-focus early-out below. A pending SetKeyboardFocusHere
+    // from the box the user just navigated away from is applied by ImGui *after* a
+    // one-shot ClearActiveID on the change frame -- that re-activates the box and
+    // leaves it the active InputText permanently, so digits 1-4 then type into the
+    // box instead of selecting a tier. Re-yielding each frame releases the
+    // re-activated box on the next frame and keeps WantCaptureKeyboard false. The
+    // render glue gates the actual ClearActiveID on io.WantTextInput, so a bet
+    // button mid-click (ActiveId set but WantTextInput NOT set) is never cleared.
+    if (state.bet_group.present && current == state.bet_group.focus_id) {
+        return {ImGuiFocusAction::YieldKeyboard, backbone::kNoFocus};
+    }
+    // Everything else acts only on a change: re-applying text focus every frame
+    // would trap the caret (SetKeyboardFocusHere) or fight the user's edits.
+    if (current == prev) {
+        return {ImGuiFocusAction::None, backbone::kNoFocus};
+    }
+    // Focus landed on a numeric box -> give ImGui text focus to that box so typing
+    // follows the outline (Tab / 1-6 navigation, no click required).
+    for (const NumericBox& box : state.boxes) {
+        if (box.focus_id == current) {
+            return {ImGuiFocusAction::FocusTextBox, current};
+        }
+    }
+    // Focus moved to an element Z09 does not own (a Z08/Z11 cluster stop) -- leave
+    // ImGui's keyboard state untouched. SEAM(Z08/Z11).
+    return {ImGuiFocusAction::None, backbone::kNoFocus};
+}
+
+void focus_box_on_click(const NumericBox& box) noexcept {
+    backbone::activate_keyboard_mode();
+    backbone::snap_focus_to(box.focus_id);
+}
+
 // ===== Render (Module 5 layout) — not unit-tested (CLAUDE.md sec.9) =====
 
 namespace {
 
 // Draw one labeled numeric box. The box fill uses bg_input, its border
 // border_default, the text text_input; when keyboard-focused, a 2px border_focus
-// outline overlays the standard border (Visual State — Numeric Boxes).
-void draw_numeric_box(NumericBox& box, const char* label, float box_width) {
+// outline overlays the standard border (Visual State — Numeric Boxes). When
+// `grab_focus` is set (focus_manager moved the outline onto this box via Tab /
+// 1-6 this frame), ImGui's keyboard focus is steered here so typing follows the
+// outline without a click.
+void draw_numeric_box(NumericBox& box, const char* label, float box_width, bool grab_focus) {
     ImGui::PushID(static_cast<int>(box.focus_id.value & 0x7fffffffULL));
     ImGui::TextColored(theme::get_color(theme::ColorToken::TextSecondary), "%s", label);
 
@@ -213,12 +258,24 @@ void draw_numeric_box(NumericBox& box, const char* label, float box_width) {
     ImGui::PushStyleColor(ImGuiCol_Border, theme::get_color(theme::ColorToken::BorderDefault));
     ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 1.0f);
     ImGui::SetNextItemWidth(box_width);
-    // SEAM(Z05): keyboard char events are not yet fed into ImGui IO (platform.cpp
-    // dispatches keys only to the event router), so live typing lands once that
-    // feed + a router keyboard gate (mirroring router_should_see_mouse) are wired.
-    // The buffer is Z09-owned, so grading reads the same array regardless.
+    if (grab_focus) {
+        // Steer ImGui's keyboard focus to the box the outline just landed on, so
+        // the typing target follows keyboard navigation (called only on the focus-
+        // change frame -- see reconcile_imgui_focus -- never every frame).
+        ImGui::SetKeyboardFocusHere();
+    }
+    // Live typing flows in via the platform keyboard path: DOM key events are fed
+    // to ImGui IO (platform.cpp::feed_imgui_keyboard) and the event router is gated
+    // on WantCaptureKeyboard (bridge/input_routing.hpp), so an active box receives
+    // digits / '.' / '-' here while the global number-key focus binding is
+    // suppressed. The buffer is Z09-owned, so grading reads the same array.
     ImGui::InputText("##box", box.text.data(), box.text.size(),
                      ImGuiInputTextFlags_CallbackCharFilter, &numeric_char_filter, &box);
+    // A mouse click takes ImGui text focus for free; mirror it into focus_manager
+    // so the outline jumps to the clicked box (the single focused element).
+    if (ImGui::IsItemClicked()) {
+        focus_box_on_click(box);
+    }
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(3);
 
@@ -256,6 +313,27 @@ void render_math_inputs(InterrogatorRuntime& runtime, const engine::ScenarioStat
         configure_for_scenario(state, scenario);
     }
 
+    // Reconcile ImGui's keyboard focus to focus_manager (the single focused
+    // element) on the frame focus changes. Nav (Tab / 1-6) moves focus_manager
+    // between frames; this couples ImGui to it -- a box that just gained focus
+    // grabs ImGui text focus (SetKeyboardFocusHere, in draw_numeric_box); the bet
+    // group yields ImGui keyboard capture so digits 1-4 reach its select handler.
+    const backbone::FocusableId focus_now =
+        backbone::is_keyboard_mode_active() ? backbone::get_focused_element()
+                                            : backbone::kNoFocus;
+    const FocusReconcile rec =
+        reconcile_imgui_focus(state, state.last_synced_focus, focus_now);
+    // YieldKeyboard fires every frame the bet group holds focus (see
+    // reconcile_imgui_focus). Only release ImGui's active item when a TEXT field is
+    // actually active (io.WantTextInput) -- a numeric box that the pending
+    // SetKeyboardFocusHere re-activated after the focus moved to the group. Gating
+    // on WantTextInput means a bet button being clicked (it sets ActiveId but never
+    // WantTextInput) is left alone, so its click still registers; without the gate,
+    // clearing every frame would eat the button press mid-click.
+    if (rec.action == ImGuiFocusAction::YieldKeyboard && ImGui::GetIO().WantTextInput) {
+        ImGui::ClearActiveID();  // release the lingering active box (focus -> bet group)
+    }
+
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const float box_width = vp->Size.x * 0.10f;
     // Left-middle, vertically centered (ImGui centers the window's content from
@@ -268,13 +346,23 @@ void render_math_inputs(InterrogatorRuntime& runtime, const engine::ScenarioStat
                                    ImGuiWindowFlags_AlwaysAutoResize;
     if (ImGui::Begin("##math_inputs", nullptr, flags)) {
         for (NumericBox& box : state.boxes) {
-            draw_numeric_box(box, label_for(box), box_width);
+            const bool grab = rec.action == ImGuiFocusAction::FocusTextBox &&
+                              box.focus_id == rec.target;
+            draw_numeric_box(box, label_for(box), box_width, grab);
         }
         if (state.bet_group.present) {
             render_bet_size_group(state.bet_group);
         }
     }
     ImGui::End();
+
+    // Record the element ImGui is now reconciled to (after any click this frame
+    // moved both the outline and ImGui's text focus together), so the next frame
+    // acts only on a fresh change -- never re-grabbing focus that is already in
+    // sync, which would trap the caret.
+    state.last_synced_focus = backbone::is_keyboard_mode_active()
+                                  ? backbone::get_focused_element()
+                                  : backbone::kNoFocus;
 }
 
 }  // namespace poker_trainer::interrogator

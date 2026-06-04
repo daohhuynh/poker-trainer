@@ -239,6 +239,63 @@ TEST(Submission, OnSubmitAggregatesAllInputsAndFiresBusEvent) {
     bb::reset_scenario_events_for_testing();
 }
 
+// ----- Enter submission fires GradingComplete (math verdict + Z10 elapsed) -----
+
+TEST(Submission, OnSubmitFiresGradingCompleteWithPassAndElapsed) {
+    bb::reset_scenario_events_for_testing();
+    bool fired = false;
+    bb::GradingCompleteEvent got{};
+    const bb::SubscriberHandle h = bb::subscribe_grading_complete(
+        [&](const bb::GradingCompleteEvent& ev) {
+            fired = true;
+            got = ev;
+        },
+        "test");
+
+    it::InterrogatorRuntime runtime{};
+    runtime.elapsed_ms_source = [] { return std::uint32_t{4200}; };  // SEAM(Z10) stub
+    it::configure_for_scenario(runtime.state, caller_truth(30.0, 8, 40.0, 5.0));
+    set_box(runtime.state, eng::InputId::PotOdds, std::nullopt, "30");
+    set_box(runtime.state, eng::InputId::Outs, std::nullopt, "8");
+    set_box(runtime.state, eng::InputId::Equity, std::nullopt, "40");
+    set_box(runtime.state, eng::InputId::Ev, std::nullopt, "5");
+
+    const eng::GradingResult r = it::on_submit(runtime);
+    ASSERT_TRUE(r.all_correct);
+    EXPECT_TRUE(fired);
+    EXPECT_EQ(got.scenario_id, eng::ScenarioId{42});
+    EXPECT_TRUE(got.passed);            // math verdict (is_pass)
+    EXPECT_EQ(got.elapsed_ms, 4200u);   // from the injected SEAM(Z10) source
+
+    bb::unsubscribe(h);
+    bb::reset_scenario_events_for_testing();
+}
+
+TEST(Submission, OnSubmitGradingCompleteReportsFailAndZeroElapsedWhenUnset) {
+    bb::reset_scenario_events_for_testing();
+    bool fired = false;
+    bool passed = true;
+    std::uint32_t elapsed = 99;
+    const bb::SubscriberHandle h = bb::subscribe_grading_complete(
+        [&](const bb::GradingCompleteEvent& ev) {
+            fired = true;
+            passed = ev.passed;
+            elapsed = ev.elapsed_ms;
+        },
+        "test");
+
+    it::InterrogatorRuntime runtime{};  // no elapsed source -> reports 0
+    it::configure_for_scenario(runtime.state, caller_truth(30.0, 8, 40.0, 5.0));
+    // Every box left blank -> graded incorrect.
+    (void)it::on_submit(runtime);
+    EXPECT_TRUE(fired);
+    EXPECT_FALSE(passed);
+    EXPECT_EQ(elapsed, 0u);
+
+    bb::unsubscribe(h);
+    bb::reset_scenario_events_for_testing();
+}
+
 TEST(Submission, AllVisibleInputsFilledReflectsBetSelection) {
     it::InterrogatorState state{};
     it::configure_for_scenario(

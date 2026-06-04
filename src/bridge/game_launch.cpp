@@ -1,15 +1,19 @@
 #include "bridge/game_launch.hpp"
 
 #include "backbone/game_mode.hpp"
+#include "backbone/scenario_events.hpp"
 #include "backbone/screen_state.hpp"
 #include "engine/generator.hpp"
 #include "engine/rng_seed.hpp"
 #include "engine/scenario.hpp"
 #include "engine/scenario_id.hpp"
+#include "settings/settings.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <random>
+#include <utility>
 
 namespace poker_trainer::bridge {
 
@@ -68,6 +72,18 @@ namespace {
 // until Z14 lands.
 void begin_ceremonial_transition_to_game() noexcept {}
 
+// The single authoritative active scenario, and the live-settings provider used
+// to generate it. Main-thread only (the launch path and consumers all run on the
+// browser main thread); no synchronization needed.
+std::optional<engine::ScenarioState> g_active_scenario;
+std::function<settings::Settings()> g_launch_settings_source;
+
+// The settings the launch generates under: the injected live provider, or the
+// documented defaults when none is wired (tests / pre-integration).
+[[nodiscard]] settings::Settings launch_settings() {
+    return g_launch_settings_source ? g_launch_settings_source() : settings::Settings{};
+}
+
 }  // namespace
 
 engine::ScenarioId select_scenario_id(
@@ -93,8 +109,37 @@ engine::ScenarioId select_scenario_id(
 void request_game_launch(backbone::GameMode mode,
                          std::optional<backbone::CustomConfig> custom) {
     const engine::ScenarioId id = select_scenario_id(mode, custom, master_rng());
+
+    // Generate the scenario once, under the live settings, and store it as the
+    // single source of truth (every consumer reads active_scenario(), none
+    // regenerates). The mode is only the seed filter above; the generator never
+    // sees it (it is encoded in the chosen id's type).
+    set_active_scenario(engine::generate_scenario(id, launch_settings()));
+
+    // Fire ScenarioSpawned (after generation, before rendering) so Z09 resets its
+    // inputs and Z03/Z10 start their per-scenario work; the payload carries only
+    // the id, consumers read the full state from active_scenario().
+    backbone::fire_scenario_spawned(backbone::ScenarioSpawnedEvent{id});
+
     backbone::set_screen(backbone::ScreenId::Game, id);
     begin_ceremonial_transition_to_game();  // SEAM(Z14)
+}
+
+void set_launch_settings_source(std::function<settings::Settings()> source) {
+    g_launch_settings_source = std::move(source);
+}
+
+const engine::ScenarioState* active_scenario() noexcept {
+    return g_active_scenario.has_value() ? &*g_active_scenario : nullptr;
+}
+
+void set_active_scenario(const engine::ScenarioState& scenario) {
+    g_active_scenario = scenario;
+}
+
+void reset_game_launch_for_testing() noexcept {
+    g_active_scenario.reset();
+    g_launch_settings_source = nullptr;
 }
 
 }  // namespace poker_trainer::bridge

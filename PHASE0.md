@@ -2494,14 +2494,17 @@ The focus manager supports a stack of focus contexts. When a modal opens, the mo
     // coupled-slider group).
     void snap_focus_to(FocusableId target) noexcept;
 
-    // Advance focus to the next element in the current context. Wraps
-    // to the first element when called past the last. Called by Z05's
-    // Tab handler.
+    // Advance focus to the next element in the current context. The first
+    // advance into a freshly registered (relocked) context arms it and lands
+    // on the first element (last, when reverse) WITHOUT advancing past it, so
+    // the first Tab on a screen lands on item 1; subsequent advances move one
+    // step and wrap. Always activates keyboard mode. Called by Z05's Tab handler.
     void advance_focus(bool reverse) noexcept;
 
-    // Register a focus list for the current screen. Replaces the
-    // existing list (used at screen transitions). The order of the
-    // span determines Tab order.
+    // Register a focus list for the current screen. Replaces the existing
+    // list AND relocks the context (marks it unarmed) so the screen starts
+    // with nothing focused until the first navigation (used at screen
+    // transitions). The order of the span determines Tab order.
     void register_focus_list(std::span<const FocusableId> focusables) noexcept;
 
     // Push a new focus context onto the stack. Used when a modal opens.
@@ -2558,8 +2561,9 @@ The focus manager supports a stack of focus contexts. When a modal opens, the mo
 - `register_focus_list()` replaces the base context's list (used at screen transitions). `push_focus_context()` adds a new context above it (used when modals open). These are different operations; do not conflate.
 - Keyboard mode is sticky: once activated (via Tab press), it remains active for the session. The architecture spec does not specify an automatic deactivation, so this implementation follows suit. A user can use the mouse without leaving keyboard mode; mouse clicks do not deactivate it.
 - The focus indicator visual (a 2px outline using the `BorderFocus` token from `theme_tokens.hpp`) is rendered by the consuming zone, not by the focus manager. The focus manager only tracks state; rendering is the zone's responsibility, querying `current_focus()` and comparing against its own element IDs.
-- `kNoFocus` (value 0) is distinct from "keyboard mode inactive but focus would be on element X if active." When keyboard mode is inactive, `current_focus()` returns `kNoFocus` regardless of any prior snap_focus_to() calls. When keyboard mode is active and no element is focused (e.g., an empty context), it also returns `kNoFocus`.
-- The Phase 0 implementation `src/backbone/focus_manager.cpp` provides the focus state and the context stack. The stack is a `std::vector<Context>` where `Context` holds the focus list and the current focus pointer.
+- `kNoFocus` (value 0) is distinct from "keyboard mode inactive but focus would be on element X if active." `get_focused_element()` returns `kNoFocus` whenever any of three gates fail: keyboard mode is inactive (regardless of prior snap_focus_to calls), the active context has no focusables, or the active context is not yet armed (a freshly registered screen context starts unarmed — see the per-context armed latch below).
+- Per-context arming (relock on entry): each context carries an "armed" latch so every screen starts from "nothing focused." `register_focus_list()` relocks (unarms) the context; the first Tab/Shift-Tab arms it and lands on the first/last element without advancing past it (the first Tab lands on item 1, not item 2); `snap_focus_to()` (digit-focus 1-6 / mouse click) arms it directly and activates keyboard mode; `push_focus_context()` creates the modal context already armed (its initial focus shows immediately). See ARCHITECTURE — Notes — Keyboard Focus Behavior — Per-screen focus arming for the full contract.
+- The Phase 0 implementation `src/backbone/focus_manager.cpp` provides the focus state and the context stack. The stack is a `std::vector<Context>` where `Context` holds the focus list, the current focus pointer, and the armed latch.
 
 ---
 

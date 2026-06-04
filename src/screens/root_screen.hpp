@@ -46,6 +46,17 @@ inline void register_root_focus_list() noexcept {
     backbone::register_focus_list(backbone::ScreenId::Root, kRootFocusOrder);
 }
 
+// ----- Keyboard activation (Space / Enter) ------------------------------------
+//
+// Space (and Enter on this non-Game screen) activates the focused element, same
+// as a click. Only Play has a keyboard activation action — it starts the Root ->
+// Mode morph; Settings/Shop/Help open modals (Z11 seam) and Home reloads (Z05
+// seam), neither wired this wave, so activating them is a no-op like clicking them
+// is today. Pure (no ImGui / router), so the mapping is unit-tested directly.
+[[nodiscard]] constexpr bool root_focus_activates_morph(backbone::FocusableId id) noexcept {
+    return id == kFocusRootPlay;
+}
+
 // ----- Render + handler wiring -------------------------------------------------
 
 // ZONES.md export. Draws the Root body (logo, 2x2 grid, Home icon). Stateless.

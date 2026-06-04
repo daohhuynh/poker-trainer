@@ -90,6 +90,13 @@ struct InterrogatorState {
     std::vector<backbone::FocusableId> focus_segment;   // boxes then bet group, in focus order
     std::optional<engine::GradingResult> last_result;   // last submission's grade (for Z13)
     bool last_math_pass{false};                         // is_pass(last_result)
+
+    // The focus id ImGui's keyboard focus was last reconciled to (see
+    // input_boxes.cpp::reconcile_imgui_focus). Tracks the focused element across
+    // frames so the render path drives ImGui's keyboard focus / capture only on
+    // the frame focus actually changes -- never every frame (which would trap the
+    // text caret) and never re-grabbing after a click already coupled them.
+    backbone::FocusableId last_synced_focus{backbone::kNoFocus};
 };
 
 // Math-correctness + within-target-time -> overall pass (the dealer-expression
@@ -106,11 +113,19 @@ struct PassState {
 // install_interrogator registers. Mirrors Z07's ScreensRuntime ownership.
 struct InterrogatorRuntime {
     InterrogatorState state;
-    // Source of the live Settings, used to regenerate the active ScenarioState
-    // from its seed id. Boot injects the persisted/live settings at integration;
-    // when unset, documented defaults are used (Settings{}), keeping the zone
-    // self-contained for tests and W2 smoke-testing.
+    // Source of the live Settings. Boot injects the persisted/live settings at
+    // integration; when unset, documented defaults are used (Settings{}), keeping
+    // the zone self-contained for tests and W2 smoke-testing. Used only by the
+    // seed-regeneration FALLBACK below; the normal path reads the single
+    // authoritative ScenarioState from the bridge (bridge::active_scenario()).
     std::function<settings::Settings()> settings_source;
+
+    // SEAM(Z10): the single time-injection point. Returns elapsed milliseconds
+    // since the active scenario spawned. Z10 (Temporal, W4) supplies it; until
+    // then it is unset and elapsed time reports as 0. on_submit reads it for the
+    // GradingComplete payload, and in W4 compute_pass's within_target_time will
+    // derive from this same source (elapsed_ms vs the computed target time).
+    std::function<std::uint32_t()> elapsed_ms_source;
 };
 
 // ----- Self-registration -----

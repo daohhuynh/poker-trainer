@@ -2,6 +2,7 @@
 
 #include "bridge/canvas_sizing.hpp"
 #include "bridge/gl_renderer.hpp"
+#include "bridge/input_routing.hpp"
 
 #include "backbone/event_router.hpp"
 
@@ -63,6 +64,93 @@ namespace {
     return mods;
 }
 
+// Map a DOM KeyboardEvent.code to the ImGuiKey ImGui's InputText uses for editing
+// and navigation. Modifier keys are submitted separately as ImGuiMod_* aggregates
+// (see feed_imgui_keyboard), so they return ImGuiKey_None here, as do keys ImGui
+// does not need.
+[[nodiscard]] ImGuiKey map_imgui_key(const char* code) noexcept {
+    if (code == nullptr) return ImGuiKey_None;
+    if (std::strcmp(code, "Tab") == 0) return ImGuiKey_Tab;
+    if (std::strcmp(code, "Enter") == 0) return ImGuiKey_Enter;
+    if (std::strcmp(code, "NumpadEnter") == 0) return ImGuiKey_KeypadEnter;
+    if (std::strcmp(code, "Escape") == 0) return ImGuiKey_Escape;
+    if (std::strcmp(code, "Backspace") == 0) return ImGuiKey_Backspace;
+    if (std::strcmp(code, "Delete") == 0) return ImGuiKey_Delete;
+    if (std::strcmp(code, "ArrowLeft") == 0) return ImGuiKey_LeftArrow;
+    if (std::strcmp(code, "ArrowRight") == 0) return ImGuiKey_RightArrow;
+    if (std::strcmp(code, "ArrowUp") == 0) return ImGuiKey_UpArrow;
+    if (std::strcmp(code, "ArrowDown") == 0) return ImGuiKey_DownArrow;
+    if (std::strcmp(code, "Home") == 0) return ImGuiKey_Home;
+    if (std::strcmp(code, "End") == 0) return ImGuiKey_End;
+    if (std::strcmp(code, "Space") == 0) return ImGuiKey_Space;
+    if (std::strcmp(code, "Period") == 0 || std::strcmp(code, "NumpadDecimal") == 0)
+        return ImGuiKey_Period;  // '.' — the EV / probability decimal point
+    if (std::strcmp(code, "Minus") == 0 || std::strcmp(code, "NumpadSubtract") == 0)
+        return ImGuiKey_Minus;   // '-' — the leading minus on EV
+    if (std::strncmp(code, "Digit", 5) == 0 && code[5] >= '0' && code[5] <= '9' &&
+        code[6] == '\0') {
+        return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_0) + (code[5] - '0'));
+    }
+    if (std::strncmp(code, "Key", 3) == 0 && code[3] >= 'A' && code[3] <= 'Z' &&
+        code[4] == '\0') {
+        return static_cast<ImGuiKey>(static_cast<int>(ImGuiKey_A) + (code[3] - 'A'));
+    }
+    return ImGuiKey_None;
+}
+
+// True when the DOM code names the Cmd (Meta) or Ctrl key — the two modifiers
+// whose hold makes the browser withhold keyup for OTHER keys (the stuck-delete
+// gotcha). Used on key-up to release any keys those modifiers stranded "down".
+[[nodiscard]] bool is_meta_or_ctrl_code(const char* code) noexcept {
+    if (code == nullptr) return false;
+    return std::strcmp(code, "MetaLeft") == 0 || std::strcmp(code, "MetaRight") == 0 ||
+           std::strcmp(code, "ControlLeft") == 0 || std::strcmp(code, "ControlRight") == 0 ||
+           std::strcmp(code, "OSLeft") == 0 || std::strcmp(code, "OSRight") == 0;
+}
+
+// Feed a DOM key event into ImGui IO so InputText boxes edit and receive text.
+// ImGui is fed UNCONDITIONALLY (the WantCaptureKeyboard gate governs only the
+// second consumer, the backbone event router), mirroring how mouse IO is fed
+// before the mouse gate. On key-down the produced character (e->key) is queued so
+// the active box receives digits, '.', and '-' (Z09's per-box char filter keeps
+// only the characters that box permits).
+void feed_imgui_keyboard(const EmscriptenKeyboardEvent* e, bool down) {
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddKeyEvent(ImGuiMod_Ctrl, e->ctrlKey != 0);
+    io.AddKeyEvent(ImGuiMod_Shift, e->shiftKey != 0);
+    io.AddKeyEvent(ImGuiMod_Alt, e->altKey != 0);
+    io.AddKeyEvent(ImGuiMod_Super, e->metaKey != 0);
+
+    const ImGuiKey key = map_imgui_key(e->code);
+    if (key != ImGuiKey_None) {
+        io.AddKeyEvent(key, down);
+    }
+
+    if (down) {
+        // e->key is the produced value: a single printable character for text keys
+        // (digits, '.', '-', letters) or a multi-character name for non-text keys
+        // ("Tab", "Enter", "ArrowUp"). Queue only the single-byte printable case.
+        const char* k = e->key;
+        if (k[0] != '\0' && k[1] == '\0') {
+            const unsigned char c = static_cast<unsigned char>(k[0]);
+            if (c >= 0x20 && c < 0x7f) {
+                io.AddInputCharacter(static_cast<unsigned int>(c));
+            }
+        }
+
+        // Mac/Windows chord gotcha: while Cmd (Meta) -- or Ctrl on Windows -- is
+        // held, the browser withholds the keyup for the OTHER key, so it would
+        // strand "down" and ImGui auto-repeats it forever (Cmd+Backspace deletes
+        // continuously). Don't depend on the withheld keyup: release the key
+        // immediately so a chord key is a single discrete press. Input trickling
+        // (io.ConfigInputTrickleEventQueue, default on) applies the down this frame
+        // -- the action fires once -- and this up on the next frame.
+        if ((e->metaKey != 0 || e->ctrlKey != 0) && key != ImGuiKey_None) {
+            io.AddKeyEvent(key, false);
+        }
+    }
+}
+
 // DOM mouse button (0 left, 1 middle, 2 right) -> ImGui button (0 left, 1
 // right, 2 middle).
 [[nodiscard]] int imgui_mouse_button(unsigned short dom_button) noexcept {
@@ -87,11 +175,25 @@ namespace {
 }
 
 EM_BOOL on_key_down(int, const EmscriptenKeyboardEvent* e, void*) {
+    feed_imgui_keyboard(e, /*down=*/true);
     const backbone::KeyCode code = map_key_code(e->code);
-    backbone::dispatch_key_event(
-        {backbone::KeyEventType::KeyDown, code, map_mods(e)});
-    // Consume Tab and the arrow keys so the browser does not scroll / move focus
-    // out of the canvas; everything else passes through to the page.
+    // WantCaptureKeyboard (from the last NewFrame) is true while an InputText is
+    // active. The gate is the single arbitration point: a key ImGui is consuming
+    // for text editing is not ALSO dispatched as a screen command — except Tab /
+    // Enter / Escape, which the focus_manager and screens own (see input_routing).
+    const bool imgui_keyboard = ImGui::GetIO().WantCaptureKeyboard;
+    if (router_should_see_key(imgui_keyboard, code)) {
+        backbone::dispatch_key_event(
+            {backbone::KeyEventType::KeyDown, code, map_mods(e)});
+    }
+
+    // While a text field is active, consume keys so the browser does not act on
+    // them — but let Ctrl/Cmd chords (reload, close tab, copy) reach the browser.
+    if (imgui_keyboard && e->ctrlKey == 0 && e->metaKey == 0) {
+        return EM_TRUE;
+    }
+    // Otherwise consume the canvas navigation keys so the page does not scroll /
+    // move focus out of the canvas / navigate back; everything else passes through.
     switch (code) {
         case backbone::KeyCode::Tab:
         case backbone::KeyCode::ArrowUp:
@@ -99,6 +201,7 @@ EM_BOOL on_key_down(int, const EmscriptenKeyboardEvent* e, void*) {
         case backbone::KeyCode::ArrowLeft:
         case backbone::KeyCode::ArrowRight:
         case backbone::KeyCode::Space:
+        case backbone::KeyCode::Backspace:
             return EM_TRUE;
         default:
             return EM_FALSE;
@@ -106,8 +209,20 @@ EM_BOOL on_key_down(int, const EmscriptenKeyboardEvent* e, void*) {
 }
 
 EM_BOOL on_key_up(int, const EmscriptenKeyboardEvent* e, void*) {
-    backbone::dispatch_key_event(
-        {backbone::KeyEventType::KeyUp, map_key_code(e->code), map_mods(e)});
+    // Releasing Cmd/Ctrl releases everything ImGui still thinks is held: a key
+    // pressed during the modifier-hold may never have received its own keyup (the
+    // browser withholds it), so it would strand "down". ClearInputKeys() releases
+    // all keys/buttons; the feed below then re-asserts the live modifier state from
+    // this event, so a Shift still physically held stays held.
+    if (is_meta_or_ctrl_code(e->code)) {
+        ImGui::GetIO().ClearInputKeys();
+    }
+    feed_imgui_keyboard(e, /*down=*/false);
+    const backbone::KeyCode code = map_key_code(e->code);
+    if (router_should_see_key(ImGui::GetIO().WantCaptureKeyboard, code)) {
+        backbone::dispatch_key_event(
+            {backbone::KeyEventType::KeyUp, code, map_mods(e)});
+    }
     return EM_FALSE;
 }
 
