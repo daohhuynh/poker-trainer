@@ -37,13 +37,12 @@ TEST(KeyboardGate, RouterSeesEveryKeyWhenImGuiNotCapturing) {
 }
 
 TEST(KeyboardGate, TextKeysSuppressedWhileImGuiCaptures) {
-    // Digits, editing keys, and arrows edit the active box; they are NOT also
-    // dispatched as screen-level commands (no "1" re-focusing input box 1).
+    // Digits and editing keys edit the active box; they are NOT also dispatched
+    // as screen-level commands (no "1" re-focusing input box 1).
     EXPECT_FALSE(br::router_should_see_key(true, bb::KeyCode::Digit1));
     EXPECT_FALSE(br::router_should_see_key(true, bb::KeyCode::Digit5));
     EXPECT_FALSE(br::router_should_see_key(true, bb::KeyCode::Backspace));
     EXPECT_FALSE(br::router_should_see_key(true, bb::KeyCode::Delete));
-    EXPECT_FALSE(br::router_should_see_key(true, bb::KeyCode::ArrowLeft));
 }
 
 TEST(KeyboardGate, NavigationKeysAlwaysRouteEvenWhileCapturing) {
@@ -51,6 +50,21 @@ TEST(KeyboardGate, NavigationKeysAlwaysRouteEvenWhileCapturing) {
     EXPECT_TRUE(br::router_should_see_key(true, bb::KeyCode::Tab));
     EXPECT_TRUE(br::router_should_see_key(true, bb::KeyCode::Enter));
     EXPECT_TRUE(br::router_should_see_key(true, bb::KeyCode::Escape));
+}
+
+TEST(KeyboardGate, ArrowKeysAlwaysRouteEvenWhileCapturing) {
+    // Arrows reach the router even while an InputText captures the keyboard: the
+    // Custom popup's slider/input adjust handler is the lone arrow consumer and
+    // needs them mid-edit. ImGui is fed every key unconditionally (platform.cpp),
+    // so passing arrows to the router does not remove them from ImGui's text
+    // cursor — it only lets the router dispatch them to that handler.
+    EXPECT_TRUE(br::router_should_see_key(true, bb::KeyCode::ArrowUp));
+    EXPECT_TRUE(br::router_should_see_key(true, bb::KeyCode::ArrowDown));
+    EXPECT_TRUE(br::router_should_see_key(true, bb::KeyCode::ArrowLeft));
+    EXPECT_TRUE(br::router_should_see_key(true, bb::KeyCode::ArrowRight));
+    // And when ImGui is NOT capturing, arrows route as well (unchanged).
+    EXPECT_TRUE(br::router_should_see_key(false, bb::KeyCode::ArrowUp));
+    EXPECT_TRUE(br::router_should_see_key(false, bb::KeyCode::ArrowRight));
 }
 
 // ----- Enter routes to the focused element's handler (via get_focused_element) -----

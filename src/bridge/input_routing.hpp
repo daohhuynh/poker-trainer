@@ -21,17 +21,28 @@ namespace poker_trainer::bridge {
 //   * ImGui is NOT capturing the keyboard -> the router sees every key, exactly
 //     as before the gate existed.
 //   * ImGui IS capturing the keyboard -> the router is suppressed for text-
-//     producing and text-editing keys (digits, '.', '-', Backspace, arrows, ...)
-//     so they edit the active box instead of also firing a screen command (e.g.
-//     "1" types into the box rather than re-focusing input box 1).
+//     producing and text-editing keys (digits, '.', '-', Backspace, ...) so they
+//     edit the active box instead of also firing a screen command (e.g. "1" types
+//     into the box rather than re-focusing input box 1).
 //
-// Tab, Enter, and Escape are the exception: they always reach the router even
-// while a text field is active. They carry no text-editing meaning the app
-// delegates to ImGui (keyboard nav is disabled), and ARCHITECTURE requires them
-// to keep working mid-edit: Module 5 — "Enter submits all answers ... regardless
-// of which input is focused"; Notes — Keyboard Focus Behavior — Tab advances the
-// focus pointer; Notes — Escape Key Behavior — Escape dismisses the modal. The
-// focus_manager / screens own these, so they are routed regardless of capture.
+// Tab, Enter, Escape, and the four arrow keys are the exception: they always
+// reach the router even while a text field is active.
+//
+// Tab / Enter / Escape carry no text-editing meaning the app delegates to ImGui
+// (keyboard nav is disabled), and ARCHITECTURE requires them to keep working
+// mid-edit: Module 5 — "Enter submits all answers ... regardless of which input
+// is focused"; Notes — Keyboard Focus Behavior — Tab advances the focus pointer;
+// Notes — Escape Key Behavior — Escape dismisses the modal. The focus_manager /
+// screens own these, so they are routed regardless of capture.
+//
+// Arrows (Up/Down/Left/Right) are routed too because the Custom popup's
+// slider/input adjust handler is the lone registered arrow consumer and needs
+// them while its InputText is active. This does NOT remove arrows from ImGui:
+// feed_imgui_keyboard feeds every key into ImGui IO unconditionally, so the text
+// cursor still moves on Left/Right; the gate governs only the router. No other
+// screen registers an arrow handler (Game's math boxes are intentionally not
+// arrow-bound; the bet-size group uses digits 1-4), so routing arrows everywhere
+// is inert off the popup — hence a global exemption rather than a popup-gated one.
 [[nodiscard]] bool router_should_see_key(bool imgui_wants_keyboard,
                                          backbone::KeyCode code) noexcept;
 
