@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <string_view>
 
 #include <imgui.h>
@@ -78,8 +79,14 @@ void populate_popup_registry(CustomPopupState& state, CustomWeightsStore& store)
                      }});
     registry.register_element(
         kFocusPlay, bridge::FocusableEntry{.is_text_field = false, .activate = [&state] {
-                        bridge::request_game_launch(backbone::GameMode::Custom, state.weights);
-                        state.request_close = true;  // deferred dismiss (no persist)
+                        // Defer BOTH the launch and the close out of this closure:
+                        // request_game_launch would clear()+repopulate the shared
+                        // registry (via Z09's scenario_spawned) while this very entry's
+                        // std::function is mid-invocation. Capture the launch config and
+                        // request the dismiss; dispatch_popup_key closes first, then
+                        // launches, once this closure is off the stack.
+                        state.pending_launch = state.weights;  // launch after close
+                        state.request_close = true;            // deferred dismiss (no persist)
                     }});
     registry.register_element(
         kFocusClose, bridge::FocusableEntry{.is_text_field = false, .activate = [&state] {
@@ -119,8 +126,16 @@ bool dispatch_popup_key(CustomPopupState& state, const backbone::KeyEvent& e) {
     }
     const bool handled = bridge::dispatch_focus_key(registry, focused, e.code);
     if (state.request_close) {
-        state.request_close = false;
-        close_custom_popup(state);
+        // Close FULLY (pop focus context + clear registry) first, then fire any
+        // deferred Play launch — so Z09's scenario_spawned setup lands on the
+        // restored base focus context and repopulates the registry, exactly as the
+        // preset paths do. The launch runs here, after dispatch_focus_key returned,
+        // so no registry entry closure is on the stack when the registry is cleared.
+        const std::optional<backbone::CustomConfig> launch =
+            take_pending_launch_and_close(state);
+        if (launch.has_value()) {
+            bridge::request_game_launch(backbone::GameMode::Custom, *launch);
+        }
     }
     return handled;
 }
@@ -273,9 +288,14 @@ void render_custom_popup(CustomPopupState& state, CustomWeightsStore& store) {
         bridge::draw_focus_ring(kFocusReset, ring_color);
         ImGui::SameLine();
         if (ImGui::Button("Play")) {
-            // Launch with current weights WITHOUT persisting (Custom launch path:
-            // request_game_launch(Custom, currentWeights)).
-            bridge::request_game_launch(backbone::GameMode::Custom, state.weights);
+            // Launch with current weights WITHOUT persisting (Custom launch path).
+            // Defer the launch: the dismiss block below closes the popup FULLY first,
+            // then fires it — so Z09's scenario_spawned setup starts from the same
+            // clean focus context + registry the preset Mode buttons produce. Firing
+            // request_game_launch here (before close) would let close_custom_popup's
+            // clear() stomp the registry Z09 just populated, and pop_focus_context
+            // discard the Game focus list Z09 registered into the live popup context.
+            state.pending_launch = state.weights;  // launched after close (below)
             dismissed = true;
         }
         bridge::draw_focus_ring(kFocusPlay, ring_color);
@@ -305,7 +325,15 @@ void render_custom_popup(CustomPopupState& state, CustomWeightsStore& store) {
     ImGui::End();
 
     if (dismissed) {
-        close_custom_popup(state);  // X / click-outside / Play -> dismiss (no persist).
+        // X / click-outside / Play -> dismiss (no persist). Close FULLY first, then
+        // fire any deferred Play launch (pending_launch) so the Game screen starts
+        // from the restored base focus context + a freshly repopulated registry —
+        // the same clean slate the preset Mode buttons give it.
+        const std::optional<backbone::CustomConfig> launch =
+            take_pending_launch_and_close(state);
+        if (launch.has_value()) {
+            bridge::request_game_launch(backbone::GameMode::Custom, *launch);
+        }
         return;  // registry cleared + context popped; nothing left to reconcile this frame
     }
 

@@ -162,6 +162,7 @@ TEST(CustomPopupClose, ClearsSharedRegistryAndResetsFlags) {
     state.just_opened = true;
     state.focus_registered = true;
     state.request_close = true;
+    state.pending_launch = bb::CustomConfig{60, 40};
 
     sc::close_custom_popup(state);
 
@@ -169,6 +170,7 @@ TEST(CustomPopupClose, ClearsSharedRegistryAndResetsFlags) {
     EXPECT_FALSE(state.just_opened);
     EXPECT_FALSE(state.focus_registered);
     EXPECT_FALSE(state.request_close);
+    EXPECT_FALSE(state.pending_launch.has_value());  // a closed popup carries no launch
     // The shared registry no longer holds any popup entry.
     EXPECT_EQ(registry.find(sc::kFocusPlay), nullptr);
     EXPECT_EQ(registry.find(sc::kFocusAggressorInput), nullptr);
@@ -183,4 +185,66 @@ TEST(CustomPopupClose, NullRegistryIsSafe) {
 
     EXPECT_FALSE(state.open);
     EXPECT_FALSE(state.focus_registered);
+}
+
+// ----- Play close-before-launch ordering (the bug fix) -----
+//
+// The Custom-Play bug: request_game_launch ran BEFORE close_custom_popup, so Z09's
+// scenario_spawned setup registered the Game focus list into the still-live popup
+// focus context (later discarded by pop_focus_context) and populated the shared
+// registry (immediately clear()ed by close) — leaving the Game screen on a stale
+// focus context with an empty registry (no ring, broken 1-4). The fix defers the
+// launch behind the close. take_pending_launch_and_close owns that pure ordering:
+// it closes FULLY, then hands the caller the captured config to launch AFTER. The
+// render/dispatch glue that fires that returned launch is browser-verified
+// (CLAUDE.md §9); this guards the state-machine contract the fix turns on.
+
+TEST(CustomPopupPlay, TakePendingLaunchClosesBeforeReturningConfig) {
+    br::FocusRegistry registry;
+    // Stand in for the eight entries render_custom_popup would have registered.
+    registry.register_element(sc::kFocusPlay, br::FocusableEntry{.is_text_field = false});
+    registry.register_element(sc::kFocusAggressorInput,
+                              br::FocusableEntry{.is_text_field = true});
+
+    sc::CustomPopupState state;
+    state.focus_registry = &registry;
+    state.open = true;
+    state.focus_registered = true;
+    state.request_close = true;
+    state.weights = bb::CustomConfig{70, 30};
+    state.pending_launch = state.weights;  // Play deferred its launch
+
+    const std::optional<bb::CustomConfig> launch = sc::take_pending_launch_and_close(state);
+
+    // The captured config is handed back for the caller to launch...
+    ASSERT_TRUE(launch.has_value());
+    EXPECT_EQ(launch->aggressor_weight, 70);
+    EXPECT_EQ(launch->caller_weight, 30);
+    // ...and the popup is already FULLY closed before that launch runs: registry
+    // emptied (so Z09 repopulates a clean slate), flags reset, pending consumed.
+    EXPECT_FALSE(state.open);
+    EXPECT_FALSE(state.focus_registered);
+    EXPECT_FALSE(state.request_close);
+    EXPECT_FALSE(state.pending_launch.has_value());
+    EXPECT_EQ(registry.find(sc::kFocusPlay), nullptr);
+    EXPECT_EQ(registry.find(sc::kFocusAggressorInput), nullptr);
+}
+
+TEST(CustomPopupPlay, TakePendingLaunchNoLaunchStillCloses) {
+    br::FocusRegistry registry;
+    registry.register_element(sc::kFocusClose, br::FocusableEntry{.is_text_field = false});
+
+    sc::CustomPopupState state;
+    state.focus_registry = &registry;
+    state.open = true;
+    state.focus_registered = true;
+    state.request_close = true;  // X requested a dismiss, with no pending_launch
+
+    const std::optional<bb::CustomConfig> launch = sc::take_pending_launch_and_close(state);
+
+    EXPECT_FALSE(launch.has_value());  // no-launch dismiss -> caller fires nothing
+    EXPECT_FALSE(state.open);
+    EXPECT_FALSE(state.focus_registered);
+    EXPECT_FALSE(state.request_close);
+    EXPECT_EQ(registry.find(sc::kFocusClose), nullptr);
 }

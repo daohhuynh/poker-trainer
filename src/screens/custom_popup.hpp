@@ -215,12 +215,25 @@ struct CustomPopupState {
     bool focus_registered{false};
 
     // Deferred-dismiss flag for the keyboard activate path. The Play/X activate
-    // closures live IN the registry; having them call close_custom_popup directly
-    // would clear() the very registry slot whose std::function is mid-invocation
-    // (use-after-free). Instead they raise this flag and the dispatch handler
-    // performs the close after dispatch_focus_key returns — no entry closure on the
-    // stack. Mirrors render_custom_popup's existing `dismissed` deferral.
+    // closures live IN the shared registry; doing the dismiss work directly inside
+    // them would mutate (clear()) the very registry slot whose std::function is
+    // mid-invocation — a use-after-free. This applies to BOTH the close (clears the
+    // registry) AND the launch (request_game_launch fires scenario_spawned, whose
+    // Z09 handler also clear()s + repopulates the shared registry). So the closures
+    // only raise flags; the dispatch handler performs the close-then-launch after
+    // dispatch_focus_key returns, with no entry closure left on the stack. Mirrors
+    // render_custom_popup's existing `dismissed` deferral.
     bool request_close{false};
+
+    // Captured Custom launch config for a deferred Play. Set (to the live weights)
+    // by Play's activate closure (keyboard) and by the Play button (mouse), both
+    // alongside the dismiss request. The dismiss path closes the popup FULLY first
+    // (pop focus context + clear registry) and THEN fires the launch with this
+    // config — so the Game screen's Z09 setup registers its focus list into the
+    // freshly-restored base context and repopulates the just-cleared registry, the
+    // same clean slate the three preset Mode buttons give it. nullopt for a
+    // no-launch dismiss (X / click-outside / Escape). See take_pending_launch_and_close.
+    std::optional<CustomConfig> pending_launch{};
 };
 
 // ZONES.md export. Opens the popup: pushes the focus context and returns the
@@ -236,6 +249,7 @@ inline void close_custom_popup(CustomPopupState& state) {
     state.just_opened = false;
     state.request_close = false;
     state.focus_registered = false;
+    state.pending_launch.reset();  // a closed popup carries no deferred launch
     // Drop the popup's eight entries from the shared registry so no stale popup
     // closures linger on it once we are back on Mode Selection (the next open
     // repopulates). Null in native tests. Safe here because every caller invokes
@@ -247,6 +261,24 @@ inline void close_custom_popup(CustomPopupState& state) {
         state.focus_registry->clear();
     }
     pop_custom_popup_focus();
+}
+
+// Drain a deferred Play/dismiss: close the popup FULLY (reset flags, clear the
+// shared registry, pop the focus context) and return the captured Custom launch
+// config, or nullopt for a no-launch dismiss (X / click-outside / Escape). The
+// close runs BEFORE the caller fires the launch on purpose: request_game_launch's
+// scenario_spawned makes Z09 register the Game focus list into the now-active base
+// context and repopulate the registry, so the Game screen starts from the same
+// clean focus state the preset Mode buttons produce. The launch is deliberately
+// NOT fired here — the caller (render dismiss path / dispatch handler) fires it
+// after this returns, keeping every registry-clearing call off the stack of an
+// executing registry activate closure (the use-after-free guard). The captured
+// config is read before close() resets it, so the returned value survives the reset.
+[[nodiscard]] inline std::optional<CustomConfig> take_pending_launch_and_close(
+    CustomPopupState& state) {
+    const std::optional<CustomConfig> launch = state.pending_launch;
+    close_custom_popup(state);
+    return launch;
 }
 
 // The live popup render worker (deferred ImGui seam). Draws the rows, sliders,
