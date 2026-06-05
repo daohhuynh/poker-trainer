@@ -7,12 +7,15 @@
 
 #include "backbone/game_mode.hpp"
 
+#include "bridge/focus_registry.hpp"
+
 #include <optional>
 
 #include <gtest/gtest.h>
 
 namespace sc = poker_trainer::screens;
 namespace bb = poker_trainer::backbone;
+namespace br = poker_trainer::bridge;
 
 namespace {
 
@@ -135,4 +138,49 @@ TEST(LaunchPaths, StandardAggressorCallerEmitModeOnly) {
     EXPECT_FALSE(sc::launch_request_for_aggressor().config.has_value());
     EXPECT_EQ(sc::launch_request_for_caller().mode, bb::GameMode::Caller);
     EXPECT_FALSE(sc::launch_request_for_caller().config.has_value());
+}
+
+// ----- close_custom_popup substrate contract (Stage 3) -----
+//
+// close() drops the popup's entries from the shared focus registry so no stale
+// popup closures linger on it once we are back on Mode Selection, and it resets
+// the per-open flags. The render/handler glue that *reads* the registry is
+// browser-verified (CLAUDE.md §9: UI behavior is not unit-tested); this guards
+// the pure state-machine contract close() owns.
+
+TEST(CustomPopupClose, ClearsSharedRegistryAndResetsFlags) {
+    br::FocusRegistry registry;
+    // Stand in for the eight entries render_custom_popup would have registered.
+    registry.register_element(sc::kFocusPlay, br::FocusableEntry{.is_text_field = false});
+    registry.register_element(sc::kFocusAggressorInput,
+                              br::FocusableEntry{.is_text_field = true});
+    ASSERT_NE(registry.find(sc::kFocusPlay), nullptr);
+
+    sc::CustomPopupState state;
+    state.focus_registry = &registry;
+    state.open = true;
+    state.just_opened = true;
+    state.focus_registered = true;
+    state.request_close = true;
+
+    sc::close_custom_popup(state);
+
+    EXPECT_FALSE(state.open);
+    EXPECT_FALSE(state.just_opened);
+    EXPECT_FALSE(state.focus_registered);
+    EXPECT_FALSE(state.request_close);
+    // The shared registry no longer holds any popup entry.
+    EXPECT_EQ(registry.find(sc::kFocusPlay), nullptr);
+    EXPECT_EQ(registry.find(sc::kFocusAggressorInput), nullptr);
+}
+
+TEST(CustomPopupClose, NullRegistryIsSafe) {
+    sc::CustomPopupState state;  // focus_registry defaults to nullptr (native path)
+    state.open = true;
+    state.focus_registered = true;
+
+    sc::close_custom_popup(state);  // must not dereference the null registry
+
+    EXPECT_FALSE(state.open);
+    EXPECT_FALSE(state.focus_registered);
 }

@@ -12,6 +12,14 @@
 
 #include "bridge/screen_dispatch.hpp"
 
+#ifdef __EMSCRIPTEN__
+// Wasm-only: the app-root BridgeRuntime owns the single shared focus registry.
+// bridge_runtime.hpp is an Emscripten-only header (it pulls the asset/loader
+// state), so it is included only on the wasm build; the native test build skips
+// this and leaves the popup's registry pointer null (its substrate paths no-op).
+#include "bridge/bridge_runtime.hpp"
+#endif
+
 // The render-dispatch registration (bridge::register_screen_renderer) and the
 // handler installs are issued from here, Zone 07's own init — no src/bridge/* file
 // is edited to wire the screens in. The registry stores std::function callbacks
@@ -55,6 +63,15 @@ void render_mode_dispatch(ScreensRuntime& runtime, CustomWeightsStore& store) {
 }  // namespace
 
 void install_screens(ScreensRuntime& runtime, CustomWeightsStore& weights_store) {
+#ifdef __EMSCRIPTEN__
+    // Hand the Custom popup the single shared focus/input reconciliation registry
+    // (owned off the app-root BridgeRuntime). The popup populates it on open and
+    // reconciles + dispatches through it; this mirrors how boot wires the same
+    // registry into Z09 (InterrogatorRuntime::focus_registry). Native tests skip
+    // this block, so the pointer stays null and the popup's substrate paths no-op.
+    runtime.popup.focus_registry = &bridge::runtime().focus_registry;
+#endif
+
     // Event handlers (registered once with the event router).
     install_root_handlers(runtime.morph);
     install_mode_selection_handlers(runtime.popup, weights_store);

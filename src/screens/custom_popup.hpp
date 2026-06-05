@@ -12,6 +12,8 @@
 #include "backbone/focus_manager.hpp"
 #include "backbone/game_mode.hpp"
 
+#include "bridge/focus_registry.hpp"
+
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -186,6 +188,39 @@ struct CustomPopupState {
     // click-outside dismissal) until that mouse button is released, then arms the
     // dismissal for any subsequent click outside the modal.
     bool just_opened{false};
+
+    // ----- Shared focus/input reconciliation substrate (Stage 3) -----
+    //
+    // The single FocusRegistry owned off BridgeRuntime, wired in by boot via
+    // install_screens (under __EMSCRIPTEN__; null in native tests, where the
+    // registry-dependent code paths no-op). render_custom_popup populates it with
+    // the popup's eight focusables on open and reconciles ImGui's keyboard focus
+    // through it; the dispatch handler routes arrows/Space/Enter through it. The
+    // popup adds no reconcile/dispatch of its own — it calls the bridge substrate
+    // (begin_focus_reconcile / draw_focus_ring / dispatch_focus_key). Mirrors how
+    // Z09 (InterrogatorRuntime::focus_registry) holds the same shared registry.
+    bridge::FocusRegistry* focus_registry{nullptr};
+
+    // The focus id ImGui's keyboard focus was last reconciled to, threaded into
+    // bridge::begin_focus_reconcile so the render path steers ImGui only on the
+    // frame focus changes (never re-grabbing in sync, which would trap the caret).
+    // Reset to kNoFocus when the registry is (re)populated on open. Mirrors
+    // InterrogatorState::last_synced_focus.
+    backbone::FocusableId last_synced_focus{backbone::kNoFocus};
+
+    // Raised once the registry is populated for the current open session; cleared
+    // on close so the next open repopulates. Keeps populate off the per-frame path
+    // (the entries capture state/store by reference and read live values, so they
+    // need building only once per open).
+    bool focus_registered{false};
+
+    // Deferred-dismiss flag for the keyboard activate path. The Play/X activate
+    // closures live IN the registry; having them call close_custom_popup directly
+    // would clear() the very registry slot whose std::function is mid-invocation
+    // (use-after-free). Instead they raise this flag and the dispatch handler
+    // performs the close after dispatch_focus_key returns — no entry closure on the
+    // stack. Mirrors render_custom_popup's existing `dismissed` deferral.
+    bool request_close{false};
 };
 
 // ZONES.md export. Opens the popup: pushes the focus context and returns the
@@ -199,6 +234,18 @@ CustomConfig open_custom_popup();
 inline void close_custom_popup(CustomPopupState& state) {
     state.open = false;
     state.just_opened = false;
+    state.request_close = false;
+    state.focus_registered = false;
+    // Drop the popup's eight entries from the shared registry so no stale popup
+    // closures linger on it once we are back on Mode Selection (the next open
+    // repopulates). Null in native tests. Safe here because every caller invokes
+    // close OUTSIDE an executing registry entry — the render dismiss path runs
+    // after ImGui::End, the Escape handler is separate from dispatch, and the
+    // keyboard Play/X path defers via request_close — so no entry's std::function
+    // is mid-invocation when clear() destroys the slots.
+    if (state.focus_registry != nullptr) {
+        state.focus_registry->clear();
+    }
     pop_custom_popup_focus();
 }
 
