@@ -10,6 +10,7 @@
 
 #include <imgui.h>
 
+#include "bridge/focus_registry.hpp"
 #include "theme/theme_tokens.hpp"
 
 namespace poker_trainer::interrogator {
@@ -44,20 +45,12 @@ void select_bet_tier_on_click(BetSizeGroup& group, engine::BetTier tier) noexcep
 
 namespace {
 
-[[nodiscard]] bool focus_on(backbone::FocusableId id) {
-    return backbone::is_keyboard_mode_active() && backbone::get_focused_element() == id;
-}
-
-[[nodiscard]] ImU32 token_u32(theme::ColorToken token) {
-    return ImGui::ColorConvertFloat4ToU32(theme::get_color(token));
-}
-
 constexpr std::array<const char*, engine::kBetTierCount> kTierLabels = {
     "1/3 Pot", "1/2 Pot", "Full Pot", "Overbet"};
 
 }  // namespace
 
-void render_bet_size_group(BetSizeGroup& group) {
+void render_bet_size_group(BetSizeGroup& group, std::uint32_t ring_color) {
     if (!group.present) {
         return;
     }
@@ -97,13 +90,11 @@ void render_bet_size_group(BetSizeGroup& group) {
     }
     const ImVec2 row_max = ImGui::GetItemRectMax();
 
-    // Focus indicator: a single 2px border_focus outline around the whole row's
+    // Focus indicator: a single 2px border_focus ring around the whole row's
     // bounding box, not around any individual button (Notes — Keyboard Focus).
-    if (focus_on(group.focus_id)) {
-        ImGui::GetWindowDrawList()->AddRect(row_min, ImVec2{row_max.x, row_max.y},
-                                            token_u32(theme::ColorToken::BorderFocus), 0.0f, 0,
-                                            2.0f);
-    }
+    // Drawn by the shared substrate from focus_manager (same source as the boxes).
+    bridge::draw_focus_ring_rect(group.focus_id, row_min.x, row_min.y, row_max.x, row_max.y,
+                                 ring_color);
 }
 
 }  // namespace poker_trainer::interrogator

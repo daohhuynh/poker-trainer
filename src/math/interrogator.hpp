@@ -4,6 +4,8 @@
 
 #include "backbone/focus_manager.hpp"
 
+#include "bridge/focus_registry.hpp"
+
 #include "settings/settings.hpp"
 
 #include <array>
@@ -91,11 +93,11 @@ struct InterrogatorState {
     std::optional<engine::GradingResult> last_result;   // last submission's grade (for Z13)
     bool last_math_pass{false};                         // is_pass(last_result)
 
-    // The focus id ImGui's keyboard focus was last reconciled to (see
-    // input_boxes.cpp::reconcile_imgui_focus). Tracks the focused element across
-    // frames so the render path drives ImGui's keyboard focus / capture only on
-    // the frame focus actually changes -- never every frame (which would trap the
-    // text caret) and never re-grabbing after a click already coupled them.
+    // The focus id ImGui's keyboard focus was last reconciled to. Passed to the
+    // shared reconcile substrate (bridge::begin_focus_reconcile) so the render path
+    // drives ImGui's keyboard focus / capture only on the frame focus actually
+    // changes -- never every frame (which would trap the text caret) and never re-
+    // grabbing after a click already coupled them. Reset on a new focus segment.
     backbone::FocusableId last_synced_focus{backbone::kNoFocus};
 };
 
@@ -126,6 +128,13 @@ struct InterrogatorRuntime {
     // GradingComplete payload, and in W4 compute_pass's within_target_time will
     // derive from this same source (elapsed_ms vs the computed target time).
     std::function<std::uint32_t()> elapsed_ms_source;
+
+    // The shared focus reconciliation registry, owned off BridgeRuntime and wired
+    // here by boot. Z09 populates it (per math box: text; bet group: non-text)
+    // alongside its focus-list registration, and the render hook reconciles ImGui
+    // through it. Null in unit tests that drive the zone without the bridge runtime
+    // -- registry population is then skipped (focus-list registration still runs).
+    bridge::FocusRegistry* focus_registry{nullptr};
 };
 
 // ----- Self-registration -----

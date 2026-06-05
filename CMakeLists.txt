@@ -174,6 +174,8 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/bridge/screen_dispatch.cpp
         src/bridge/game_launch.cpp
         src/bridge/input_routing.cpp
+        src/bridge/focus_registry.cpp
+        src/bridge/focus_reconcile.cpp
         src/bridge/canvas_sizing.cpp
         src/bridge/shared_scenario.cpp
         src/bridge/loading_screen.cpp
@@ -184,6 +186,14 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_compile_options(bridge PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
     # persistence: the persistent Custom-weights store wraps Zone 04's IdbfsStore.
     target_link_libraries(bridge PUBLIC backbone engine persistence)
+    if(EMSCRIPTEN)
+        # focus_reconcile.cpp (the reconcile + ring render glue) includes <imgui.h>
+        # only under __EMSCRIPTEN__; link imgui for its headers + objects in the wasm
+        # build. Natively that ImGui code is compiled out, so the bridge library
+        # stays ImGui-free under the native test compiler (every bridge TU still
+        # guards ImGui behind __EMSCRIPTEN__).
+        target_link_libraries(bridge PRIVATE imgui)
+    endif()
 
     # ---------------------------------------------------------------------
     # Zone 07 (Root + Mode Selection Screens). Built here in the shared section
@@ -446,6 +456,7 @@ if(ENABLE_TESTS)
         tests/bridge/game_launch_test.cpp
         tests/bridge/screen_dispatch_test.cpp
         tests/bridge/input_routing_test.cpp
+        tests/bridge/focus_reconcile_test.cpp
     )
     target_include_directories(bridge_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src

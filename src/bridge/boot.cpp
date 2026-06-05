@@ -160,6 +160,10 @@ void finish_boot_after_persistence() {
     // reset subscription. The math inputs are now live on the Game screen.
     set_launch_settings_source(live_settings_source);
     g_boot.interrogator.settings_source = live_settings_source;
+    // Wire the shared focus-reconciliation registry (owned off BridgeRuntime) into
+    // Z09 so its inputs register their text/non-text reconcile behavior and the
+    // render hook reconciles ImGui through the substrate.
+    g_boot.interrogator.focus_registry = &g_runtime->focus_registry;
     interrogator::install_interrogator(g_boot.interrogator);
 
     start_main_loop();

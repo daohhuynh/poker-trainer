@@ -53,31 +53,11 @@ void configure_for_scenario(InterrogatorState& state, const engine::ScenarioStat
 //
 // focus_manager is the single source of truth for which element is focused: Tab
 // and the 1-6 digit-focus keys move it and it draws the outline. ImGui keeps its
-// OWN keyboard focus (it decides WantCaptureKeyboard and where typed characters
-// land). Nothing couples them, so the outline and the typing target drift apart.
-// The render path reconciles ImGui to focus_manager on the frame focus changes so
-// the outlined element is always the one that owns keyboard input.
-
-// What the render path must do this frame to keep ImGui's keyboard focus in sync.
-enum class ImGuiFocusAction : std::uint8_t {
-    None,          // focus unchanged, or moved to a non-Z09 element: leave ImGui alone
-    FocusTextBox,  // SetKeyboardFocusHere on `target` -- a numeric box gained focus
-    YieldKeyboard, // ClearActiveID -- a non-text element (the bet group) gained focus
-};
-
-struct FocusReconcile {
-    ImGuiFocusAction action{ImGuiFocusAction::None};
-    backbone::FocusableId target{backbone::kNoFocus};  // the box to focus; valid iff FocusTextBox
-};
-
-// Decide how to reconcile ImGui's keyboard focus, given the element ImGui was
-// last reconciled to (`prev`) and the element focus_manager now reports
-// (`current`). Pure (no ImGui calls), so the decision is unit-tested and the
-// render glue only applies it. Returns None when focus is unchanged, or when it
-// moved to an element Z09 does not own (a Z08/Z11 cluster stop -- SEAM(Z08/Z11)).
-[[nodiscard]] FocusReconcile reconcile_imgui_focus(const InterrogatorState& state,
-                                                   backbone::FocusableId prev,
-                                                   backbone::FocusableId current) noexcept;
+// OWN keyboard focus. The coupling glue -- the reconcile DECISION, the
+// SetKeyboardFocusHere / ClearActiveID driving, and the focus-ring draw -- now
+// lives in the shared bridge substrate (src/bridge/focus_registry.hpp); Z09
+// registers its elements there (boxes text, bet group non-text) and the render
+// hook drives it. Nothing reconcile-related remains in this header.
 
 // Mouse click on a numeric box: move the focus_manager outline to it (ImGui has
 // already taken text focus from the click) and activate keyboard mode, so the

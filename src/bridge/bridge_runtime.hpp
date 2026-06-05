@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bridge/focus_registry.hpp"
 #include "bridge/shared_scenario.hpp"
 
 #include "assets/registry.hpp"
@@ -34,6 +35,11 @@ struct BridgeRuntime {
     BootRoute route{BootRoute::NormalRoot};
     engine::ScenarioId shared_id{engine::kInvalidScenarioId};
     BootPhase phase{BootPhase::Loading};
+
+    // The single shared focus/input reconciliation registry (CLAUDE.md §10: app-
+    // root state owned here, not a global). Surfaces populate it by reference as
+    // they register their focus lists; the reconcile + dispatch helpers read it.
+    FocusRegistry focus_registry;
 };
 
 // The single app-root runtime. Valid only after app_init() has constructed it.

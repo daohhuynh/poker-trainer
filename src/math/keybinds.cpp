@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <optional>
 
+#include "bridge/focus_registry.hpp"
 #include "bridge/game_launch.hpp"
 #include "bridge/screen_dispatch.hpp"
 
@@ -87,12 +88,35 @@ namespace {
     return engine::generate_scenario(id, settings_or_default(runtime));
 }
 
+// Populate the shared focus-reconciliation registry for the current inputs: each
+// math box is a text field (grabs ImGui keyboard focus when focused), the bet-size
+// group is a non-text stop (yields it). Z09 registers NO activate/adjust hooks --
+// its Enter is the submit-all override and arrows are no-ops by spec, both handled
+// by its own router registrations, not the substrate dispatch. Null registry only
+// in unit tests that drive the zone without the bridge runtime.
+void populate_focus_registry(InterrogatorRuntime& runtime) {
+    if (runtime.focus_registry == nullptr) {
+        return;
+    }
+    bridge::FocusRegistry& registry = *runtime.focus_registry;
+    registry.clear();
+    for (const NumericBox& box : runtime.state.boxes) {
+        registry.register_element(box.focus_id, bridge::FocusableEntry{.is_text_field = true});
+    }
+    if (runtime.state.bet_group.present) {
+        registry.register_element(runtime.state.bet_group.focus_id,
+                                  bridge::FocusableEntry{.is_text_field = false});
+    }
+}
+
 // Reconfigure Z09's inputs for `scenario` and (re)register the Game focus segment
-// (boxes then the bet group). The single place a new scenario takes effect. Z08
-// composes the full list (segment then Shop/Help/Settings/X) in W3 — SEAM(Z08/Z11).
+// (boxes then the bet group) plus the shared focus registry. The single place a new
+// scenario takes effect. Z08 composes the full list (segment then Shop/Help/
+// Settings/X) in W3 — SEAM(Z08/Z11).
 void apply_scenario(InterrogatorRuntime& runtime, const engine::ScenarioState& scenario) {
     configure_for_scenario(runtime.state, scenario);
     backbone::register_focus_list(backbone::ScreenId::Game, runtime.state.focus_segment);
+    populate_focus_registry(runtime);
 }
 
 // Bring the cached scenario in sync with the active scenario id, (re)spawning

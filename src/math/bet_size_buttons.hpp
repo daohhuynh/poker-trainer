@@ -4,6 +4,7 @@
 
 #include "engine/scenario.hpp"
 
+#include <cstdint>
 #include <optional>
 
 // Bet Size group (Module 5): a single focus stop of four tier buttons
@@ -33,10 +34,11 @@ bool select_bet_tier_by_digit(BetSizeGroup& group, int digit) noexcept;
 void select_bet_tier_on_click(BetSizeGroup& group, engine::BetTier tier) noexcept;
 
 // Render the four-button bet-size row for `group` (no-op when not present).
-// Selected button fills with accent_primary; when the group holds focus a 2px
-// border_focus outline is drawn around the whole row's bounding box (not any
-// single button), per Notes -- Keyboard Focus Behavior. A button click selects
-// its tier (select_bet_tier_on_click). Render-only; untested.
-void render_bet_size_group(BetSizeGroup& group);
+// Selected button fills with accent_primary; when the group holds focus the shared
+// substrate draws a 2px ring (`ring_color` = the border_focus token, resolved by
+// the caller) around the whole row's bounding box (not any single button), per
+// Notes -- Keyboard Focus Behavior. A button click selects its tier
+// (select_bet_tier_on_click). Render-only; untested.
+void render_bet_size_group(BetSizeGroup& group, std::uint32_t ring_color);
 
 }  // namespace poker_trainer::interrogator

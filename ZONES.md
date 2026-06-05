@@ -128,7 +128,7 @@ This document defines the 14 implementation zones plus Phase 0. Each zone is a p
 
 **Scope:** Root screen layout (logo, 2x2 button grid, Home icon). Mode Selection layout (STANDARD button, Aggressor/Caller/Custom row). Button morph animation (Root → Mode Selection, eased+staggered). Custom Mode Configuration popup (coupled sliders/inputs, Save/Reset/Play). Background blur variant crossfade synchronized with morph. Per-screen focus list registration with focus_manager (Root: Play → Settings → Shop → Help → Home; Mode Selection: STANDARD → Aggressor → Caller → Custom → cluster icons; Custom popup: Aggressor input → Aggressor slider → Caller input → Caller slider → Save → Reset → Play → X). Arrow key increment/decrement on bounded integer inputs and sliders within the Custom popup per Notes — Keyboard Focus Behavior.
 
-**Depends on:** Zone 02 (assets), Zone 06 (theme), Zone 14 (transitions — ceremonial transition out to Game), Zone 05 `bridge` (contract layer — `register_screen_renderer`).
+**Depends on:** Zone 02 (assets), Zone 06 (theme), Zone 14 (transitions — ceremonial transition out to Game), Zone 05 `bridge` (contract layer — `register_screen_renderer`, focus/input reconciliation substrate).
 
 **Owns:** `src/screens/root_screen.cpp`, `src/screens/mode_selection_screen.cpp`, `src/screens/custom_popup.cpp`, `src/animations/button_morph.cpp`.
 
@@ -156,7 +156,7 @@ This document defines the 14 implementation zones plus Phase 0. Each zone is a p
 
 **Scope:** Module 5 in full. Math input box rendering (left-middle of Game screen), focus state with white outline overlay (border_focus token), keybind handling (1-6 for input focus, Tab/Shift-Tab cycling via focus_manager, Enter submission), Bet Size focus-grouped button row with 1-4 keys for tier selection (single tab stop with bounded focus indicator per Notes — Keyboard Focus Behavior), dynamic input spawning per scenario branch (Caller vs Aggressor sub-types), multi-tier bet sizing presentation (per-tier inputs for bet-size-dependent values, echo for bet-size-independent values), submission flow (gather all answers, send to evaluator, transition to Post-Round). Arrow keys within math input boxes are no-ops (math inputs accept unbounded decimal values, arrow keys reserved for bounded inputs).
 
-**Depends on:** Zone 01 (evaluator), Zone 06 (input field theming), Zone 14 (Game→Post-Round slide transition trigger), Zone 05 `bridge` (contract layer — `register_screen_renderer`).
+**Depends on:** Zone 01 (evaluator), Zone 06 (input field theming), Zone 14 (Game→Post-Round slide transition trigger), Zone 05 `bridge` (contract layer — `register_screen_renderer`, focus/input reconciliation substrate).
 
 **Owns:** `src/math/input_boxes.cpp`, `src/math/bet_size_buttons.cpp`, `src/math/submission.cpp`, `src/math/keybinds.cpp`.
 
