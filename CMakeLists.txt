@@ -233,6 +233,42 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_include_directories(interrogator PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(interrogator PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
     target_link_libraries(interrogator PUBLIC backbone engine theme bridge)  # theme brings imgui
+
+    # ---------------------------------------------------------------------
+    # Zone 03 (Audio Engine). The pure logic + integration (shuffle pool,
+    # choreography scheduler, music transport state machine, SFX dispatch, the
+    # engine state with the volume / mute / gesture-gate math) is held to the full
+    # warning baseline and is native-testable; the actual audio backend (miniaudio
+    # SFX device + HTML5 <audio> music) is split out below behind __EMSCRIPTEN__,
+    # mirroring the bridge / bridge_platform pure-vs-binding split. backbone / engine
+    # / bridge do NOT depend on audio, so this is a one-way edge (no cycle). audio
+    # reads bridge::active_scenario() for the spawn choreography — the documented
+    # consumer path (the scenario_spawned bus event carries only the id).
+    add_library(audio STATIC
+        src/audio/shuffle_pool.cpp
+        src/audio/choreography.cpp
+        src/audio/music.cpp
+        src/audio/sfx.cpp
+        src/audio/audio.cpp
+    )
+    target_include_directories(audio PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(audio PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(audio PUBLIC backbone engine bridge)
+    if(EMSCRIPTEN)
+        # Real backend (miniaudio SFX device + HTML5 <audio> music via EM_ASM): held
+        # to the reduced binding baseline. miniaudio.h is a SYSTEM include, so its
+        # single-TU implementation never trips -Werror.
+        add_library(audio_backend STATIC src/audio/audio_backend.cpp)
+        target_include_directories(audio_backend PUBLIC ${CMAKE_SOURCE_DIR}/src)
+        target_include_directories(audio_backend SYSTEM PRIVATE
+            ${CMAKE_SOURCE_DIR}/third_party/miniaudio)
+        target_compile_options(audio_backend PRIVATE ${POKER_TRAINER_BINDING_WARNING_FLAGS})
+        target_link_libraries(audio PUBLIC audio_backend)
+    else()
+        # Native test build: compile the same TU's no-op (#else) branch into `audio`
+        # so the pure library links without any audio backend.
+        target_sources(audio PRIVATE src/audio/audio_backend.cpp)
+    endif()
 endif()
 
 # =========================================================================
@@ -266,8 +302,10 @@ if(EMSCRIPTEN)
     # screens: boot installs Zone 07's renders into the dispatch registry.
     # interrogator: Z09's math inputs; boot adds one install_interrogator(runtime)
     # call at pass-2 integration (boot.cpp is not edited by the Z09 wave).
+    # audio: Z03; boot calls install_audio(), the main loop calls audio_update(),
+    # and platform.cpp calls on_first_user_gesture() (audio_backend comes via audio).
     target_link_libraries(bridge_platform PUBLIC
-        bridge screens interrogator backbone engine assets persistence theme imgui)
+        bridge screens interrogator audio backbone engine assets persistence theme imgui)
 
     target_link_libraries(poker_trainer PRIVATE bridge_platform)
     target_link_options(poker_trainer PRIVATE
@@ -532,4 +570,27 @@ if(ENABLE_TESTS)
     target_link_libraries(interrogator_test PRIVATE interrogator GTest::gtest_main)
 
     add_test(NAME interrogator_test COMMAND interrogator_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 03 (Audio Engine) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # The `audio` library (shared section above) is held to -Werror, including the
+    # no-op backend branch linked here. These tests exercise only the pure logic:
+    # shuffle-pool semantics, the choreography schedule decision + scheduler, the
+    # music transport gate, and the volume / mute / gesture-gate math. The audio
+    # backend (miniaudio / HTML5 audio) is browser-verified, never unit-tested.
+    add_executable(audio_test
+        tests/audio/shuffle_pool_test.cpp
+        tests/audio/choreography_test.cpp
+        tests/audio/music_engine_test.cpp
+        tests/audio/audio_engine_test.cpp
+    )
+    target_include_directories(audio_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(audio_test PRIVATE audio GTest::gtest_main)
+
+    add_test(NAME audio_test COMMAND audio_test)
 endif()

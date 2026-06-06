@@ -14,6 +14,8 @@
 
 #include "math/interrogator.hpp"
 
+#include "audio/audio.hpp"
+
 #include "settings/settings.hpp"
 
 #include "backbone/event_router.hpp"
@@ -165,6 +167,12 @@ void finish_boot_after_persistence() {
     // render hook reconciles ImGui through the substrate.
     g_boot.interrogator.focus_registry = &g_runtime->focus_registry;
     interrogator::install_interrogator(g_boot.interrogator);
+
+    // Install Zone 03: subscribe to scenario_spawned for the spawn audio
+    // choreography (the per-frame audio_update + first-gesture autoplay gate are
+    // wired in the main loop and platform input layer). No asset/persistence
+    // dependency — Z03 loads audio by path and degrades gracefully when absent.
+    audio::install_audio();
 
     start_main_loop();
 }

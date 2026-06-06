@@ -10,6 +10,8 @@
 #include "backbone/animation_clock.hpp"
 #include "backbone/screen_state.hpp"
 
+#include "audio/audio.hpp"
+
 #include "assets/tier_config.hpp"
 #include "theme/theme_tokens.hpp"
 
@@ -54,6 +56,11 @@ void frame() {
     g_last_now_ms = now;
     g_have_last_now = true;
     backbone::tick(static_cast<std::uint64_t>(delta_ms));
+
+    // Advance Zone 03 once per frame off the same clock: fire scheduled choreography
+    // SFX, emit modal swoosh on modal-stack edges, and progress the music crossfade.
+    // Harmless before the autoplay gate opens (every call is gated to silence).
+    audio::audio_update();
 
     ImGuiIO& io = ImGui::GetIO();
     io.DeltaTime =

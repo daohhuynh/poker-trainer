@@ -6,6 +6,8 @@
 
 #include "backbone/event_router.hpp"
 
+#include "audio/audio.hpp"
+
 #include "imgui.h"
 
 #include <cstring>
@@ -174,7 +176,20 @@ void feed_imgui_keyboard(const EmscriptenKeyboardEvent* e, bool down) {
     return !ImGui::GetIO().WantCaptureMouse;
 }
 
+// Fire Zone 03's autoplay gate on the first DOM user gesture (click or key). The
+// browser only lets audio start inside a user-gesture callstack, so this runs
+// synchronously from the DOM handler — the single point that reliably sees the
+// literal first gesture before any router / screen handler can consume it. One-shot.
+void maybe_first_user_gesture() {
+    static bool fired = false;
+    if (!fired) {
+        fired = true;
+        audio::on_first_user_gesture();
+    }
+}
+
 EM_BOOL on_key_down(int, const EmscriptenKeyboardEvent* e, void*) {
+    maybe_first_user_gesture();
     feed_imgui_keyboard(e, /*down=*/true);
     const backbone::KeyCode code = map_key_code(e->code);
     // WantCaptureKeyboard (from the last NewFrame) is true while an InputText is
@@ -242,6 +257,7 @@ EM_BOOL on_mouse_move(int, const EmscriptenMouseEvent* e, void*) {
 }
 
 EM_BOOL on_mouse_down(int, const EmscriptenMouseEvent* e, void*) {
+    maybe_first_user_gesture();
     feed_imgui_mouse_pos(e);
     ImGui::GetIO().AddMouseButtonEvent(imgui_mouse_button(e->button), true);
     if (router_should_see_mouse()) {
