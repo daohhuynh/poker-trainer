@@ -256,12 +256,14 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_link_libraries(audio PUBLIC backbone engine bridge)
     if(EMSCRIPTEN)
         # Real backend (miniaudio SFX device + HTML5 <audio> music via EM_ASM): held
-        # to the reduced binding baseline. miniaudio.h is a SYSTEM include, so its
-        # single-TU implementation never trips -Werror.
+        # to the reduced binding baseline. miniaudio.h and stb_vorbis.c are SYSTEM
+        # includes, so their single-TU implementations never trip -Werror. stb_vorbis
+        # supplies miniaudio's bundled Vorbis decoding backend so the .ogg SFX decode.
         add_library(audio_backend STATIC src/audio/audio_backend.cpp)
         target_include_directories(audio_backend PUBLIC ${CMAKE_SOURCE_DIR}/src)
         target_include_directories(audio_backend SYSTEM PRIVATE
-            ${CMAKE_SOURCE_DIR}/third_party/miniaudio)
+            ${CMAKE_SOURCE_DIR}/third_party/miniaudio
+            ${CMAKE_SOURCE_DIR}/third_party/stb)
         target_compile_options(audio_backend PRIVATE ${POKER_TRAINER_BINDING_WARNING_FLAGS})
         target_link_libraries(audio PUBLIC audio_backend)
     else()

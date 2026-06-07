@@ -14,8 +14,25 @@
 #ifdef __EMSCRIPTEN__
 
 #define MA_NO_ENCODING
+
+// Vorbis (.ogg) SFX decoding. audio_paths.hpp specifies .ogg SFX, but miniaudio
+// decodes only WAV/MP3/FLAC natively. miniaudio bundles a complete stb_vorbis
+// decoding backend (g_ma_decoding_backend_vtable_stbvorbis) that compiles in only
+// when the stb_vorbis header is visible before MINIAUDIO_IMPLEMENTATION. Follow
+// miniaudio's documented include sandwich: the stb_vorbis HEADER first (just the
+// declarations + the opaque stb_vorbis type, so the backend's shim compiles), then
+// miniaudio's implementation (which now compiles the shim), then the stb_vorbis
+// IMPLEMENTATION. stb_vorbis.c is a SYSTEM include (set in CMake, like miniaudio.h),
+// so its public-domain C source never trips -Werror. The backend is handed to the
+// resource manager in sfx_init().
+#define STB_VORBIS_HEADER_ONLY
+#include <stb_vorbis.c>
+
 #define MINIAUDIO_IMPLEMENTATION
 #include <miniaudio.h>
+
+#undef STB_VORBIS_HEADER_ONLY
+#include <stb_vorbis.c>
 
 #include <emscripten/emscripten.h>
 
@@ -61,6 +78,16 @@ void sfx_init() {
     // device itself is driven by the browser's audio thread.
     ma_resource_manager_config rm_config = ma_resource_manager_config_init();
     rm_config.jobThreadCount = 0;
+    // Register the bundled stb_vorbis backend so .ogg SFX (audio_paths.hpp) decode.
+    // The built-in WAV/MP3/FLAC backends stay active alongside it; miniaudio copies
+    // this vtable-pointer array into the resource manager, so a static array suffices.
+    static ma_decoding_backend_vtable* custom_backends[] = {
+        &g_ma_decoding_backend_vtable_stbvorbis,
+    };
+    rm_config.ppCustomDecodingBackendVTables = custom_backends;
+    rm_config.customDecodingBackendCount =
+        sizeof(custom_backends) / sizeof(custom_backends[0]);
+    rm_config.pCustomDecodingBackendUserData = nullptr;
     if (ma_resource_manager_init(&rm_config, &g_resource_manager) != MA_SUCCESS) {
         return;
     }
