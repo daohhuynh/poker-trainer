@@ -294,6 +294,7 @@ if(EMSCRIPTEN)
         src/bridge/platform.cpp
         src/bridge/gl_renderer.cpp
         src/bridge/cdn_fetch.cpp
+        src/bridge/sfx_prefetch.cpp
         src/bridge/render_screens.cpp
         src/bridge/error_screen.cpp
         src/bridge/idbfs_backend.cpp

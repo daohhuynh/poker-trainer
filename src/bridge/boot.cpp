@@ -8,6 +8,7 @@
 #include "bridge/persistent_weights_store.hpp"
 #include "bridge/platform.hpp"
 #include "bridge/settings_persistence.hpp"
+#include "bridge/sfx_prefetch.hpp"
 #include "bridge/shared_scenario.hpp"
 
 #include "screens/screen_registration.hpp"
@@ -113,6 +114,14 @@ void init_assets(BootRoute route) {
         // when the user lands directly on Game (Notes — Shared Scenario URL).
         (void)rt.tier_loader->load_tier(assets::AssetTier::Tier3);
     }
+    // Deliver the Zone 03 SFX into MEMFS over the same CDN fetch (miniaudio loads
+    // them by fopen, so they must be on disk before a cue fires). The PNG tiers
+    // drive navigation-gated loading for textures only; the SFX have no such
+    // trigger wired yet, so they are fetched here — after the PNG kick, before any
+    // cue could play — per Module 3's fallback. When navigation-gated tiers land,
+    // the swoosh pair can move to the Tier-2 (modal-from-Root) trigger and the rest
+    // to the Tier-3 (Root -> Mode Selection) trigger.
+    prefetch_sfx_into_memfs();
 }
 
 // Second half of boot, run once the initial IDBFS FS.syncfs(true) has populated
