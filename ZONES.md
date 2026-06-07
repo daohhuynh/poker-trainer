@@ -61,7 +61,7 @@ This document defines the 14 implementation zones plus Phase 0. Each zone is a p
 
 **Scope:** Module 2 audio. Music streaming via miniaudio + HTML5 audio bridge, shuffle pool playback per genre, crossfades, SFX engine, audio choreography sequencing at scenario spawn, autoplay gesture gate.
 
-**Depends on:** Phase 0 (audio_paths.hpp), Zone 02 (for SFX assets).
+**Depends on:** Phase 0 (audio_paths.hpp), Zone 01 (engine::ScenarioType/ScenarioState), Zone 05-bridge (active_scenario())
 
 **Owns:** `src/audio/*` — music.cpp, sfx.cpp, choreography.cpp, shuffle_pool.cpp.
 
