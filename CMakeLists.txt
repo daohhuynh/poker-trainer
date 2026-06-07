@@ -176,6 +176,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/bridge/input_routing.cpp
         src/bridge/focus_registry.cpp
         src/bridge/focus_reconcile.cpp
+        src/bridge/frame_tick.cpp
         src/bridge/canvas_sizing.cpp
         src/bridge/shared_scenario.cpp
         src/bridge/loading_screen.cpp
@@ -497,6 +498,7 @@ if(ENABLE_TESTS)
         tests/bridge/screen_dispatch_test.cpp
         tests/bridge/input_routing_test.cpp
         tests/bridge/focus_reconcile_test.cpp
+        tests/bridge/frame_tick_test.cpp
     )
     target_include_directories(bridge_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src

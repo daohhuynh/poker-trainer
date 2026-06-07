@@ -3,14 +3,13 @@
 #include "bridge/bridge_runtime.hpp"
 #include "bridge/canvas_sizing.hpp"
 #include "bridge/error_screen.hpp"
+#include "bridge/frame_tick.hpp"
 #include "bridge/loading_screen.hpp"
 #include "bridge/platform.hpp"
 #include "bridge/screen_dispatch.hpp"
 
 #include "backbone/animation_clock.hpp"
 #include "backbone/screen_state.hpp"
-
-#include "audio/audio.hpp"
 
 #include "assets/tier_config.hpp"
 #include "theme/theme_tokens.hpp"
@@ -57,10 +56,13 @@ void frame() {
     g_have_last_now = true;
     backbone::tick(static_cast<std::uint64_t>(delta_ms));
 
-    // Advance Zone 03 once per frame off the same clock: fire scheduled choreography
-    // SFX, emit modal swoosh on modal-stack edges, and progress the music crossfade.
-    // Harmless before the autoplay gate opens (every call is gated to silence).
-    audio::audio_update();
+    // Run every zone's per-frame tick, in registration order, AFTER the clock has
+    // advanced (every tick reads the already-advanced clock). Zones self-register at
+    // install time via register_frame_tick — Z03's audio_update today (choreography
+    // SFX, modal swoosh, music crossfade), Z08 / Z10 later — so this call never needs
+    // editing as zones land. Harmless before the autoplay gate opens (audio is gated
+    // to silence).
+    run_frame_ticks();
 
     ImGuiIO& io = ImGui::GetIO();
     io.DeltaTime =

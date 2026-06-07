@@ -4,6 +4,7 @@
 #include "audio/audio_paths.hpp"
 #include "audio/backend.hpp"
 
+#include "bridge/frame_tick.hpp"
 #include "bridge/game_launch.hpp"
 
 #include "backbone/animation_clock.hpp"
@@ -79,6 +80,12 @@ void install_audio() {
         "audio.choreography");
     // Modal open / close swoosh is observed via the modal-stack-depth edge in
     // audio_update (modal_state.hpp is query-only — no subscribe API).
+
+    // Drive audio_update once per frame by self-registering it with the bridge's
+    // per-frame tick registry, rather than having the main loop hard-code the call.
+    // The main loop runs registered ticks after the animation clock advances, which
+    // is exactly what audio_update reads.
+    bridge::register_frame_tick(audio_update);
 }
 
 void on_first_user_gesture() {
