@@ -41,14 +41,19 @@ void select_bet_tier_on_click(BetSizeGroup& group, engine::BetTier tier) noexcep
     backbone::snap_focus_to(group.focus_id);
 }
 
-// ===== Render (Module 5) — not unit-tested (CLAUDE.md sec.9) =====
-
 namespace {
 
 constexpr std::array<const char*, engine::kBetTierCount> kTierLabels = {
     "1/3 Pot", "1/2 Pot", "Full Pot", "Overbet"};
 
 }  // namespace
+
+const char* bet_tier_label(engine::BetTier tier) noexcept {
+    const auto i = static_cast<std::size_t>(tier);
+    return i < engine::kBetTierCount ? kTierLabels[i] : "";
+}
+
+// ===== Render (Module 5) — not unit-tested (CLAUDE.md sec.9) =====
 
 void render_bet_size_group(BetSizeGroup& group, std::uint32_t ring_color) {
     if (!group.present) {
@@ -83,7 +88,7 @@ void render_bet_size_group(BetSizeGroup& group, std::uint32_t ring_color) {
         } else {
             ImGui::PushStyleColor(ImGuiCol_Button, theme::get_color(theme::ColorToken::ButtonBg));
         }
-        if (ImGui::Button(kTierLabels[i])) {
+        if (ImGui::Button(bet_tier_label(tier))) {
             select_bet_tier_on_click(group, tier);
         }
         ImGui::PopStyleColor(pushed);

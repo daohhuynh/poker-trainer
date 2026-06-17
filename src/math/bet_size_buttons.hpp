@@ -21,6 +21,11 @@ namespace poker_trainer::interrogator {
 // nullopt for any digit outside 1..4.
 [[nodiscard]] std::optional<engine::BetTier> bet_tier_for_digit(int digit) noexcept;
 
+// The display label for a bet-size tier ("1/3 Pot", "1/2 Pot", "Full Pot",
+// "Overbet"). Used both on the four buttons and in the multi-tier per-tier size
+// indicator ("Tier 2 of 4 - Bet: 1/2 Pot").
+[[nodiscard]] const char* bet_tier_label(engine::BetTier tier) noexcept;
+
 // Select a bet tier by digit while the group is focused. Returns true when the
 // digit 1..4 selected a tier (the keypress is consumed); false otherwise. Per
 // Module 5 the global 1-6 box-focus keybinds are suppressed while the group has

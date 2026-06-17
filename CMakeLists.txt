@@ -180,6 +180,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/bridge/canvas_sizing.cpp
         src/bridge/shared_scenario.cpp
         src/bridge/loading_screen.cpp
+        src/bridge/tier_schedule.cpp
         src/bridge/settings_persistence.cpp
         src/bridge/persistent_weights_store.cpp
     )
@@ -230,6 +231,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/math/bet_size_buttons.cpp
         src/math/submission.cpp
         src/math/keybinds.cpp
+        src/math/tier_flow.cpp
     )
     target_include_directories(interrogator PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(interrogator PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
@@ -295,6 +297,7 @@ if(EMSCRIPTEN)
         src/bridge/gl_renderer.cpp
         src/bridge/cdn_fetch.cpp
         src/bridge/sfx_prefetch.cpp
+        src/bridge/tier_orchestrator.cpp
         src/bridge/render_screens.cpp
         src/bridge/error_screen.cpp
         src/bridge/idbfs_backend.cpp
@@ -319,6 +322,17 @@ if(EMSCRIPTEN)
         "-sALLOW_MEMORY_GROWTH=1"
         "-sEXIT_RUNTIME=0"
         "-sASSERTIONS=1"
+        # Export the wasm heap views onto Module. miniaudio's Web Audio backend
+        # reads Module.HEAPF32 from its ScriptProcessorNode onaudioprocess callback
+        # (third_party/miniaudio/miniaudio.h: `new Float32Array(Module.HEAPF32.buffer, ...)`);
+        # without the export the first audio callback after the device starts on the
+        # first user gesture hits abort('HEAPF32' was not exported), which kills the
+        # runtime and freezes the app. sfx_prefetch.cpp's memfs writeback also reaches
+        # for HEAPU8. Export the full standard heap-view set so the audio callback (and
+        # any sibling heap access) reaches the heap without aborting; over-exporting only
+        # enlarges the JS glue slightly. ALLOW_MEMORY_GROWTH keeps these views valid
+        # across heap resizes (Emscripten reassigns them on growth).
+        "-sEXPORTED_RUNTIME_METHODS=HEAPF32,HEAPF64,HEAP8,HEAPU8,HEAP16,HEAPU16,HEAP32,HEAPU32"
         "-lidbfs.js"  # IDBFS filesystem backend for durable guest-mode persistence
     )
 
@@ -494,6 +508,7 @@ if(ENABLE_TESTS)
     add_executable(bridge_test
         tests/bridge/canvas_sizing_test.cpp
         tests/bridge/loading_arc_test.cpp
+        tests/bridge/tier_schedule_test.cpp
         tests/bridge/shared_scenario_test.cpp
         tests/bridge/game_launch_test.cpp
         tests/bridge/screen_dispatch_test.cpp
@@ -567,6 +582,7 @@ if(ENABLE_TESTS)
         tests/math/input_boxes_test.cpp
         tests/math/submission_test.cpp
         tests/math/keybinds_test.cpp
+        tests/math/tier_flow_test.cpp
     )
     target_include_directories(interrogator_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src

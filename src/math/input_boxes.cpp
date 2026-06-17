@@ -2,6 +2,7 @@
 
 #include "math/bet_size_buttons.hpp"
 #include "math/interrogator.hpp"
+#include "math/tier_flow.hpp"
 
 #include "backbone/focus_manager.hpp"
 
@@ -9,6 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <format>
+#include <string>
 #include <string_view>
 #include <system_error>
 
@@ -141,11 +144,39 @@ std::vector<NumericBox> build_boxes(const engine::ScenarioState& s) {
     return boxes;
 }
 
+bool box_filled(const NumericBox& box) noexcept {
+    return (box.input == engine::InputId::Outs) ? parse_box_int(box).has_value()
+                                                : parse_box_double(box).has_value();
+}
+
+bool box_in_current_view(const InterrogatorState& state, const NumericBox& box) noexcept {
+    if (!is_sequential(state)) {
+        return true;  // Caller / single-tier Aggressor: every input on one screen.
+    }
+    if (box.tier.has_value()) {
+        return *box.tier == state.current_tier;  // per-tier Fold / EV: its own tier only
+    }
+    // The only tier-less Aggressor box is Equity-if-Called (Semi-Bluff), a
+    // bet-size-independent input entered once on tier 1 (index 0).
+    return state.current_tier == 0;
+}
+
+std::vector<const NumericBox*> current_view_boxes(const InterrogatorState& state) {
+    std::vector<const NumericBox*> view;
+    view.reserve(state.boxes.size());
+    for (const NumericBox& box : state.boxes) {
+        if (box_in_current_view(state, box)) {
+            view.push_back(&box);
+        }
+    }
+    return view;
+}
+
 std::vector<backbone::FocusableId> build_focus_segment(const InterrogatorState& state) {
     std::vector<backbone::FocusableId> segment;
     segment.reserve(state.boxes.size() + 1);
-    for (const NumericBox& box : state.boxes) {
-        segment.push_back(box.focus_id);
+    for (const NumericBox* box : current_view_boxes(state)) {
+        segment.push_back(box->focus_id);
     }
     if (state.bet_group.present) {
         segment.push_back(state.bet_group.focus_id);
@@ -160,6 +191,7 @@ void configure_for_scenario(InterrogatorState& state, const engine::ScenarioStat
     state.bet_group.present = bet_group_present(s);
     state.last_result.reset();
     state.last_math_pass = false;
+    state.current_tier = 0;  // multi-tier always opens on tier 1; reset on respawn
     state.focus_segment = build_focus_segment(state);
     // New focus segment: forget the prior frame's reconciliation target so the
     // render path re-syncs ImGui to whatever focus_manager now reports.
@@ -291,9 +323,26 @@ void render_math_inputs(InterrogatorRuntime& runtime, const engine::ScenarioStat
                                    ImGuiWindowFlags_NoSavedSettings |
                                    ImGuiWindowFlags_AlwaysAutoResize;
     if (ImGui::Begin("##math_inputs", nullptr, flags)) {
-        for (NumericBox& box : state.boxes) {
-            draw_numeric_box(box, label_for(box), box_width, rec, ring_color);
+        // Multi-tier Aggressor: one tier per screen. Lead with the fixed-size
+        // indicator ("Tier 2 of 4 - Bet: 1/2 Pot") so the user knows which size
+        // this screen's Fold / EV are computed for (the size is given, not chosen --
+        // the Bet Size buttons below are the separate "which size is best" pick).
+        if (is_sequential(state)) {
+            const auto tier = static_cast<engine::BetTier>(state.current_tier);
+            const std::string indicator =
+                std::format("Tier {} of {} - Bet: {}", state.current_tier + 1,
+                            engine::kBetTierCount, bet_tier_label(tier));
+            ImGui::TextColored(theme::get_color(theme::ColorToken::TextSecondary), "%s",
+                               indicator.c_str());
         }
+        for (NumericBox& box : state.boxes) {
+            if (box_in_current_view(state, box)) {
+                draw_numeric_box(box, label_for(box), box_width, rec, ring_color);
+            }
+        }
+        // The Bet Size pick is persistent and editable on EVERY tier screen (the
+        // user's single "which size is optimal" answer, pre-highlighted from the
+        // carried selection); it is not gated by the current tier.
         if (state.bet_group.present) {
             render_bet_size_group(state.bet_group, ring_color);
         }

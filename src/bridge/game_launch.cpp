@@ -78,10 +78,39 @@ void begin_ceremonial_transition_to_game() noexcept {}
 std::optional<engine::ScenarioState> g_active_scenario;
 std::function<settings::Settings()> g_launch_settings_source;
 
+// The injected Tier-2 required-asset readiness guard (unset -> always Ready) and
+// the launch deferred while required assets are still downloading.
+std::function<LaunchAssetReadiness()> g_launch_asset_guard;
+struct PendingLaunch {
+    backbone::GameMode mode;
+    std::optional<backbone::CustomConfig> custom;
+};
+std::optional<PendingLaunch> g_pending_launch;
+
 // The settings the launch generates under: the injected live provider, or the
 // documented defaults when none is wired (tests / pre-integration).
 [[nodiscard]] settings::Settings launch_settings() {
     return g_launch_settings_source ? g_launch_settings_source() : settings::Settings{};
+}
+
+[[nodiscard]] LaunchAssetReadiness launch_asset_readiness() {
+    return g_launch_asset_guard ? g_launch_asset_guard() : LaunchAssetReadiness::Ready;
+}
+
+// The actual launch: select an id under the mode filter, generate the scenario
+// once under the live settings, store it as the single source of truth, fire
+// ScenarioSpawned, and transition to Game. Reached only once the required Tier-2
+// assets are Ready (directly, or deferred via poll_pending_launch).
+void do_launch(backbone::GameMode mode,
+               std::optional<backbone::CustomConfig> custom) {
+    const engine::ScenarioId id = select_scenario_id(mode, custom, master_rng());
+
+    set_active_scenario(engine::generate_scenario(id, launch_settings()));
+
+    backbone::fire_scenario_spawned(backbone::ScenarioSpawnedEvent{id});
+
+    backbone::set_screen(backbone::ScreenId::Game, id);
+    begin_ceremonial_transition_to_game();  // SEAM(Z14)
 }
 
 }  // namespace
@@ -108,25 +137,50 @@ engine::ScenarioId select_scenario_id(
 
 void request_game_launch(backbone::GameMode mode,
                          std::optional<backbone::CustomConfig> custom) {
-    const engine::ScenarioId id = select_scenario_id(mode, custom, master_rng());
+    // Tier-2 navigation guard: a required Game asset (table felt, game background,
+    // card faces) that fatally failed blocks the launch and shows the Error screen;
+    // one still downloading defers the launch until poll_pending_launch completes
+    // it. The generator never sees the mode (the seed filter encodes the type).
+    switch (launch_asset_readiness()) {
+        case LaunchAssetReadiness::Failed:
+            g_pending_launch.reset();
+            backbone::set_screen(backbone::ScreenId::Error, std::nullopt);
+            return;
+        case LaunchAssetReadiness::Pending:
+            g_pending_launch = PendingLaunch{mode, std::move(custom)};
+            return;
+        case LaunchAssetReadiness::Ready:
+            break;
+    }
+    do_launch(mode, std::move(custom));
+}
 
-    // Generate the scenario once, under the live settings, and store it as the
-    // single source of truth (every consumer reads active_scenario(), none
-    // regenerates). The mode is only the seed filter above; the generator never
-    // sees it (it is encoded in the chosen id's type).
-    set_active_scenario(engine::generate_scenario(id, launch_settings()));
-
-    // Fire ScenarioSpawned (after generation, before rendering) so Z09 resets its
-    // inputs and Z03/Z10 start their per-scenario work; the payload carries only
-    // the id, consumers read the full state from active_scenario().
-    backbone::fire_scenario_spawned(backbone::ScenarioSpawnedEvent{id});
-
-    backbone::set_screen(backbone::ScreenId::Game, id);
-    begin_ceremonial_transition_to_game();  // SEAM(Z14)
+void poll_pending_launch() {
+    if (!g_pending_launch.has_value()) {
+        return;
+    }
+    switch (launch_asset_readiness()) {
+        case LaunchAssetReadiness::Pending:
+            return;  // still downloading; keep waiting
+        case LaunchAssetReadiness::Failed: {
+            g_pending_launch.reset();
+            backbone::set_screen(backbone::ScreenId::Error, std::nullopt);
+            return;
+        }
+        case LaunchAssetReadiness::Ready:
+            break;
+    }
+    const PendingLaunch pending = std::move(*g_pending_launch);
+    g_pending_launch.reset();
+    do_launch(pending.mode, pending.custom);
 }
 
 void set_launch_settings_source(std::function<settings::Settings()> source) {
     g_launch_settings_source = std::move(source);
+}
+
+void set_launch_asset_guard(std::function<LaunchAssetReadiness()> guard) {
+    g_launch_asset_guard = std::move(guard);
 }
 
 const engine::ScenarioState* active_scenario() noexcept {
@@ -140,6 +194,8 @@ void set_active_scenario(const engine::ScenarioState& scenario) {
 void reset_game_launch_for_testing() noexcept {
     g_active_scenario.reset();
     g_launch_settings_source = nullptr;
+    g_launch_asset_guard = nullptr;
+    g_pending_launch.reset();
 }
 
 }  // namespace poker_trainer::bridge

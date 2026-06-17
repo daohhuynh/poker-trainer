@@ -25,6 +25,10 @@ namespace poker_trainer::bridge {
 
 namespace {
 
+// The canvas dims from the most recent platform_sync_viewport, exposed via
+// canvas_dims() (ZONES.md Z05 export). Zero until the first frame syncs.
+CanvasDims g_last_canvas_dims{};
+
 // Map a DOM KeyboardEvent.code string to a backbone KeyCode.
 [[nodiscard]] backbone::KeyCode map_key_code(const char* code) noexcept {
     using KC = backbone::KeyCode;
@@ -355,12 +359,15 @@ bool platform_launch_is_mobile() noexcept {
     return mobile;
 }
 
+CanvasDims canvas_dims() noexcept { return g_last_canvas_dims; }
+
 CanvasDims platform_sync_viewport() noexcept {
     const int viewport_w = EM_ASM_INT({ return window.innerWidth | 0; });
     const int viewport_h = EM_ASM_INT({ return window.innerHeight | 0; });
     const double dpr = EM_ASM_DOUBLE({ return window.devicePixelRatio || 1.0; });
 
     const CanvasDims css = canvas_dims_from_viewport(viewport_w, viewport_h);
+    g_last_canvas_dims = css;
     const int fb_w = static_cast<int>(static_cast<double>(css.width) * dpr);
     const int fb_h = static_cast<int>(static_cast<double>(css.height) * dpr);
     emscripten_set_canvas_element_size("#canvas", fb_w, fb_h);

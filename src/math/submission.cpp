@@ -18,11 +18,6 @@ namespace {
     return static_cast<std::size_t>(tier);
 }
 
-[[nodiscard]] bool box_filled(const NumericBox& box) noexcept {
-    return (box.input == engine::InputId::Outs) ? parse_box_int(box).has_value()
-                                                : parse_box_double(box).has_value();
-}
-
 }  // namespace
 
 engine::UserAnswers gather_answers(const InterrogatorState& state) {

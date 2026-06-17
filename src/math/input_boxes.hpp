@@ -34,10 +34,33 @@ namespace poker_trainer::interrogator {
 // bet-size-independent: it spawns exactly once and is reused for every tier.
 [[nodiscard]] std::vector<NumericBox> build_boxes(const engine::ScenarioState& s);
 
-// The Game-screen focus segment Z09 owns: every numeric box (in spawn order)
-// then the bet-size group when present. Z08 composes this with the cluster tail
-// (Shop/Help/Settings/X) in W3 -- // SEAM(Z08/Z11).
+// The Game-screen focus segment Z09 owns for the CURRENT screen: the numeric
+// boxes visible right now (in focus order) then the bet-size group when present.
+// For Caller / single-tier Aggressor that is every box (one screen). For a
+// multi-tier Aggressor it is only the current tier's boxes (Fold, EV, plus the
+// tier-1 Equity-if-Called for Semi-Bluff) -- the sequential per-tier focus list.
+// Z08 composes this with the cluster tail (Shop/Help/Settings/X) in W3 --
+// // SEAM(Z08/Z11). Re-run on every tier advance (see tier_flow / keybinds).
 [[nodiscard]] std::vector<backbone::FocusableId> build_focus_segment(const InterrogatorState& state);
+
+// True when `box`'s typed buffer parses to a value (Outs via int, every other box
+// via double). A partial / empty entry ("", "-", ".", "-.") is NOT filled and the
+// evaluator grades it incorrect. Shared by the submit-all fill check and the
+// per-tier advance gate.
+[[nodiscard]] bool box_filled(const NumericBox& box) noexcept;
+
+// True when `box` belongs on the CURRENT screen. Caller / single-tier Aggressor:
+// always true (all inputs on one screen). Multi-tier Aggressor: a per-tier box
+// (Fold / EV) only on its own tier; the bet-size-independent Equity-if-Called
+// (the tier-less Aggressor box) only on tier 1 (index 0).
+[[nodiscard]] bool box_in_current_view(const InterrogatorState& state,
+                                       const NumericBox& box) noexcept;
+
+// The boxes on the current screen, in focus/render order (a filtered, order-
+// preserving view over `state.boxes`). Pointers are valid until `boxes` is
+// rebuilt (configure_for_scenario). Used by the focus-segment builder, the
+// per-tier advance gate, and number-key targeting.
+[[nodiscard]] std::vector<const NumericBox*> current_view_boxes(const InterrogatorState& state);
 
 // (Re)spawn the boxes + bet group + focus segment for `s`, clearing all typed
 // buffers, the prior grade, and any bet selection. Called from the

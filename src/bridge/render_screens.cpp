@@ -79,6 +79,16 @@ void render_loading_screen() {
     }
 }
 
+float loading_progress() {
+    const BridgeRuntime& rt = runtime();
+    if (rt.tier_loader == nullptr) {
+        return 1.0f;
+    }
+    return loading_arc_fraction(
+        rt.tier_loader->resolved_count(assets::AssetTier::Tier1),
+        rt.tier_loader->total_count(assets::AssetTier::Tier1));
+}
+
 void render_fallback(DisplayMode mode) {
     if (mode == DisplayMode::Normal) {
         return;

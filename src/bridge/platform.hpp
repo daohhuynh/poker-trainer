@@ -23,6 +23,11 @@ namespace poker_trainer::bridge {
 // current viewport, and return the CSS-pixel canvas dims for this frame.
 CanvasDims platform_sync_viewport() noexcept;
 
+// The current canvas pixel dimensions (ZONES.md Z05 export canvas_dims()). The
+// dims last computed by platform_sync_viewport — the canvas always matches the
+// viewport, so this is the live canvas size. Zero before the first frame syncs.
+[[nodiscard]] CanvasDims canvas_dims() noexcept;
+
 // Clear the framebuffer to the given RGBA and present the current ImGui draw
 // data. Call after ImGui::Render().
 void platform_present(float r, float g, float b, float a) noexcept;

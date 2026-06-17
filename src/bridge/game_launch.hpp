@@ -6,6 +6,7 @@
 #include "engine/scenario_id.hpp"
 #include "settings/settings.hpp"
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 
@@ -61,6 +62,37 @@ void request_game_launch(backbone::GameMode mode,
 // truth for settings. Unset -> Settings{} defaults (keeps the pure bridge lib
 // self-contained for tests).
 void set_launch_settings_source(std::function<settings::Settings()> source);
+
+// ----- Tier-2 required-asset navigation guard (ARCHITECTURE Module 3 Tier 2) ---
+//
+// The Game screen cannot render its table without certain Tier-2 PNGs (the table
+// felt, game background, and card faces). Tier 2 loads in the background after
+// Root renders, so when the user clicks Play one of three things is true of the
+// required assets:
+
+// The readiness of the required Tier-2 assets at launch time.
+enum class LaunchAssetReadiness : std::uint8_t {
+    // All required assets are Loaded -> launch immediately.
+    Ready = 0,
+    // None failed, but some are still downloading -> defer the launch and
+    // complete it from poll_pending_launch once they resolve (the spec's
+    // "finish loading needed Tier 2 assets and then transition").
+    Pending = 1,
+    // A required asset fatally failed -> block the navigation and show the Error
+    // screen instead of launching (the spec's deferred Tier-2 failure handling).
+    Failed = 2,
+};
+
+// Inject the readiness guard. request_game_launch (and poll_pending_launch)
+// consult it before transitioning to Game. Unset -> always Ready, so the pure
+// bridge library and its tests launch synchronously with no asset registry.
+void set_launch_asset_guard(std::function<LaunchAssetReadiness()> guard);
+
+// Drive a deferred launch. If a launch is pending (the guard reported Pending
+// when the user clicked Play), re-evaluate readiness and either complete the
+// launch (Ready), surface the Error screen (Failed), or keep waiting (Pending).
+// A no-op when no launch is pending. The bridge calls this once per frame.
+void poll_pending_launch();
 
 // ----- Single authoritative active scenario -----
 //

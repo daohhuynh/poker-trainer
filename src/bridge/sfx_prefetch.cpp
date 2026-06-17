@@ -1,14 +1,15 @@
 #include "bridge/sfx_prefetch.hpp"
 
 #include "bridge/cdn_fetch.hpp"
+#include "bridge/tier_schedule.hpp"
 
+#include "assets/tier_config.hpp"
 #include "assets/tier_loader.hpp"
 
 #include "audio/audio_paths.hpp"
 
 #include <cstddef>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <emscripten/emscripten.h>
@@ -41,13 +42,19 @@ void write_sample_to_memfs(const std::string& path, const std::vector<std::byte>
 
 }  // namespace
 
-void prefetch_sfx_into_memfs() {
+void prefetch_sfx_tier_into_memfs(assets::AssetTier tier) {
     // Reuse the exact production CDN fetch the PNG tier loader uses; the only
     // difference is the destination — bytes go to MEMFS (for miniaudio's fopen)
     // rather than into a decoded texture. Each sample is an independent async fetch.
+    // Only the samples whose load tier (tier_schedule.hpp) matches are fetched, so
+    // the swoosh pair rides Tier 2 and the rest ride Tier 3.
     const assets::FetchFn fetch = make_cdn_fetch();
-    for (const std::string_view sfx : audio::kSfxPaths) {
-        const std::string path{sfx};
+    for (std::size_t i = 0; i < audio::kSfxCount; ++i) {
+        const auto id = static_cast<audio::SfxId>(i);
+        if (sfx_load_tier(id) != tier) {
+            continue;
+        }
+        const std::string path{audio::sfx_path(id)};
         fetch(path, [path](assets::FetchResult result) {
             if (!result.ok) {
                 return;  // 404 / network error: leave the sample absent (silent skip)

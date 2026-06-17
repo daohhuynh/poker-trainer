@@ -87,9 +87,18 @@ struct BetSizeGroup {
 // The live, mutable interrogator state for the active scenario.
 struct InterrogatorState {
     std::optional<engine::ScenarioState> scenario;     // cached active scenario (truth source)
-    std::vector<NumericBox> boxes;                      // visible numeric boxes, in spawn order
+    std::vector<NumericBox> boxes;                      // ALL boxes for the scenario, in spawn order
     BetSizeGroup bet_group;
-    std::vector<backbone::FocusableId> focus_segment;   // boxes then bet group, in focus order
+    std::vector<backbone::FocusableId> focus_segment;   // CURRENT screen's boxes then bet group
+
+    // Multi-tier Aggressor (Bet Sizing Engine on) is presented SEQUENTIALLY: one
+    // tier per screen, Enter advancing tier-by-tier and submitting on the last
+    // (see tier_flow.hpp). `current_tier` is the tier (0..3) whose screen is
+    // showing; `boxes` always holds every tier's boxes (the submitted answer set
+    // is identical to the all-at-once shape Z01 grades), but only the current
+    // tier's are rendered / focusable / required-to-advance. Always 0 for Caller
+    // and single-tier Aggressor, which present all inputs on one screen.
+    std::uint8_t current_tier{0};
     std::optional<engine::GradingResult> last_result;   // last submission's grade (for Z13)
     bool last_math_pass{false};                         // is_pass(last_result)
 

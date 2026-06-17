@@ -179,3 +179,70 @@ TEST_F(LaunchTest, SetActiveScenarioRoundTrips) {
     EXPECT_EQ(active->id, eng::ScenarioId{321});
     EXPECT_DOUBLE_EQ(active->caller_pot_odds_pct, 99.0);
 }
+
+// ----- Tier-2 required-asset navigation guard -----
+
+TEST_F(LaunchTest, FailedRequiredAssetBlocksLaunchAndShowsErrorScreen) {
+    br::set_launch_asset_guard([] { return br::LaunchAssetReadiness::Failed; });
+    br::request_game_launch(bb::GameMode::Standard, std::nullopt);
+
+    // Navigation blocked: no scenario launched, screen routed to Error.
+    EXPECT_EQ(br::active_scenario(), nullptr);
+    EXPECT_EQ(bb::read_screen_state().current, bb::ScreenId::Error);
+}
+
+TEST_F(LaunchTest, PendingAssetsDeferLaunchUntilReady) {
+    br::LaunchAssetReadiness readiness = br::LaunchAssetReadiness::Pending;
+    br::set_launch_asset_guard([&] { return readiness; });
+
+    // Click Play while Tier 2 is still downloading: nothing transitions yet.
+    br::request_game_launch(bb::GameMode::Caller, std::nullopt);
+    EXPECT_EQ(br::active_scenario(), nullptr);
+    EXPECT_EQ(bb::read_screen_state().current, bb::ScreenId::Root);
+
+    // Polling while still pending keeps waiting (no spurious launch).
+    br::poll_pending_launch();
+    EXPECT_EQ(br::active_scenario(), nullptr);
+    EXPECT_EQ(bb::read_screen_state().current, bb::ScreenId::Root);
+
+    // Assets finish: the deferred launch completes and transitions to Game.
+    readiness = br::LaunchAssetReadiness::Ready;
+    br::poll_pending_launch();
+    const eng::ScenarioState* active = br::active_scenario();
+    ASSERT_NE(active, nullptr);
+    EXPECT_EQ(active->type, eng::ScenarioType::Caller);
+    EXPECT_EQ(bb::read_screen_state().current, bb::ScreenId::Game);
+}
+
+TEST_F(LaunchTest, PendingLaunchThatLaterFailsShowsErrorScreen) {
+    br::LaunchAssetReadiness readiness = br::LaunchAssetReadiness::Pending;
+    br::set_launch_asset_guard([&] { return readiness; });
+
+    br::request_game_launch(bb::GameMode::Standard, std::nullopt);
+    EXPECT_EQ(bb::read_screen_state().current, bb::ScreenId::Root);
+
+    // A required asset fatally fails while the launch was deferred.
+    readiness = br::LaunchAssetReadiness::Failed;
+    br::poll_pending_launch();
+    EXPECT_EQ(br::active_scenario(), nullptr);
+    EXPECT_EQ(bb::read_screen_state().current, bb::ScreenId::Error);
+
+    // The pending launch is cleared: a further poll does not resurrect it.
+    readiness = br::LaunchAssetReadiness::Ready;
+    br::poll_pending_launch();
+    EXPECT_EQ(br::active_scenario(), nullptr);
+}
+
+TEST_F(LaunchTest, ReadyGuardLaunchesImmediately) {
+    br::set_launch_asset_guard([] { return br::LaunchAssetReadiness::Ready; });
+    br::request_game_launch(bb::GameMode::Caller, std::nullopt);
+    EXPECT_NE(br::active_scenario(), nullptr);
+    EXPECT_EQ(bb::read_screen_state().current, bb::ScreenId::Game);
+}
+
+TEST_F(LaunchTest, PollWithoutPendingLaunchIsNoOp) {
+    // No launch requested: polling neither launches nor errors.
+    br::poll_pending_launch();
+    EXPECT_EQ(br::active_scenario(), nullptr);
+    EXPECT_EQ(bb::read_screen_state().current, bb::ScreenId::Root);
+}

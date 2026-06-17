@@ -1,5 +1,7 @@
 #pragma once
 
+#include "assets/tier_config.hpp"
+
 // SFX delivery into the Emscripten filesystem (Zone 05 owns the CDN fetch path).
 //
 // Zone 03's SFX play through miniaudio, which loads samples with fopen — so the
@@ -16,10 +18,14 @@
 
 namespace poker_trainer::bridge {
 
-// Fetch every SFX sample named in audio_paths.hpp from the CDN and write it into
-// MEMFS at its asset-root-relative path. Fire-and-forget: each fetch resolves
-// asynchronously and writes on completion; a failed fetch is silently skipped. Call
-// once at boot, after the PNG tier load is kicked (before any cue would fire).
-void prefetch_sfx_into_memfs();
+// Fetch every SFX sample that belongs to `tier` (per sfx_load_tier in
+// tier_schedule.hpp: the Modal Open/Close Swoosh pair in Tier 2, the rest in
+// Tier 3) and write each into MEMFS at its asset-root-relative path. Fire-and-
+// forget: each fetch resolves asynchronously and writes on completion; a failed
+// fetch is silently skipped (Tier 3's silent-failure disposition). Tier 1 and
+// Tier 4 carry no SFX, so calling them is a no-op. Called by the tier orchestrator
+// as each tier's trigger fires, so the swoosh pair lands after Root renders and
+// the rest on Root -> Mode Selection (or the shared-scenario force-fire).
+void prefetch_sfx_tier_into_memfs(assets::AssetTier tier);
 
 }  // namespace poker_trainer::bridge

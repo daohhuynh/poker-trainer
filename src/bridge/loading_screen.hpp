@@ -31,6 +31,11 @@ namespace poker_trainer::bridge {
 // transition the screen state to Root. Reads the active AssetRegistry and
 // TierLoader through the bridge runtime (see bridge_runtime.hpp).
 void render_loading_screen();
+
+// Tier-1 download progress in [0, 1] (ZONES.md Z05 export loading_progress()).
+// The same fraction that fills the loading arc; reads the live TierLoader. Reports
+// 1.0 before the loader exists (nothing to load yet) so callers never see a stall.
+[[nodiscard]] float loading_progress();
 #endif
 
 }  // namespace poker_trainer::bridge

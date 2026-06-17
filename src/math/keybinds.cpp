@@ -4,6 +4,7 @@
 #include "math/input_boxes.hpp"
 #include "math/interrogator.hpp"
 #include "math/submission.hpp"
+#include "math/tier_flow.hpp"
 
 #include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
@@ -32,12 +33,12 @@ backbone::FocusableId focus_target_for_digit(const InterrogatorState& state, int
     if (target == engine::InputId::BetSize) {
         return state.bet_group.present ? state.bet_group.focus_id : backbone::kNoFocus;
     }
-    // First box of that kind; multi-tier per-tier inputs resolve to tier 0.
-    // SEAM(Z08): per-tier number-key targeting (a "current tier" cursor) is a
-    // render/layout concern finalized with the Game screen in W3.
-    for (const NumericBox& box : state.boxes) {
-        if (box.input == target) {
-            return box.focus_id;
+    // The box of that kind on the CURRENT screen. In a sequential multi-tier
+    // Aggressor that is the current tier's Fold / EV (so "5"/"4" focus THIS tier's
+    // inputs, not tier 0); for Caller / single-tier it is the sole such box.
+    for (const NumericBox* box : current_view_boxes(state)) {
+        if (box->input == target) {
+            return box->focus_id;
         }
     }
     return backbone::kNoFocus;
@@ -100,8 +101,8 @@ void populate_focus_registry(InterrogatorRuntime& runtime) {
     }
     bridge::FocusRegistry& registry = *runtime.focus_registry;
     registry.clear();
-    for (const NumericBox& box : runtime.state.boxes) {
-        registry.register_element(box.focus_id, bridge::FocusableEntry{.is_text_field = true});
+    for (const NumericBox* box : current_view_boxes(runtime.state)) {
+        registry.register_element(box->focus_id, bridge::FocusableEntry{.is_text_field = true});
     }
     if (runtime.state.bet_group.present) {
         registry.register_element(runtime.state.bet_group.focus_id,
@@ -145,25 +146,93 @@ void game_render_hook(InterrogatorRuntime& runtime) {
     }
 }
 
+// Submit the gathered answers (on_submit fires the bus events + grades).
+// SEAM(Z14): trigger the Game->Post-Round slide transition here once Z14 owns it.
+// Enter reaches this handler reliably even while a box is active -- the platform
+// gate routes Tab/Enter/Escape through (bridge/input_routing.hpp); per-screen
+// Enter-to-activate handlers for Root / Mode Selection are Zone 07's.
+void do_submit(InterrogatorRuntime& runtime) {
+    (void)on_submit(runtime);
+}
+
+// Advance a sequential multi-tier Aggressor to the next tier screen (forward-only).
+// Re-registers the new tier's focus list + registry, carries the persistent Bet
+// Size pick (NOT reset), and lands default focus on the new tier's first input
+// (Fold Probability). The per-tier typed answers stay in `state.boxes`, so the
+// submitted set remains identical to the all-at-once shape Z01 grades.
+void advance_tier(InterrogatorRuntime& runtime) {
+    InterrogatorState& state = runtime.state;
+    const std::uint8_t next = next_tier(state.current_tier);
+    if (next == state.current_tier) {
+        return;  // already on the last tier: forward-only, no wrap, no revisit
+    }
+    state.current_tier = next;
+    state.focus_segment = build_focus_segment(state);
+    backbone::register_focus_list(backbone::ScreenId::Game, state.focus_segment);
+    populate_focus_registry(runtime);
+    state.last_synced_focus = backbone::kNoFocus;
+    if (!state.focus_segment.empty()) {
+        backbone::snap_focus_to(state.focus_segment.front());  // default focus = Fold Probability
+    }
+}
+
+// True when keyboard focus is in Z09's math-input zone (a numeric box or the bet-
+// size group) -- where Enter advances/submits. kNoFocus (an unarmed context) counts
+// as the zone (no cluster icon is focused). A focused element outside the segment
+// is a Z08/Z11 cluster icon (SEAM): Enter must activate it, not advance the tier.
+[[nodiscard]] bool focus_in_math_zone(const InterrogatorState& state) {
+    const backbone::FocusableId focused = backbone::get_focused_element();
+    if (focused == backbone::kNoFocus) {
+        return true;
+    }
+    for (const backbone::FocusableId id : state.focus_segment) {
+        if (id == focused) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool on_enter_key(InterrogatorRuntime& runtime, const backbone::KeyEvent& e) {
     if (e.type != backbone::KeyEventType::KeyDown || e.code != backbone::KeyCode::Enter) {
         return false;
     }
-    // Enter submits ALL visible inputs at once, regardless of which is focused
-    // (overrides the standard "Enter activates the focused element" rule).
-    // Tutorial override: suppress until every visible input across all tiers is
-    // filled, then submit normally.
+    InterrogatorState& state = runtime.state;
+
+    // Multi-tier Aggressor: SEQUENTIAL per-tier flow. Enter advances tier-by-tier
+    // and submits on the last tier, gated on the CURRENT tier's required inputs
+    // (Fold + EV, plus the tier-1 Equity-if-Called); the Bet Size pick never gates.
+    // Enter advances/submits only from the math-input zone -- on a cluster icon Enter
+    // activates that icon, so leave it unconsumed there. This also subsumes the
+    // tutorial "Enter does nothing until this tier's inputs are filled" rule, since
+    // an unfilled tier yields EnterAction::None for tutorial and gameplay alike.
+    if (is_sequential(state)) {
+        if (!focus_in_math_zone(state)) {
+            return false;
+        }
+        switch (enter_action(state)) {
+            case EnterAction::None:
+                return true;  // this tier's required inputs unfilled: consumed no-op
+            case EnterAction::Advance:
+                advance_tier(runtime);
+                return true;
+            case EnterAction::Submit:
+                do_submit(runtime);
+                return true;
+        }
+        return true;  // exhaustive switch above; keeps -Wreturn-type quiet
+    }
+
+    // Caller / single-tier Aggressor: one screen, Enter submits ALL visible inputs
+    // at once (overrides "Enter activates the focused element"). Tutorial override:
+    // suppress until every visible input is filled, then submit normally.
     const backbone::ScreenStateSnapshot snap = backbone::read_screen_state();
     const bool tutorial_active =
         snap.tutorial_state.phase == backbone::TutorialPhase::Active;
-    if (tutorial_active && !all_visible_inputs_filled(runtime.state)) {
+    if (tutorial_active && !all_visible_inputs_filled(state)) {
         return true;  // consumed; submission suppressed until all filled
     }
-    (void)on_submit(runtime);
-    // SEAM(Z14): trigger the Game->Post-Round slide transition here once Z14 owns
-    // it. Enter now reaches this handler reliably even while a box is active — the
-    // platform gate routes Tab/Enter/Escape through (bridge/input_routing.hpp);
-    // per-screen Enter-to-activate handlers for Root / Mode Selection are Zone 07's.
+    do_submit(runtime);
     return true;
 }
 

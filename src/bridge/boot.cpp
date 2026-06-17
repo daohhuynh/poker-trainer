@@ -8,8 +8,8 @@
 #include "bridge/persistent_weights_store.hpp"
 #include "bridge/platform.hpp"
 #include "bridge/settings_persistence.hpp"
-#include "bridge/sfx_prefetch.hpp"
 #include "bridge/shared_scenario.hpp"
+#include "bridge/tier_orchestrator.hpp"
 
 #include "screens/screen_registration.hpp"
 
@@ -23,7 +23,6 @@
 #include "backbone/focus_manager.hpp"
 #include "backbone/screen_state.hpp"
 
-#include "assets/tier_config.hpp"
 #include "assets/tier_loader.hpp"
 
 #include "engine/scenario_id.hpp"
@@ -101,27 +100,17 @@ void init_backbone() {
 }
 
 // Zone 02 bring-up: construct the asset registry + tier loader (Z05 owns the CDN
-// fetch wrapper) and kick the synchronous Tier-1 load. Runs in app_init, in
-// parallel with the async IDBFS sync.
+// fetch wrapper) and kick the boot-time tier loads. Runs in app_init, in parallel
+// with the async IDBFS sync. The tier orchestrator owns the per-tier triggers and
+// the SFX-into-MEMFS delivery (Tier 2 swoosh after Root renders, Tier 3 rest on
+// Root -> Mode Selection); start_tiered_loading fires Tier 1 now and, on the
+// shared-scenario route, force-fires Tier 2 / Tier 3 concurrently with it.
 void init_assets(BootRoute route) {
     BridgeRuntime& rt = *g_runtime;
     rt.tier_loader = std::make_unique<assets::TierLoader>(
         rt.registry, make_cdn_fetch(), assets::make_png_decoder(),
         assets::make_steady_clock());
-    (void)rt.tier_loader->load_tier(assets::AssetTier::Tier1);
-    if (route == BootRoute::SharedScenario) {
-        // Force the Tier-3 on-click load now so SFX + default music are ready
-        // when the user lands directly on Game (Notes — Shared Scenario URL).
-        (void)rt.tier_loader->load_tier(assets::AssetTier::Tier3);
-    }
-    // Deliver the Zone 03 SFX into MEMFS over the same CDN fetch (miniaudio loads
-    // them by fopen, so they must be on disk before a cue fires). The PNG tiers
-    // drive navigation-gated loading for textures only; the SFX have no such
-    // trigger wired yet, so they are fetched here — after the PNG kick, before any
-    // cue could play — per Module 3's fallback. When navigation-gated tiers land,
-    // the swoosh pair can move to the Tier-2 (modal-from-Root) trigger and the rest
-    // to the Tier-3 (Root -> Mode Selection) trigger.
-    prefetch_sfx_into_memfs();
+    start_tiered_loading(route);
 }
 
 // Second half of boot, run once the initial IDBFS FS.syncfs(true) has populated
@@ -170,6 +159,10 @@ void finish_boot_after_persistence() {
     // render hook, the Enter-submit + number-key handlers, and the scenario_spawned
     // reset subscription. The math inputs are now live on the Game screen.
     set_launch_settings_source(live_settings_source);
+    // Wire the Tier-2 navigation guard: request_game_launch consults the live
+    // asset registry through this before transitioning to Game (a failed table /
+    // card asset shows the Error screen; an in-flight one defers the launch).
+    set_launch_asset_guard(game_launch_asset_readiness);
     g_boot.interrogator.settings_source = live_settings_source;
     // Wire the shared focus-reconciliation registry (owned off BridgeRuntime) into
     // Z09 so its inputs register their text/non-text reconcile behavior and the
@@ -182,6 +175,12 @@ void finish_boot_after_persistence() {
     // wired in the main loop and platform input layer). No asset/persistence
     // dependency — Z03 loads audio by path and degrades gracefully when absent.
     audio::install_audio();
+
+    // Register the tier orchestrator's per-frame tick: the navigation-gated Tier-2
+    // (after Root renders) and Tier-3 (Root -> Mode Selection) loads, plus the
+    // deferred-launch poll. Uses the register_frame_tick seam, so the main loop is
+    // not edited as triggers land.
+    install_tier_orchestrator();
 
     start_main_loop();
 }

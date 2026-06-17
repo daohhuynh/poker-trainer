@@ -43,7 +43,9 @@ void on_tier1_complete(BridgeRuntime& rt) {
     // wired by Zone 14; Z05 performs only the state transition here.
 }
 
-void frame() {
+}  // namespace
+
+void app_frame() {
     BridgeRuntime& rt = runtime();
 
     // 1. Advance the animation clock once per frame, in milliseconds.
@@ -110,7 +112,13 @@ void frame() {
     platform_present(bg.x, bg.y, bg.z, bg.w);
 }
 
-}  // namespace
+void app_shutdown() {
+    // Stop the requestAnimationFrame loop. EXIT_RUNTIME=0 keeps the wasm runtime
+    // alive (there is no global teardown to run), so cancelling the loop is the
+    // full, safe shutdown. No in-app path triggers this today — the page simply
+    // closes — but it completes the documented Z05 lifecycle contract.
+    emscripten_cancel_main_loop();
+}
 
 void start_main_loop() {
     // fps = 0 -> drive from requestAnimationFrame. simulate_infinite_loop = false:
@@ -119,7 +127,7 @@ void start_main_loop() {
     // throw to unwind the stack. The per-frame state above is file-scope static,
     // so it persists across the return; EXIT_RUNTIME=0 keeps the runtime alive
     // after app_init / main return so the RAF loop keeps firing.
-    emscripten_set_main_loop(frame, 0, EM_FALSE);
+    emscripten_set_main_loop(app_frame, 0, EM_FALSE);
 }
 
 }  // namespace poker_trainer::bridge
