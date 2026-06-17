@@ -10,6 +10,7 @@
 #include "backbone/focus_manager.hpp"
 
 #include <array>
+#include <cstdint>
 
 namespace poker_trainer::screens {
 
@@ -48,13 +49,24 @@ inline void register_root_focus_list() noexcept {
 
 // ----- Keyboard activation (Space / Enter) ------------------------------------
 //
-// Space (and Enter on this non-Game screen) activates the focused element, same
-// as a click. Only Play has a keyboard activation action — it starts the Root ->
-// Mode morph; Settings/Shop/Help open modals (Z11 seam) and Home reloads (Z05
-// seam), neither wired this wave, so activating them is a no-op like clicking them
-// is today. Pure (no ImGui / router), so the mapping is unit-tested directly.
-[[nodiscard]] constexpr bool root_focus_activates_morph(backbone::FocusableId id) noexcept {
-    return id == kFocusRootPlay;
+// Space (and Enter, on this non-Game screen) activates the focused element, the
+// same as a click. This classifies the focused id into the action a click would
+// perform; the installed handler applies it. Play starts the Root -> Mode morph;
+// Home reloads the page (ARCHITECTURE Notes — Home Screen ...: "Enter on a focused
+// element activates it (Play opens the morph ..., Home reloads the page)").
+// Settings/Shop/Help open their modals (Z11 seam) -> None, a no-op exactly as
+// clicking them is today. Pure (no ImGui / router / reload), so the mapping is
+// unit-tested directly. Mirrors mode_selection_screen.hpp's ModeActivation.
+enum class RootActivation : std::uint8_t {
+    None,        // nothing focused, or a Z11 cluster seam slot (Settings/Shop/Help)
+    StartMorph,  // Play -> start the Root -> Mode Selection morph
+    ReloadPage,  // Home -> window.location.reload
+};
+
+[[nodiscard]] constexpr RootActivation root_activation_for_focus(backbone::FocusableId id) noexcept {
+    if (id == kFocusRootPlay) return RootActivation::StartMorph;
+    if (id == kFocusRootHome) return RootActivation::ReloadPage;
+    return RootActivation::None;  // Settings / Shop / Help -> Z11 seam
 }
 
 // ----- Render + handler wiring -------------------------------------------------
@@ -72,11 +84,11 @@ void render_root_screen();
 void render_root_morph_frame(float global_t);
 
 // Install the Root event-router handlers (Escape -> no-op; Play -> start the
-// morph on the caller-owned MorphController; Settings/Shop/Help -> open their
-// modals [Zone 11 seam]; Home -> reload the page [Zone 05 seam]). Deferred wiring
-// seam: takes the main-loop-owned morph controller by reference, since the no-arg
-// render export and CLAUDE.md section 10 (no global state) give Zone 07 no place
-// to own it. Called by Zone 05's main loop, not this wave.
+// morph on the caller-owned MorphController; Home -> reload the page
+// [window.location.reload]; Settings/Shop/Help -> open their modals [Zone 11
+// seam]). Deferred wiring seam: takes the main-loop-owned morph controller by
+// reference, since the no-arg render export and CLAUDE.md section 10 (no global
+// state) give Zone 07 no place to own it. Called by Zone 05's main loop.
 void install_root_handlers(animations::MorphController& morph);
 
 }  // namespace poker_trainer::screens

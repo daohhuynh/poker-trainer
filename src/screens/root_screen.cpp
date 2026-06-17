@@ -10,6 +10,10 @@
 
 #include <imgui.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
+
 #include "theme/theme_tokens.hpp"
 
 namespace poker_trainer::screens {
@@ -17,6 +21,19 @@ namespace poker_trainer::screens {
 namespace {
 
 namespace ru = render_util;
+
+// Home activation on Root: reload the page (ARCHITECTURE Notes — Home Screen ...:
+// "clicking the Home icon reloads the page"). Routes through the same
+// window.location.reload the Error screen's Retry uses (bridge/error_screen.cpp).
+// Guarded to __EMSCRIPTEN__ because the screens library also compiles natively for
+// the unit tests, where there is no emscripten header and no page to reload — so
+// it degrades to a no-op there (the pure root_activation_for_focus mapping is what
+// the native tests exercise).
+void reload_page() noexcept {
+#ifdef __EMSCRIPTEN__
+    emscripten_run_script("window.location.reload()");
+#endif
+}
 
 [[nodiscard]] animations::Canvas viewport_canvas() {
     const ImVec2 size = ImGui::GetMainViewport()->Size;
@@ -122,11 +139,11 @@ void install_root_handlers(animations::MorphController& morph) {
         backbone::HandlerPriority::ScreenContext, "root.escape");
 
     // Keyboard activation: Space (and Enter, on this non-Game screen) activates the
-    // focused element, the same as clicking it. Only Play has an action (start the
-    // morph); other focused elements are Z11/Z05 seams, so the key is left
-    // unconsumed for them (a no-op, matching their click behavior today). The
-    // platform's WantCaptureKeyboard gate already ensures Space/Enter only reach the
-    // router when no text field is capturing — and Root has no text fields anyway.
+    // focused element, the same as clicking it — Play starts the morph, Home reloads
+    // the page. Settings/Shop/Help are Z11 seams (None -> key left unconsumed, a
+    // no-op matching their click behavior today). The platform's WantCaptureKeyboard
+    // gate already ensures Space/Enter only reach the router when no text field is
+    // capturing — and Root has no text fields anyway.
     backbone::register_key_handler(
         [] { return backbone::read_screen_state().current == backbone::ScreenId::Root; },
         [&morph](const backbone::KeyEvent& e) {
@@ -136,18 +153,25 @@ void install_root_handlers(animations::MorphController& morph) {
             if (e.code != backbone::KeyCode::Space && e.code != backbone::KeyCode::Enter) {
                 return false;
             }
-            if (!backbone::is_keyboard_mode_active() ||
-                !root_focus_activates_morph(backbone::get_focused_element())) {
-                return false;  // nothing focused, or a focused seam element: no-op
+            if (!backbone::is_keyboard_mode_active()) {
+                return false;  // nothing focused yet
             }
-            morph.start(backbone::total_ms_since_app_start());  // identical to a Play click
-            return true;
+            switch (root_activation_for_focus(backbone::get_focused_element())) {
+                case RootActivation::StartMorph:
+                    morph.start(backbone::total_ms_since_app_start());  // == a Play click
+                    return true;
+                case RootActivation::ReloadPage:
+                    reload_page();  // == a Home click
+                    return true;
+                case RootActivation::None:
+                    return false;  // focused Z11 seam element: leave the key unconsumed
+            }
+            return false;
         },
         backbone::HandlerPriority::ScreenContext, "root.activate");
 
-    // Click routing. Play starts the morph (on the caller-owned controller);
-    // Settings/Shop/Help open their modals (Zone 11 seam); Home reloads the page
-    // (Zone 05 / window.location.reload seam).
+    // Click routing. Play starts the morph (on the caller-owned controller); Home
+    // reloads the page; Settings/Shop/Help open their modals (Zone 11 seam).
     backbone::register_mouse_handler(
         [] { return backbone::read_screen_state().current == backbone::ScreenId::Root; },
         [&morph](const backbone::MouseEvent& e) {
@@ -162,8 +186,14 @@ void install_root_handlers(animations::MorphController& morph) {
                 morph.start(backbone::total_ms_since_app_start());
                 return true;
             }
+            // Home icon (top-right, stationary anchor) -> reload the page. Hit-tested
+            // at the exact rect render_root_screen draws (home_icon_rect), so
+            // visible == clickable.
+            if (point_in_rect(e.x, e.y, animations::home_icon_rect(canvas))) {
+                reload_page();
+                return true;
+            }
             // Settings / Shop / Help -> Zone 11 cluster modals (seam, not this wave).
-            // Home -> window.location.reload (Zone 05 bridge seam, not this wave).
             return false;
         },
         backbone::HandlerPriority::ScreenContext, "root.click");

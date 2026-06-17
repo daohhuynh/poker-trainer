@@ -128,13 +128,14 @@ TEST_F(FocusListTest, CloseCustomPopupClearsOpenAndPopsFocus) {
 // The handler wiring itself (router dispatch -> side effects) is verified in the
 // browser, per CLAUDE.md sec.9 (UI behavior is not unit-tested).
 
-TEST(KeyboardActivation, RootOnlyPlayActivatesMorph) {
-    EXPECT_TRUE(sc::root_focus_activates_morph(sc::kFocusRootPlay));
-    EXPECT_FALSE(sc::root_focus_activates_morph(sc::kFocusRootSettings));
-    EXPECT_FALSE(sc::root_focus_activates_morph(sc::kFocusRootShop));
-    EXPECT_FALSE(sc::root_focus_activates_morph(sc::kFocusRootHelp));
-    EXPECT_FALSE(sc::root_focus_activates_morph(sc::kFocusRootHome));
-    EXPECT_FALSE(sc::root_focus_activates_morph(bb::kNoFocus));  // nothing focused
+TEST(KeyboardActivation, RootFocusMapsToClickAction) {
+    EXPECT_EQ(sc::root_activation_for_focus(sc::kFocusRootPlay), sc::RootActivation::StartMorph);
+    EXPECT_EQ(sc::root_activation_for_focus(sc::kFocusRootHome), sc::RootActivation::ReloadPage);
+    // Settings / Shop / Help open their modals (Z11 seam) -> no-op activation.
+    EXPECT_EQ(sc::root_activation_for_focus(sc::kFocusRootSettings), sc::RootActivation::None);
+    EXPECT_EQ(sc::root_activation_for_focus(sc::kFocusRootShop), sc::RootActivation::None);
+    EXPECT_EQ(sc::root_activation_for_focus(sc::kFocusRootHelp), sc::RootActivation::None);
+    EXPECT_EQ(sc::root_activation_for_focus(bb::kNoFocus), sc::RootActivation::None);  // none focused
 }
 
 TEST(KeyboardActivation, ModeFocusMapsToClickAction) {
