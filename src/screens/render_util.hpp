@@ -12,8 +12,13 @@
 
 #include "animations/button_morph.hpp"
 
+#include "assets/asset_paths.hpp"
+
+#include <cstdint>
+
 #include <imgui.h>
 
+#include "bridge/asset_image.hpp"
 #include "theme/theme_tokens.hpp"
 
 namespace poker_trainer::screens::render_util {
@@ -67,35 +72,31 @@ inline void button(ImDrawList* dl, const animations::Rect& r, const char* label,
     }
 }
 
-// The Zone 07 image slots that will hold real PNG art once it exists. Each maps
-// to one authored asset (logo.png, the Home cluster icon, the blurred Root/Mode
-// background); see asset_paths.hpp for the canonical paths.
-enum class ImageSlot : std::uint8_t {
-    Logo,
-    HomeIcon,
+// How an image slot degrades when its art is unavailable (asset still loading, a
+// production 404, or the native test build with no GL context): a background
+// fills with bg_primary; a logo/icon draws a thin outlined box. With the
+// placeholder PNGs on disk the slot renders the real image and the fallback is
+// never seen in the app.
+enum class SlotFallback : std::uint8_t {
     Background,
+    Icon,
 };
 
-// ===== SEAM(visual-pass / Z05 GPU upload): the ONE texture-bind point ========
-// Every Zone 07 image slot (logo, Home icon, blurred background) routes through
-// this single function, so dropping real art in later is a one-touch change.
-//
-// Today no PNG is GPU-uploaded: Z02 decodes pixels into CPU TextureHandles, but
-// binding those to ImTextureIDs is Z05's deferred GPU-upload seam. Until that
-// lands, this draws a token-colored placeholder (an outlined box for icons, a
-// bg_primary wash for the background) so every layout reads correctly and never
-// crashes when art is absent. When textures are bound, replace the body below
-// with a single `dl->AddImage(tex_for(slot), top_left(r), bottom_right(r))` and
-// keep the focus outline — one edit here re-skins all three slots.
-inline void draw_image_slot(ImDrawList* dl, const animations::Rect& r, ImageSlot slot,
-                            bool focused) {
-    // <-- bind real art here: if a texture exists for `slot`, AddImage and skip
-    //     the placeholder branch below.
-    if (slot == ImageSlot::Background) {
-        fill_rect(dl, r, theme::ColorToken::BgPrimary);
-    } else {
-        dl->AddRect(top_left(r), bottom_right(r), token_u32(theme::ColorToken::TextPrimary), 0.0f,
-                    0, 1.0f);
+// ===== The Zone 07 image-slot wrapper over the shared texture-bind seam ========
+// Every Zone 07 image slot (blurred background, logo, Home icon) routes through
+// the one AddImage point (bridge::draw_asset_image), so dropping real art in
+// later is a zero-code-change file swap: the artist overwrites the placeholder
+// PNG at the asset id and this exact code draws the new bytes. If the asset is
+// unavailable, the procedural fallback keeps the layout readable.
+inline void draw_image_slot(ImDrawList* dl, const animations::Rect& r, assets::AssetId id,
+                            SlotFallback fallback, bool focused) {
+    if (!bridge::draw_asset_image(dl, top_left(r), bottom_right(r), id)) {
+        if (fallback == SlotFallback::Background) {
+            fill_rect(dl, r, theme::ColorToken::BgPrimary);
+        } else {
+            dl->AddRect(top_left(r), bottom_right(r), token_u32(theme::ColorToken::TextPrimary),
+                        0.0f, 0, 1.0f);
+        }
     }
     if (focused) {
         focus_outline(dl, r);

@@ -2,6 +2,8 @@
 
 #include "screens/render_util.hpp"
 
+#include "assets/asset_paths.hpp"
+
 #include "animations/button_morph.hpp"
 #include "backbone/animation_clock.hpp"
 #include "backbone/event_router.hpp"
@@ -60,12 +62,14 @@ void render_root_screen() {
     const animations::Canvas canvas = viewport_canvas();
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
-    // Atmospheric background wash over the blurred Root background image slot
-    // (single texture-bind seam in render_util.hpp).
-    ru::draw_image_slot(dl, canvas_rect(canvas), ru::ImageSlot::Background, /*focused=*/false);
+    // Blurred Root background image (background_root.png); bg_primary wash when
+    // the asset is unavailable. Routes through the shared texture-bind seam.
+    ru::draw_image_slot(dl, canvas_rect(canvas), assets::AssetId::BackgroundRoot,
+                        ru::SlotFallback::Background, /*focused=*/false);
 
     // Logo (top-left) image slot.
-    ru::draw_image_slot(dl, animations::logo_rect(canvas), ru::ImageSlot::Logo, /*focused=*/false);
+    ru::draw_image_slot(dl, animations::logo_rect(canvas), assets::AssetId::AppLogo,
+                        ru::SlotFallback::Icon, /*focused=*/false);
 
     // Middle 2x2 grid: Play=TL, Settings=TR, Shop=BL, Help=BR.
     ru::button(dl, animations::root_grid_button_rect(animations::MorphButton::Play, canvas), "PLAY",
@@ -78,8 +82,8 @@ void render_root_screen() {
                focus_on(kFocusRootHelp));
 
     // Home icon (top-right, stationary anchor of the cluster) image slot.
-    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), ru::ImageSlot::HomeIcon,
-                        focus_on(kFocusRootHome));
+    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), assets::AssetId::IconHome,
+                        ru::SlotFallback::Icon, focus_on(kFocusRootHome));
 }
 
 void render_root_morph_frame(float global_t) {
@@ -88,15 +92,17 @@ void render_root_morph_frame(float global_t) {
 
     // Background + the two stationary anchors stay put through the morph.
     // SEAM(visual-pass): the synchronized background-blur crossfade goes here.
-    // Once Z02's background art and Z05's GPU-upload seam land, blend the Root
-    // background into the Mode Selection background using the morph's own ~300 ms
-    // ease-out crossfade alpha (animations::MorphController::crossfade). Today both
-    // slots resolve to a bg_primary wash, so the crossfade is a visual no-op and
-    // is drawn as a single background slot.
-    ru::draw_image_slot(dl, canvas_rect(canvas), ru::ImageSlot::Background, /*focused=*/false);
-    ru::draw_image_slot(dl, animations::logo_rect(canvas), ru::ImageSlot::Logo, /*focused=*/false);
-    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), ru::ImageSlot::HomeIcon,
-                        /*focused=*/false);
+    // The Root background now renders its image through the shared seam; the
+    // ~300 ms crossfade into the Mode Selection background (blending background_root
+    // into background_mode using animations::MorphController::crossfade) is still a
+    // deferred visual-pass step, so the morph draws the single Root background slot
+    // and the live Mode Selection screen takes over background_mode at handoff.
+    ru::draw_image_slot(dl, canvas_rect(canvas), assets::AssetId::BackgroundRoot,
+                        ru::SlotFallback::Background, /*focused=*/false);
+    ru::draw_image_slot(dl, animations::logo_rect(canvas), assets::AssetId::AppLogo,
+                        ru::SlotFallback::Icon, /*focused=*/false);
+    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), assets::AssetId::IconHome,
+                        ru::SlotFallback::Icon, /*focused=*/false);
 
     // Play travels to its STANDARD target on its own eased + staggered timeline.
     // Its filled body morphs the whole way (filled, not just an outline) and its

@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <vector>
 
 #include "bridge/focus_registry.hpp"
 #include "bridge/game_launch.hpp"
@@ -108,15 +109,32 @@ void populate_focus_registry(InterrogatorRuntime& runtime) {
         registry.register_element(runtime.state.bet_group.focus_id,
                                   bridge::FocusableEntry{.is_text_field = false});
     }
+    // Z08's persistent-cluster tail (Shop/Help/Settings/X): each a NON-text focus
+    // stop with no activate hook (opening their modals is the Z11 no-op seam).
+    // Registering them non-text makes the reconcile substrate release the text caret
+    // (ClearActiveID) when Tab lands on one. Empty before Z08 installs / in tests.
+    for (const backbone::FocusableId id : runtime.cluster_focus_tail) {
+        registry.register_element(id, bridge::FocusableEntry{.is_text_field = false});
+    }
 }
 
-// Reconfigure Z09's inputs for `scenario` and (re)register the Game focus segment
-// (boxes then the bet group) plus the shared focus registry. The single place a new
-// scenario takes effect. Z08 composes the full list (segment then Shop/Help/
-// Settings/X) in W3 — SEAM(Z08/Z11).
+// Register the Game screen's full focus list: Z09's math segment (boxes then the
+// bet group) followed by Z08's persistent-cluster tail (Shop/Help/Settings/X). The
+// segment stays math-only in state.focus_segment (so focus_in_math_zone treats the
+// cluster icons as OUTSIDE the math zone); the tail is appended only here, at
+// registration, so Tab reaches the cluster and wraps from X back to the first input.
+void register_game_focus_list(const InterrogatorRuntime& runtime) {
+    std::vector<backbone::FocusableId> full = runtime.state.focus_segment;
+    full.insert(full.end(), runtime.cluster_focus_tail.begin(), runtime.cluster_focus_tail.end());
+    backbone::register_focus_list(backbone::ScreenId::Game, full);
+}
+
+// Reconfigure Z09's inputs for `scenario` and (re)register the Game focus list
+// (math segment then the Z08 cluster tail) plus the shared focus registry. The
+// single place a new scenario takes effect.
 void apply_scenario(InterrogatorRuntime& runtime, const engine::ScenarioState& scenario) {
     configure_for_scenario(runtime.state, scenario);
-    backbone::register_focus_list(backbone::ScreenId::Game, runtime.state.focus_segment);
+    register_game_focus_list(runtime);
     populate_focus_registry(runtime);
 }
 
@@ -168,7 +186,7 @@ void advance_tier(InterrogatorRuntime& runtime) {
     }
     state.current_tier = next;
     state.focus_segment = build_focus_segment(state);
-    backbone::register_focus_list(backbone::ScreenId::Game, state.focus_segment);
+    register_game_focus_list(runtime);
     populate_focus_registry(runtime);
     state.last_synced_focus = backbone::kNoFocus;
     if (!state.focus_segment.empty()) {
@@ -224,8 +242,13 @@ bool on_enter_key(InterrogatorRuntime& runtime, const backbone::KeyEvent& e) {
     }
 
     // Caller / single-tier Aggressor: one screen, Enter submits ALL visible inputs
-    // at once (overrides "Enter activates the focused element"). Tutorial override:
-    // suppress until every visible input is filled, then submit normally.
+    // at once (overrides "Enter activates the focused element"). But Enter on a
+    // focused cluster icon must NOT submit — leave it unconsumed so the icon's (Z11
+    // no-op) activation owns it; only Enter from the math zone submits.
+    if (!focus_in_math_zone(state)) {
+        return false;
+    }
+    // Tutorial override: suppress until every visible input is filled, then submit.
     const backbone::ScreenStateSnapshot snap = backbone::read_screen_state();
     const bool tutorial_active =
         snap.tutorial_state.phase == backbone::TutorialPhase::Active;

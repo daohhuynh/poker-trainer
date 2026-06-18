@@ -195,6 +195,14 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         # stays ImGui-free under the native test compiler (every bridge TU still
         # guards ImGui behind __EMSCRIPTEN__).
         target_link_libraries(bridge PRIVATE imgui)
+    else()
+        # Native test build: compile the no-op (#else) branch of the art-texture
+        # seam into the pure bridge library so the screens / game test binaries
+        # resolve bridge::asset_gl_texture. The branch is ImGui/GL-free (returns 0,
+        # no GL context under the test compiler), so bridge stays ImGui-free. The
+        # real WebGL2 upload (the #ifdef __EMSCRIPTEN__ branch) is compiled into
+        # bridge_platform for the wasm app instead (mirrors the audio_backend split).
+        target_sources(bridge PRIVATE src/bridge/texture_bind.cpp)
     endif()
 
     # ---------------------------------------------------------------------
@@ -274,6 +282,32 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         # so the pure library links without any audio backend.
         target_sources(audio PRIVATE src/audio/audio_backend.cpp)
     endif()
+
+    # ---------------------------------------------------------------------
+    # Zone 08 (Game Screen Rendering). Built here in the shared section so Z05 can
+    # link the Game render into the wasm app and the native tests exercise the same
+    # -Werror-clean objects. Held to the full warning baseline (including the ImGui
+    # render TUs). The render TUs reference theme tokens + ImGui; game_screen.cpp
+    # references the backbone (scenario bus / screen state / clock / modal state),
+    # bridge (register_screen_renderer, active_scenario; load_frog_bundle only under
+    # __EMSCRIPTEN__), interrogator (render_math_inputs — Z08 composes Z09 by calling
+    # it), and audio (the Frog toggle SFX). None of those depend on game, so this is
+    # a one-way edge (no cycle).
+    add_library(game STATIC
+        src/render/table.cpp
+        src/render/dealer.cpp
+        src/render/chips.cpp
+        src/render/cards.cpp
+        src/render/opponents.cpp
+        src/render/hud.cpp
+        src/animations/chip_slide.cpp
+        src/easter_egg/frog_toggle.cpp
+        src/screens/game_screen.cpp
+    )
+    target_include_directories(game PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(game PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(game PUBLIC
+        backbone engine theme bridge interrogator audio)  # theme brings imgui
 endif()
 
 # =========================================================================
@@ -295,6 +329,7 @@ if(EMSCRIPTEN)
     add_library(bridge_platform STATIC
         src/bridge/platform.cpp
         src/bridge/gl_renderer.cpp
+        src/bridge/texture_bind.cpp
         src/bridge/cdn_fetch.cpp
         src/bridge/sfx_prefetch.cpp
         src/bridge/tier_orchestrator.cpp
@@ -311,8 +346,10 @@ if(EMSCRIPTEN)
     # call at pass-2 integration (boot.cpp is not edited by the Z09 wave).
     # audio: Z03; boot calls install_audio(), the main loop calls audio_update(),
     # and platform.cpp calls on_first_user_gesture() (audio_backend comes via audio).
+    # game: Z08's Game-screen render; boot adds one install_game_screen(...) call
+    # after install_interrogator so Z08's renderer wins the single Game slot.
     target_link_libraries(bridge_platform PUBLIC
-        bridge screens interrogator audio backbone engine assets persistence theme imgui)
+        bridge screens interrogator game audio backbone engine assets persistence theme imgui)
 
     target_link_libraries(poker_trainer PRIVATE bridge_platform)
     target_link_options(poker_trainer PRIVATE
@@ -614,4 +651,28 @@ if(ENABLE_TESTS)
     target_link_libraries(audio_test PRIVATE audio GTest::gtest_main)
 
     add_test(NAME audio_test COMMAND audio_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 08 (Game Screen Rendering) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # The `game` library (shared section above) is held to -Werror, including its
+    # ImGui render TUs. These tests exercise only the pure logic — chip
+    # decomposition + denomination tiers, scenario-type -> visual-state + position
+    # labels, chip-push easing, the Frog click-counter state machine — never the
+    # render TUs (no live ImGui frame).
+    add_executable(game_test
+        tests/render/chips_test.cpp
+        tests/render/cards_test.cpp
+        tests/render/opponents_test.cpp
+        tests/animations/chip_slide_test.cpp
+        tests/easter_egg/frog_toggle_test.cpp
+    )
+    target_include_directories(game_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(game_test PRIVATE game GTest::gtest_main)
+
+    add_test(NAME game_test COMMAND game_test)
 endif()

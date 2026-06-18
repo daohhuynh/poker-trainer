@@ -3,6 +3,8 @@
 #include "screens/custom_popup.hpp"
 #include "screens/render_util.hpp"
 
+#include "assets/asset_paths.hpp"
+
 #include "animations/button_morph.hpp"
 #include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
@@ -51,8 +53,8 @@ void render_cluster(ImDrawList* dl, const animations::Canvas& canvas) {
                "Help", focus_on(kFocusModeHelp));
     ru::button(dl, animations::mode_button_target_rect(animations::MorphButton::Settings, canvas),
                "Settings", focus_on(kFocusModeSettings));
-    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), ru::ImageSlot::HomeIcon,
-                        focus_on(kFocusModeHome));
+    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), assets::AssetId::IconHome,
+                        ru::SlotFallback::Icon, focus_on(kFocusModeHome));
 }
 
 // Open the Custom configuration popup, seeded with the last-saved split (or 50/50
@@ -78,10 +80,12 @@ void render_mode_selection_screen() {
     const animations::Canvas canvas = viewport_canvas();
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
-    // Atmospheric background wash (bg_primary) over background_mode.png; the
-    // blurred image is drawn by the Zone 05 render layer (texture seam).
-    dl->AddRectFilled(ImVec2{0.0f, 0.0f}, ImVec2{canvas.width, canvas.height},
-                      ru::token_u32(theme::ColorToken::BgPrimary));
+    // Blurred Mode Selection background image (background_mode.png); bg_primary
+    // wash when the asset is unavailable. Routes through the shared texture-bind
+    // seam, the same single AddImage point as every other image slot.
+    ru::draw_image_slot(dl, animations::Rect{0.0f, 0.0f, canvas.width, canvas.height},
+                        assets::AssetId::BackgroundMode, ru::SlotFallback::Background,
+                        /*focused=*/false);
 
     // STANDARD button (top-left, the Play morph target).
     ru::button(dl, animations::standard_button_rect(canvas), "STANDARD", focus_on(kFocusStandard));

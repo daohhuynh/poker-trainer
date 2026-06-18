@@ -21,9 +21,9 @@ namespace {
 
 // ----- Draw order (frozen). Every draw flows through rng_util so the result is
 // identical on every platform. The order puts the seed-locked structural draws
-// (type, position, cards, stacks, pot) before the settings-dependent ones so
-// that changing the difficulty range / side-pot frequency does not shift the
-// structural part of the stream; only the street weights (the one seed-encoded
+// (type, position, cards, blinds, stacks, pot) before the settings-dependent
+// ones so that changing the difficulty range / side-pot frequency does not shift
+// the structural part of the stream; only the street weights (the one seed-encoded
 // gameplay setting) influence structure, via the street draw. -----
 
 ScenarioType draw_type(RngEngine& eng) noexcept {
@@ -166,16 +166,24 @@ void draw_cards(RngEngine& eng, ScenarioState& s) noexcept {
     s.board = best_board;
 }
 
-int draw_stack(RngEngine& eng) noexcept {
+// Draw one blind level from the frozen ladder (seed-locked). Drawn before the
+// stack and pot, which scale off the chosen big blind.
+const BlindLevel& draw_blind_level(RngEngine& eng) noexcept {
+    const std::uint64_t idx = uniform_uint(eng, static_cast<std::uint64_t>(kBlindLevels.size()));
+    return kBlindLevels[static_cast<std::size_t>(idx)];
+}
+
+int draw_stack(RngEngine& eng, int big_blind) noexcept {
     const int steps = (kStackMaxBb - kStackMinBb) / kStackStepBb + 1;
     const int n_bb =
         kStackMinBb + kStackStepBb * static_cast<int>(uniform_uint(eng, static_cast<std::uint64_t>(steps)));
-    return n_bb * kBigBlind;
+    return n_bb * big_blind;
 }
 
-int draw_pot(RngEngine& eng) noexcept {
-    return kPotMinDollars
-         + static_cast<int>(uniform_uint(eng, static_cast<std::uint64_t>(kPotMaxDollars - kPotMinDollars + 1)));
+int draw_pot(RngEngine& eng, int big_blind) noexcept {
+    const int pot_bb =
+        kPotMinBb + static_cast<int>(uniform_uint(eng, static_cast<std::uint64_t>(kPotMaxBb - kPotMinBb + 1)));
+    return pot_bb * big_blind;
 }
 
 // Resolve the Caller's faced bet (pot already set) plus the full Caller truth.
@@ -303,22 +311,23 @@ ScenarioState generate_scenario(ScenarioId id, const settings::Settings& setting
 
     ScenarioState s{};
     s.id = id;
-    s.small_blind = kSmallBlind;
-    s.big_blind = kBigBlind;
 
-    s.type = draw_type(eng);              // 1. type (seed-locked)
-    s.position = draw_position(eng);      // 2. position (seed-locked)
+    s.type = draw_type(eng);                 // 1. type (seed-locked)
+    s.position = draw_position(eng);         // 2. position (seed-locked)
     s.street = draw_street(eng, s.type, g);  // 3. street (street weights)
-    draw_cards(eng, s);                   // 4. cards (seed-locked; draw-rejected)
-    s.effective_stack = draw_stack(eng);  // 5. stacks (seed-locked)
-    s.pot = draw_pot(eng);                // 6a. pot (seed-locked)
+    draw_cards(eng, s);                      // 4. cards (seed-locked; draw-rejected)
+    const BlindLevel& blinds = draw_blind_level(eng);  // 5. blinds (seed-locked)
+    s.small_blind = blinds.small_blind;
+    s.big_blind = blinds.big_blind;
+    s.effective_stack = draw_stack(eng, s.big_blind);  // 6. stacks (scale off bb)
+    s.pot = draw_pot(eng, s.big_blind);                // 7. pot (scale off bb)
 
     if (s.type == ScenarioType::Caller) {
-        resolve_caller_bet(eng, s);       // 6b. Caller faced bet + truth
+        resolve_caller_bet(eng, s);       // 8. Caller faced bet + truth
     }
-    s.side_pot = roll_side_pot(eng, g.side_pot_frequency);  // 7. side-pot status
+    s.side_pot = roll_side_pot(eng, g.side_pot_frequency);  // 9. side-pot status
     if (is_aggressor(s.type)) {
-        resolve_aggressor(eng, s, g);     // 8. F + Aggressor tier truth
+        resolve_aggressor(eng, s, g);     // 10. F + Aggressor tier truth
     }
     return s;
 }

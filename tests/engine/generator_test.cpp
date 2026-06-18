@@ -95,7 +95,15 @@ TEST(Generator, KnownSeedReproducesKnownScenario) {
     using pe::Suit;
     const ps::Settings st = default_settings();
 
-    // id=1: a Caller, flop, wheel gutshot (4 outs) facing a 60-into-185 bet.
+    // Re-locked after the per-seed blind draw landed (Module 1's Randomizer now
+    // draws the blinds with the seeded RNG instead of fixing them at 1/2). The
+    // blind draw is inserted after the cards and before the stack/pot, so the
+    // seed-locked structure drawn earlier — type, position, street, cards — is
+    // byte-identical to the pre-change lock; the economics (blinds, stacks, pot,
+    // faced bet), F, the derived EVs, and the side-pot flag (all drawn from the
+    // shifted stream) are the new locked values.
+
+    // id=1: a Caller, flop, wheel gutshot (4 outs) at 5/10 facing a 385-into-840 bet.
     {
         const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{1}, st);
         EXPECT_EQ(s.type, pe::ScenarioType::Caller);
@@ -108,49 +116,75 @@ TEST(Generator, KnownSeedReproducesKnownScenario) {
         EXPECT_EQ(s.board[0], (Card{14, Suit::Hearts}));
         EXPECT_EQ(s.board[1], (Card{8, Suit::Clubs}));
         EXPECT_EQ(s.board[2], (Card{2, Suit::Diamonds}));
-        EXPECT_EQ(s.pot, 185);
-        EXPECT_EQ(s.faced_bet, 60);
-        EXPECT_EQ(s.effective_stack, 260);
+        EXPECT_EQ(s.small_blind, 5);
+        EXPECT_EQ(s.big_blind, 10);
+        EXPECT_EQ(s.pot, 840);
+        EXPECT_EQ(s.faced_bet, 385);
+        EXPECT_EQ(s.effective_stack, 1800);
         EXPECT_EQ(s.caller_outs, 4);
-        EXPECT_NEAR(s.caller_pot_odds_pct, 24.4897959184, 1e-6);
+        EXPECT_NEAR(s.caller_pot_odds_pct, 31.4285714286, 1e-6);
         EXPECT_NEAR(s.caller_equity_pct, 16.0, 1e-9);
-        EXPECT_NEAR(s.caller_ev, -11.2, 1e-6);
+        EXPECT_NEAR(s.caller_ev, -127.4, 1e-6);
     }
-    // id=3: a Value Bet, flop, pot 88, max-EV tier is the overbet.
+    // id=3: a Value Bet, flop, 25/50, pot 5150, max-EV tier is the overbet.
     {
         const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{3}, st);
         EXPECT_EQ(s.type, pe::ScenarioType::AggressorValueBet);
         EXPECT_EQ(s.position, pe::Position::Hijack);
-        EXPECT_EQ(s.pot, 88);
+        EXPECT_EQ(s.small_blind, 25);
+        EXPECT_EQ(s.big_blind, 50);
+        EXPECT_EQ(s.pot, 5150);
         EXPECT_EQ(s.faced_bet, 0);
-        EXPECT_NEAR(s.fold_baseline_f, 0.4758721087, 1e-9);
+        EXPECT_NEAR(s.fold_baseline_f, 0.4591458622, 1e-9);
         EXPECT_EQ(s.correct_bet_tier, pe::BetTier::Overbet);
-        EXPECT_NEAR(s.tiers[0].ev, 16.1077514770, 1e-6);
-        EXPECT_NEAR(s.tiers[3].ev, 49.3848816466, 1e-6);
-        EXPECT_NEAR(s.tiers[1].fold_probability, 0.4758721087, 1e-9);  // half pot -> F
+        EXPECT_NEAR(s.tiers[0].ev, 971.3829366092, 1e-6);
+        EXPECT_NEAR(s.tiers[3].ev, 3019.3482147413, 1e-6);
+        EXPECT_NEAR(s.tiers[1].fold_probability, 0.4591458622, 1e-9);  // half pot -> F
     }
-    // id=4: a Semi-Bluff, flop, 8-out draw (32% equity), max-EV tier is the overbet.
+    // id=4: a Semi-Bluff, flop, 8-out draw (32% equity), nosebleed 1000/2000,
+    // max-EV tier is the overbet.
     {
         const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{4}, st);
         EXPECT_EQ(s.type, pe::ScenarioType::AggressorSemiBluff);
-        EXPECT_EQ(s.pot, 40);
+        EXPECT_EQ(s.small_blind, 1000);
+        EXPECT_EQ(s.big_blind, 2000);
+        EXPECT_EQ(s.pot, 202000);
         EXPECT_NEAR(s.aggressor_equity_pct, 32.0, 1e-9);
-        EXPECT_NEAR(s.fold_baseline_f, 0.6775267356, 1e-9);
+        EXPECT_NEAR(s.fold_baseline_f, 0.6140491599, 1e-9);
         EXPECT_EQ(s.correct_bet_tier, pe::BetTier::Overbet);
-        EXPECT_NEAR(s.tiers[3].ev, 31.5833046982, 1e-6);
+        EXPECT_NEAR(s.tiers[3].ev, 143852.2749572669, 1e-6);
     }
-    // id=7: a Pure Bluff, river, side-pot scenario, max-EV tier is the small bet.
+    // id=7: a Pure Bluff, river, 25/50, max-EV tier is the small bet. (The shifted
+    // stream now resolves this seed as a non-side-pot scenario; the side-pot flag
+    // reproduction is locked on id=11 below.)
     {
         const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{7}, st);
         EXPECT_EQ(s.type, pe::ScenarioType::AggressorPureBluff);
         EXPECT_EQ(s.street, pe::Street::River);
         EXPECT_EQ(s.board_count, 5);
-        EXPECT_TRUE(s.side_pot);
-        EXPECT_EQ(s.pot, 66);
-        EXPECT_NEAR(s.fold_baseline_f, 0.3686793942, 1e-9);
+        EXPECT_FALSE(s.side_pot);
+        EXPECT_EQ(s.small_blind, 25);
+        EXPECT_EQ(s.big_blind, 50);
+        EXPECT_EQ(s.pot, 1300);
+        EXPECT_NEAR(s.fold_baseline_f, 0.2436063654, 1e-9);
         EXPECT_EQ(s.correct_bet_tier, pe::BetTier::OneThirdPot);
-        EXPECT_NEAR(s.tiers[0].ev, 8.2437866899, 1e-6);
-        EXPECT_NEAR(s.tiers[3].ev, -13.4178999564, 1e-6);
+        EXPECT_NEAR(s.tiers[0].ev, -54.4156333089, 1e-6);
+        EXPECT_NEAR(s.tiers[3].ev, -670.7793124542, 1e-6);
+    }
+    // id=11: a Value Bet, turn, micro 1/2, side-pot scenario (locks the side-pot
+    // flag's reproduction), max-EV tier is the full pot.
+    {
+        const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{11}, st);
+        EXPECT_EQ(s.type, pe::ScenarioType::AggressorValueBet);
+        EXPECT_EQ(s.street, pe::Street::Turn);
+        EXPECT_EQ(s.board_count, 4);
+        EXPECT_TRUE(s.side_pot);
+        EXPECT_EQ(s.small_blind, 1);
+        EXPECT_EQ(s.big_blind, 2);
+        EXPECT_EQ(s.pot, 106);
+        EXPECT_NEAR(s.fold_baseline_f, 0.7285716219, 1e-9);
+        EXPECT_EQ(s.correct_bet_tier, pe::BetTier::FullPot);
+        EXPECT_NEAR(s.tiers[2].ev, 20.8214080811, 1e-6);
     }
 }
 
@@ -169,6 +203,8 @@ TEST(Generator, StructureIsStableAcrossDifficultyRange) {
         EXPECT_EQ(a.hole, b.hole);
         EXPECT_EQ(a.board, b.board);
         EXPECT_EQ(a.board_count, b.board_count);
+        EXPECT_EQ(a.small_blind, b.small_blind);
+        EXPECT_EQ(a.big_blind, b.big_blind);
         EXPECT_EQ(a.pot, b.pot);
         EXPECT_EQ(a.effective_stack, b.effective_stack);
         EXPECT_EQ(a.side_pot, b.side_pot);
@@ -300,12 +336,51 @@ TEST(Generator, AggressorTierTruthAndMaxEvTier) {
 }
 
 TEST(Generator, PotIsInRange) {
+    // The pot is drawn in BIG BLINDS and scaled by the drawn big blind, so the
+    // dollar bound is relative to each scenario's stake.
     const ps::Settings settings = default_settings();
     for (std::uint64_t id = 1; id <= kSampleSeeds; ++id) {
         const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{id}, settings);
-        EXPECT_GE(s.pot, pe::kPotMinDollars);
-        EXPECT_LE(s.pot, pe::kPotMaxDollars);
+        EXPECT_GE(s.pot, pe::kPotMinBb * s.big_blind) << "id=" << id;
+        EXPECT_LE(s.pot, pe::kPotMaxBb * s.big_blind) << "id=" << id;
     }
+}
+
+TEST(Generator, BlindsAreDrawnFromTheFrozenLadder) {
+    // Per-seed blinds: every scenario's (small, big) blind is one of the frozen
+    // ladder levels, the draw varies across seeds (it is no longer stuck at 1/2),
+    // and all four stake bands the chip tier table keys on are reachable.
+    const ps::Settings settings = default_settings();
+    bool saw_micro = false, saw_mid = false, saw_high = false, saw_nosebleed = false;
+    bool saw_non_one_two = false;
+    for (std::uint64_t id = 1; id <= kSampleSeeds; ++id) {
+        const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{id}, settings);
+        bool matched = false;
+        for (const pe::BlindLevel& level : pe::kBlindLevels) {
+            if (s.small_blind == level.small_blind && s.big_blind == level.big_blind) {
+                matched = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(matched) << "id=" << id << " sb=" << s.small_blind << " bb=" << s.big_blind;
+        if (!(s.small_blind == 1 && s.big_blind == 2)) {
+            saw_non_one_two = true;
+        }
+        if (s.big_blind <= 5) {
+            saw_micro = true;
+        } else if (s.big_blind <= 50) {
+            saw_mid = true;
+        } else if (s.big_blind <= 500) {
+            saw_high = true;
+        } else {
+            saw_nosebleed = true;
+        }
+    }
+    EXPECT_TRUE(saw_non_one_two);  // no longer hard-coded to 1/2
+    EXPECT_TRUE(saw_micro);
+    EXPECT_TRUE(saw_mid);
+    EXPECT_TRUE(saw_high);
+    EXPECT_TRUE(saw_nosebleed);
 }
 
 TEST(Generator, TypeDistributionIsRoughlyHalfCaller) {

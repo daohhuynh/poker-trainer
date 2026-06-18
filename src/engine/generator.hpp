@@ -20,10 +20,27 @@
 
 namespace poker_trainer::engine {
 
-// Fixed blind base. Blind value is not a persisted setting (removed in S19); the
-// engine sets it internally. Stacks and pots scale off the big blind.
-inline constexpr int kSmallBlind = 1;
-inline constexpr int kBigBlind = 2;
+// Blind levels. Module 1's Randomizer draws the blinds (with street + position)
+// from the seeded RNG; the engine no longer fixes them at 1/2. One level is drawn
+// per scenario from this FROZEN ladder, and stacks / pots scale off the chosen
+// big blind. The ten levels span the four stake bands the stake-scaled chip tier
+// table keys on (render/chips.cpp::active_stake_tier: bb <= 5 Micro, <= 50 Mid,
+// <= 500 High, else Nosebleed). The fractional 0.5/1 micro level is omitted: the
+// blinds are whole-dollar ints (scenario.hpp), and a half-dollar small blind would
+// force a float field. Changing this ladder changes generated economics and is a
+// scenario-format-version-class change (CLAUDE.md sec.5), locked by the generator
+// golden tests.
+struct BlindLevel {
+    int small_blind{0};
+    int big_blind{0};
+};
+
+inline constexpr std::array<BlindLevel, 10> kBlindLevels{{
+    BlindLevel{1, 2},     BlindLevel{2, 5},                          // Micro     (bb <= 5)
+    BlindLevel{5, 10},    BlindLevel{10, 25},   BlindLevel{25, 50},  // Mid       (bb <= 50)
+    BlindLevel{50, 100},  BlindLevel{100, 200}, BlindLevel{200, 500},// High      (bb <= 500)
+    BlindLevel{500, 1000},BlindLevel{1000, 2000},                    // Nosebleed (bb > 500)
+}};
 
 // Bet-size tiers as pot fractions, in Module 5's visual order
 // (1/3, 1/2, Full, Overbet). Overbet = 1.5x pot.
@@ -31,11 +48,14 @@ inline constexpr std::array<double, kBetTierCount> kBetTierFractions{
     1.0 / 3.0, 0.5, 1.0, 1.5};
 inline constexpr double kOverbetFraction = 1.5;
 
-// Pots are drawn as round-ish WHOLE dollars across this range (e.g. $63, $87 are
-// expected; they are deliberately not snapped to clean $5/$10 multiples, since
-// rounding a messy pot mentally is part of the drilled skill).
-inline constexpr int kPotMinDollars = 40;
-inline constexpr int kPotMaxDollars = 240;
+// Pots are drawn as a round-ish WHOLE number of BIG BLINDS across this range, then
+// scaled by the drawn big blind (pot = pot_bb * big_blind). At the {1,2} micro
+// level this reproduces the prior $40-$240 dollar range (20-120 BB); at higher
+// levels the pot scales with the stake. The BB multiples are deliberately not
+// snapped to clean fives, since rounding a messy pot mentally is part of the
+// drilled skill.
+inline constexpr int kPotMinBb = 20;
+inline constexpr int kPotMaxBb = 120;
 
 // The Caller's faced bet is a round dollar amount approximating a pot fraction
 // drawn from this spread; the resulting pot odds are accepted only inside the

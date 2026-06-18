@@ -11,6 +11,7 @@
 #include "bridge/shared_scenario.hpp"
 #include "bridge/tier_orchestrator.hpp"
 
+#include "screens/game_screen.hpp"
 #include "screens/screen_registration.hpp"
 
 #include "math/interrogator.hpp"
@@ -62,6 +63,10 @@ struct BootState {
     // until then this is the boot-time snapshot built from persisted state.
     settings::Settings live_settings;
     interrogator::InterrogatorRuntime interrogator;
+    // Zone 08 Game-screen runtime (Frog state + chip-push spawn timestamp + the
+    // live-settings source it reads for Show/Hide HUD, Units, and the chip
+    // denomination mode). Threaded into install_game_screen below.
+    screens::GameScreenRuntime game_screen;
 };
 BootState g_boot;
 
@@ -169,6 +174,13 @@ void finish_boot_after_persistence() {
     // render hook reconciles ImGui through the substrate.
     g_boot.interrogator.focus_registry = &g_runtime->focus_registry;
     interrogator::install_interrogator(g_boot.interrogator);
+
+    // Install Zone 08 AFTER Zone 09: the render-dispatch registry is single-slot
+    // last-writer-wins, so Z08's Game renderer must register last to take over the
+    // slot (it composes Z09 by calling render_math_inputs itself). Z08 reads the
+    // same live settings source for Show/Hide HUD, Units, and the denomination mode.
+    g_boot.game_screen.settings_source = live_settings_source;
+    screens::install_game_screen(g_boot.game_screen, g_boot.interrogator);
 
     // Install Zone 03: subscribe to scenario_spawned for the spawn audio
     // choreography (the per-frame audio_update + first-gesture autoplay gate are

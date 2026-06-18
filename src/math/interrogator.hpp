@@ -144,6 +144,15 @@ struct InterrogatorRuntime {
     // through it. Null in unit tests that drive the zone without the bridge runtime
     // -- registry population is then skipped (focus-list registration still runs).
     bridge::FocusRegistry* focus_registry{nullptr};
+
+    // SEAM(Z08): the Game-screen persistent-cluster focus tail (Shop/Help/Settings/
+    // X ids), composed by Z08 (install_game_screen sets it to screens::
+    // kGameClusterFocusIds). Z09 appends it after its math segment when it registers
+    // the Game focus list, so Tab reaches the cluster and wraps -- but keeps the tail
+    // OUT of state.focus_segment, which stays math-only (focus_in_math_zone treats
+    // the segment as the zone where Enter advances/submits). Empty in unit tests and
+    // before Z08 installs, so the registered list is then just the math segment.
+    std::vector<backbone::FocusableId> cluster_focus_tail;
 };
 
 // ----- Self-registration -----
