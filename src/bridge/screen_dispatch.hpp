@@ -36,7 +36,24 @@ void register_screen_renderer(backbone::ScreenId screen, ScreenRenderFn renderer
 // background only). The main loop calls this with the active screen each frame.
 bool render_screen(backbone::ScreenId screen);
 
-// Clear all registrations. Used by tests.
+// ----- Top-level overlay seam (Zone 11) -----
+//
+// Modals and the Service Outage Banner are a single top-level overlay rendered
+// ABOVE the active screen each frame (per the event-router priority stack:
+// tutorial > modal > screen). The main loop invokes the registered overlay right
+// after the active screen, so it composites on top without the bridge depending on
+// Zone 11 (function-pointer indirection, exactly like register_screen_renderer).
+using OverlayRenderFn = std::function<void()>;
+
+// Register (or replace) the single overlay renderer. Passing a null function clears
+// it. Called once by Zone 11's install.
+void register_overlay_renderer(OverlayRenderFn renderer);
+
+// Invoke the registered overlay if one exists. Called by the main loop each frame
+// after the active screen renders. A no-op when no overlay is registered.
+void render_overlay();
+
+// Clear all registrations (screen renderers + overlay). Used by tests.
 void reset_screen_dispatch_for_testing() noexcept;
 
 }  // namespace poker_trainer::bridge

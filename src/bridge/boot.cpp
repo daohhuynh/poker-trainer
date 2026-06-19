@@ -17,6 +17,8 @@
 
 #include "math/interrogator.hpp"
 
+#include "modal/modals.hpp"
+
 #include "audio/audio.hpp"
 
 #include "settings/settings.hpp"
@@ -73,6 +75,10 @@ struct BootState {
     // the Recap dealer-arrival toggle and default tab). Threaded into
     // install_post_round_screen below.
     screens::PostRoundRuntime post_round;
+    // Zone 11 modal infrastructure runtime (banner state, active confirm spec,
+    // cluster geometry cache). install_modals registers the overlay renderer + the
+    // modal/cluster event handlers and stores a pointer to this.
+    modal::ModalRuntime modals;
 };
 BootState g_boot;
 
@@ -104,10 +110,10 @@ void init_backbone() {
     (void)backbone::register_key_handler(
         {}, on_focus_nav_key, backbone::HandlerPriority::BackgroundCatchAll,
         "bridge.focus_nav");
-    // SEAM(Z11): the modal-state observer is initialized here in the fixed order.
-    // Zone 11 owns modal_state.cpp; its query/notify API needs no boot-time call
-    // (the observer is stateless global state, supplied this wave by
-    // modal_state_stub.cpp), so this step is intentionally a no-op for now.
+    // Modal-state observer: zero-initialized global state (Zone 11's modal_state.cpp
+    // supplies the stack). Its query/notify API needs no boot-time call here; Zone
+    // 11's overlay renderer + event handlers are installed in
+    // finish_boot_after_persistence (install_modals), after the screens.
 }
 
 // Zone 02 bring-up: construct the asset registry + tier loader (Z05 owns the CDN
@@ -194,6 +200,15 @@ void finish_boot_after_persistence() {
     // (dealer-arrival animation + default tab) from the same live source.
     g_boot.post_round.settings_source = live_settings_source;
     screens::install_post_round_screen(g_boot.post_round, g_boot.interrogator);
+
+    // Install Zone 11 AFTER every screen: it registers the modal + outage-banner
+    // overlay renderer (drawn above the active screen each frame) and its event
+    // handlers. The cluster keyboard handler is ScreenContext and must register after
+    // the screens' own activate handlers, which leave a focused cluster icon's key
+    // unconsumed so this one activates it. It reaches the shared focus registry (off
+    // BridgeRuntime) for the text-field modals (leaderboard search).
+    g_boot.modals.focus_registry = &g_runtime->focus_registry;
+    modal::install_modals(g_boot.modals);
 
     // Install Zone 03: subscribe to scenario_spawned for the spawn audio
     // choreography (the per-frame audio_update + first-gesture autoplay gate are

@@ -8,6 +8,7 @@
 #include "backbone/animation_clock.hpp"
 #include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
+#include "backbone/modal_state.hpp"
 #include "backbone/screen_state.hpp"
 
 #include <imgui.h>
@@ -17,6 +18,8 @@
 #endif
 
 #include "theme/theme_tokens.hpp"
+
+#include "modal/modals.hpp"
 
 namespace poker_trainer::screens {
 
@@ -135,7 +138,10 @@ void render_root_morph_frame(float global_t) {
 void install_root_handlers(animations::MorphController& morph) {
     // Escape on Root: consume and do nothing (Notes — Escape Key Behavior).
     backbone::register_key_handler(
-        [] { return backbone::read_screen_state().current == backbone::ScreenId::Root; },
+        [] {
+            return backbone::read_screen_state().current == backbone::ScreenId::Root &&
+                   !backbone::is_any_modal_open();
+        },
         [](const backbone::KeyEvent& e) {
             if (e.type == backbone::KeyEventType::KeyDown && e.code == backbone::KeyCode::Escape) {
                 return on_root_escape();
@@ -151,7 +157,10 @@ void install_root_handlers(animations::MorphController& morph) {
     // gate already ensures Space/Enter only reach the router when no text field is
     // capturing — and Root has no text fields anyway.
     backbone::register_key_handler(
-        [] { return backbone::read_screen_state().current == backbone::ScreenId::Root; },
+        [] {
+            return backbone::read_screen_state().current == backbone::ScreenId::Root &&
+                   !backbone::is_any_modal_open();
+        },
         [&morph](const backbone::KeyEvent& e) {
             if (e.type != backbone::KeyEventType::KeyDown) {
                 return false;
@@ -162,7 +171,8 @@ void install_root_handlers(animations::MorphController& morph) {
             if (!backbone::is_keyboard_mode_active()) {
                 return false;  // nothing focused yet
             }
-            switch (root_activation_for_focus(backbone::get_focused_element())) {
+            const backbone::FocusableId focused = backbone::get_focused_element();
+            switch (root_activation_for_focus(focused)) {
                 case RootActivation::StartMorph:
                     morph.start(backbone::total_ms_since_app_start());  // == a Play click
                     return true;
@@ -170,7 +180,20 @@ void install_root_handlers(animations::MorphController& morph) {
                     reload_page();  // == a Home click
                     return true;
                 case RootActivation::None:
-                    return false;  // focused Z11 seam element: leave the key unconsumed
+                    // Settings / Shop / Help open their Zone 11 modals (== a click).
+                    if (focused == kFocusRootSettings) {
+                        modal::open_settings_modal();
+                        return true;
+                    }
+                    if (focused == kFocusRootShop) {
+                        modal::open_shop_modal();
+                        return true;
+                    }
+                    if (focused == kFocusRootHelp) {
+                        modal::open_help_modal();
+                        return true;
+                    }
+                    return false;  // nothing focused
             }
             return false;
         },
@@ -179,7 +202,10 @@ void install_root_handlers(animations::MorphController& morph) {
     // Click routing. Play starts the morph (on the caller-owned controller); Home
     // reloads the page; Settings/Shop/Help open their modals (Zone 11 seam).
     backbone::register_mouse_handler(
-        [] { return backbone::read_screen_state().current == backbone::ScreenId::Root; },
+        [] {
+            return backbone::read_screen_state().current == backbone::ScreenId::Root &&
+                   !backbone::is_any_modal_open();
+        },
         [&morph](const backbone::MouseEvent& e) {
             if (e.type != backbone::MouseEventType::MouseDown || e.button != 0) {
                 return false;
@@ -199,7 +225,25 @@ void install_root_handlers(animations::MorphController& morph) {
                 reload_page();
                 return true;
             }
-            // Settings / Shop / Help -> Zone 11 cluster modals (seam, not this wave).
+            // Settings / Shop / Help (the 2x2 grid's TR / BL / BR) open their Zone 11
+            // modals — the same modals the persistent cluster opens on the other
+            // screens. Hit-tested at the exact rects render_root_screen draws.
+            if (point_in_rect(e.x, e.y,
+                              animations::root_grid_button_rect(animations::MorphButton::Settings,
+                                                                canvas))) {
+                modal::open_settings_modal();
+                return true;
+            }
+            if (point_in_rect(e.x, e.y, animations::root_grid_button_rect(
+                                            animations::MorphButton::Shop, canvas))) {
+                modal::open_shop_modal();
+                return true;
+            }
+            if (point_in_rect(e.x, e.y, animations::root_grid_button_rect(
+                                            animations::MorphButton::Help, canvas))) {
+                modal::open_help_modal();
+                return true;
+            }
             return false;
         },
         backbone::HandlerPriority::ScreenContext, "root.click");

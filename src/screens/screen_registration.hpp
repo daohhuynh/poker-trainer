@@ -34,6 +34,13 @@ struct ScreensRuntime {
     // to 0, so it must NOT run every frame. The sentinel Error means "no Zone 07
     // list registered yet", so the first Root/Mode render registers.
     backbone::ScreenId last_focus_screen{backbone::ScreenId::Error};
+
+    // Screen observed by the per-frame re-entry watcher (install_screens registers a
+    // frame tick). Zone 07's dispatchers only run on Root / Mode, so they cannot see
+    // a Game / Post-Round visit that REPLACES the base focus context (Z09 / Z13 call
+    // register_focus_list); the watcher invalidates last_focus_screen on any screen
+    // change so the next Root / Mode render re-registers. Error = nothing observed yet.
+    backbone::ScreenId observed_screen{backbone::ScreenId::Error};
 };
 
 // Wire Zone 07 into Zone 05's render-dispatch registry and the event router:

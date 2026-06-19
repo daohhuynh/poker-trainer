@@ -99,7 +99,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/backbone/screen_state.cpp
         src/backbone/scenario_events.cpp
         src/backbone/focus_manager.cpp
-        src/backbone/modal_state_stub.cpp  # SEAM(Z11): swapped for modal_state.cpp later
+        src/backbone/modal_state.cpp  # Zone 11's real modal-stack implementation
     )
     target_include_directories(backbone PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(backbone PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
@@ -223,7 +223,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     )
     target_include_directories(screens PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(screens PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
-    target_link_libraries(screens PUBLIC backbone theme bridge)  # theme brings imgui
+    target_link_libraries(screens PUBLIC backbone theme bridge modal)  # theme brings imgui
 
     # ---------------------------------------------------------------------
     # Zone 09 (Math Interrogator). Built here in the shared section so Z05 / Z08
@@ -307,7 +307,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_include_directories(game PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(game PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
     target_link_libraries(game PUBLIC
-        backbone engine theme bridge interrogator audio)  # theme brings imgui
+        backbone engine theme bridge interrogator audio modal)  # theme brings imgui
 
     # ---------------------------------------------------------------------
     # Zone 13 (Post-Round Screen). Built here in the shared section so Z05 can link
@@ -338,7 +338,30 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/screens/clipboard_fallback_modal.cpp
         PROPERTIES COMPILE_OPTIONS "${POKER_TRAINER_BINDING_WARNING_FLAGS}")
     target_link_libraries(post_round PUBLIC
-        backbone engine theme bridge interrogator game)  # theme brings imgui
+        backbone engine theme bridge interrogator game modal)  # theme brings imgui
+
+    # ---------------------------------------------------------------------
+    # Zone 11 (Modal Infrastructure + Persistent Cluster). Built here in the shared
+    # section so Z05 links the modal + outage-banner overlay and the persistent
+    # cluster into the wasm app, and the native tests exercise the same -Werror-clean
+    # objects (ImGui render TUs included). The render TUs reference theme tokens +
+    # ImGui; the cluster/offline TUs reach bridge (asset_image, focus_registry,
+    # screen_dispatch) + persistence (sync_state) + the backbone modal stack. modal
+    # does NOT depend on screens / game / post_round (the cluster geometry + ids are
+    # passed in via ClusterContext), so those zones depend on modal one-way (no cycle).
+    add_library(modal STATIC
+        src/modal/modal_base.cpp
+        src/modal/cluster.cpp
+        src/modal/offline_indicator.cpp
+        src/modal/confirm_modal.cpp
+        src/modal/help_modal.cpp
+        src/modal/outage_banner.cpp
+        src/modal/leaderboard_view.cpp
+        src/modal/auth_modals.cpp
+    )
+    target_include_directories(modal PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(modal PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(modal PUBLIC backbone theme bridge persistence)  # theme brings imgui
 endif()
 
 # =========================================================================
@@ -383,7 +406,7 @@ if(EMSCRIPTEN)
     # call. It registers ScreenId::PostRound's renderer slot (no conflict with Z08's
     # Game slot) and the GradingComplete capture that drives the transition.
     target_link_libraries(bridge_platform PUBLIC
-        bridge screens interrogator game post_round audio backbone engine assets persistence theme imgui)
+        bridge screens interrogator game post_round audio modal backbone engine assets persistence theme imgui)
 
     target_link_libraries(poker_trainer PRIVATE bridge_platform)
     target_link_options(poker_trainer PRIVATE
@@ -731,4 +754,29 @@ if(ENABLE_TESTS)
     target_link_libraries(post_round_test PRIVATE post_round GTest::gtest_main)
 
     add_test(NAME post_round_test COMMAND post_round_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 11 (Modal Infrastructure + Persistent Cluster) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # The `modal` library (shared section above) is held to -Werror, including its
+    # ImGui render TUs. These tests exercise only the pure logic: the real modal
+    # stack (backbone modal_state.cpp, linked via modal), the outage-banner state
+    # machine, the confirmation focus contract, the leaderboard search filter, and
+    # the offline-indicator visibility mapping. They never invoke the render TUs (no
+    # live ImGui frame).
+    add_executable(modal_test
+        tests/modal/modal_state_test.cpp
+        tests/modal/outage_banner_test.cpp
+        tests/modal/confirm_modal_test.cpp
+        tests/modal/leaderboard_view_test.cpp
+        tests/modal/offline_indicator_test.cpp
+    )
+    target_include_directories(modal_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(modal_test PRIVATE modal GTest::gtest_main)
+
+    add_test(NAME modal_test COMMAND modal_test)
 endif()

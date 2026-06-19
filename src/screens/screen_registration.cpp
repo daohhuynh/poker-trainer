@@ -10,6 +10,7 @@
 
 #include <cstdint>
 
+#include "bridge/frame_tick.hpp"
 #include "bridge/screen_dispatch.hpp"
 
 #ifdef __EMSCRIPTEN__
@@ -60,6 +61,21 @@ void render_mode_dispatch(ScreensRuntime& runtime, CustomWeightsStore& store) {
     render_custom_popup(runtime.popup, store);  // early-returns while closed
 }
 
+// Per-frame re-entry watcher. Z07's dispatchers run only on Root / Mode, so they
+// cannot observe a Game / Post-Round visit that overwrites the base focus context
+// (Z09 / Z13 register_focus_list). This runs every frame via the bridge frame-tick
+// registry and, on ANY screen change, invalidates the once-per-entry guard so the
+// next Root / Mode render re-registers its base list. Without it, returning to Mode
+// from Game (e.g. leave-drill -> Yes) leaves the stale Game focus list active and Tab
+// is dead on Mode.
+void watch_screen_for_focus_reentry(ScreensRuntime& runtime) {
+    const backbone::ScreenId current = backbone::read_screen_state().current;
+    if (current != runtime.observed_screen) {
+        runtime.observed_screen = current;
+        runtime.last_focus_screen = backbone::ScreenId::Error;  // force re-register on next render
+    }
+}
+
 }  // namespace
 
 void install_screens(ScreensRuntime& runtime, CustomWeightsStore& weights_store) {
@@ -71,6 +87,10 @@ void install_screens(ScreensRuntime& runtime, CustomWeightsStore& weights_store)
     // this block, so the pointer stays null and the popup's substrate paths no-op.
     runtime.popup.focus_registry = &bridge::runtime().focus_registry;
 #endif
+
+    // Per-frame screen watcher: keeps the once-per-entry focus-registration guard
+    // honest across Game / Post-Round visits that replace the base focus context.
+    bridge::register_frame_tick([&runtime] { watch_screen_for_focus_reentry(runtime); });
 
     // Event handlers (registered once with the event router).
     install_root_handlers(runtime.morph);

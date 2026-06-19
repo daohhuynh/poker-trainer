@@ -105,6 +105,9 @@ void app_frame() {
             // registered, the frame is just the background clear below.
             render_screen(screen);
         }
+        // Zone 11's modal + outage-banner overlay renders ABOVE the active screen
+        // (a no-op when no modal is open and no banner is showing).
+        render_overlay();
     }
 
     ImGui::Render();

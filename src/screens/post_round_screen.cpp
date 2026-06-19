@@ -24,6 +24,8 @@
 
 #include "math/interrogator.hpp"
 
+#include "modal/modals.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -325,17 +327,17 @@ void draw_id_block(ImDrawList* dl, const PostRoundRuntime& runtime, const PostRo
     }
 }
 
+// Zone 11 owns the persistent cluster (render + activation). Post-Round hands it the
+// icon geometry (l.cluster) + focus ids; the fourth icon is Home. render_persistent_
+// cluster draws the icon glyphs + focus rings + the offline indicator and caches the
+// geometry so the mouse hit-test (handle_mouse) and the Z11 cluster keyboard handler
+// can resolve a hit / focus to an action.
 void draw_cluster(ImDrawList* dl, const PostRoundLayout& l) {
-    // Focus stops now (the ring renders when focused); activation (opening
-    // Shop/Help/Settings, Home -> Root) stays the Z11/Z14 seam. The fourth icon is
-    // Home (not X), aligned 1:1 with kClusterFocusIds.
-    constexpr std::array<assets::AssetId, 4> icons = {
-        assets::AssetId::IconShop, assets::AssetId::IconHelp, assets::AssetId::IconSettings,
-        assets::AssetId::IconHome};
-    for (std::size_t i = 0; i < icons.size(); ++i) {
-        render_util::draw_image_slot(dl, l.cluster[i], icons[i], render_util::SlotFallback::Icon,
-                                     focused_is(kClusterFocusIds[i]));
-    }
+    modal::render_persistent_cluster(
+        dl, modal::ClusterContext{.screen = modal::ClusterScreen::PostRound,
+                                  .style = modal::ClusterStyle::IconGlyph,
+                                  .rects = l.cluster,
+                                  .ids = kClusterFocusIds});
 }
 
 // ----- Mouse (inline, like Z08's dealer-click handling) -----
@@ -355,6 +357,13 @@ void handle_mouse(PostRoundRuntime& runtime, const PostRoundLayout& l, bool tabb
             backbone::snap_focus_to(kFocusTierStrip);
             return;
         }
+    }
+    // Persistent cluster (Shop / Help / Settings / Home): Zone 11 resolves the hit
+    // (from the geometry it cached in render_persistent_cluster) and performs the
+    // action (open modal, or Home -> Root).
+    if (const std::optional<modal::ClusterIcon> icon = modal::cluster_hit_test(m.x, m.y)) {
+        modal::activate_cluster_icon(*icon);
+        return;
     }
     if (point_in(m, l.again)) {
         backbone::snap_focus_to(kFocusAgain);
@@ -521,9 +530,10 @@ bool on_activate_key(PostRoundRuntime& runtime, const backbone::KeyEvent& e) {
         return true;
     }
     if (is_cluster_focus(focused)) {
-        // Shop/Help/Settings open Z11 modals and Home is a Z14 transition to Root —
-        // none built yet. Consume the key so it is inert here (not falling through).
-        return true;
+        // Zone 11 owns cluster activation: leave Space/Enter unconsumed so the Z11
+        // cluster keyboard handler (ScreenContext, registered after this one) opens
+        // the modal / returns Home.
+        return false;
     }
     return false;  // unarmed / nothing focused: leave the key unconsumed
 }
@@ -554,6 +564,18 @@ bool on_tab_nav_key(PostRoundRuntime& runtime, const backbone::KeyEvent& e) {
     return true;
 }
 
+// Post-Round Escape -> Root immediately, no confirmation (ARCHITECTURE Notes —
+// Escape Key Behavior: more aggressive than the Game screen because no scenario is
+// in progress). Gated by post_round_input_active to no-modal; when a modal is open
+// the ModalLayer Escape handler (modal_base) consumes it first and closes the modal.
+bool on_escape_key(const backbone::KeyEvent& e) {
+    if (e.type != backbone::KeyEventType::KeyDown || e.code != backbone::KeyCode::Escape) {
+        return false;
+    }
+    backbone::set_screen(backbone::ScreenId::Root, std::nullopt);
+    return true;
+}
+
 }  // namespace
 
 void install_post_round_screen(PostRoundRuntime& runtime,
@@ -575,6 +597,8 @@ void install_post_round_screen(PostRoundRuntime& runtime,
         post_round_input_active,
         [&runtime](const backbone::KeyEvent& e) { return on_tab_nav_key(runtime, e); },
         backbone::HandlerPriority::ScreenContext, "post_round.tab_nav");
+    backbone::register_key_handler(post_round_input_active, on_escape_key,
+                                   backbone::HandlerPriority::ScreenContext, "post_round.escape");
 
     // Copy/Share via the mouse run through this in-gesture MouseUp handler (A4) so
     // the browser permits the clipboard / share calls; the rAF render path's mouse

@@ -142,9 +142,11 @@ static void test_asset_paths_and_tier_config() {
     // kAssetCount recomputed (A10) after the Frog set collapsed to 3
     // (frog_base + pass + fail), the per-theme Root backgrounds collapsed to
     // theme-independent blur variants, and the missing Tier-2 glyphs (exit /
-    // copy / share / tomato / side-pot chip) were added. The header
-    // static_assert pins it to the enum; mirror the value here.
-    assert(pt::assets::kAssetCount == 84u);
+    // copy / share / tomato / side-pot chip) were added. Zone 11's §14-approved
+    // additive amendment added three more Tier-2 glyphs (offline / warning /
+    // trophy), bringing it to 87. The header static_assert pins it to the enum;
+    // mirror the value here.
+    assert(pt::assets::kAssetCount == 87u);
 
     // Tier-1 synchronous set includes the front-facing Butler (A3) and the
     // Home icon (A4), both promoted from Tier 2.

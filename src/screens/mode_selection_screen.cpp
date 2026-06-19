@@ -8,12 +8,17 @@
 #include "animations/button_morph.hpp"
 #include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
+#include "backbone/modal_state.hpp"
 #include "backbone/screen_state.hpp"
+
+#include <optional>
 
 #include <imgui.h>
 
 #include "bridge/game_launch.hpp"
 #include "theme/theme_tokens.hpp"
+
+#include "modal/modals.hpp"
 
 namespace poker_trainer::screens {
 
@@ -34,27 +39,27 @@ namespace ru = render_util;
     return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
 }
 
-// The persistent top-right cluster (left -> right: Shop, Help, Settings, Home).
-//
-// SEAM(Z11): Zone 11 (Wave 3) owns the shared cross-screen cluster component
-// (render_persistent_cluster) and the modal-open behavior of Shop/Help/Settings.
-// Until it lands, Zone 07 renders the cluster locally on Mode Selection at the
-// morph's exact target rects (animations::mode_button_target_rect for the three
-// morphing icons, home_icon_rect for the stationary Home anchor). Rendering at
-// those same rects is what makes the Root -> Mode morph hand off to a live,
-// hit-testable element: the thing that animates in IS the thing that renders and
-// is clicked at rest (visible == clickable). The three icons render as the morph
-// produces them at progress 1 — a filled button with its label — so there is no
-// pop at handoff; Home renders through the shared HomeIcon image slot.
+// The persistent top-right cluster. Zone 11 owns the cluster (render + activation);
+// Mode Selection hands it the morph target rects + focus ids. It keeps Zone 07's
+// morph-handoff look via the MorphButton style: the Root -> Mode morph animates
+// buttons into these exact rects, so Shop/Help/Settings render as buttons-with-labels
+// at rest (no pop at handoff); the fourth icon is Home (a glyph at the stationary
+// home_icon_rect). render_persistent_cluster caches the geometry/ids so the click
+// handler (cluster_hit_test) and the Z11 cluster keyboard handler resolve a hit /
+// focus to an action (open Shop/Help/Settings modal, or Home -> Root).
 void render_cluster(ImDrawList* dl, const animations::Canvas& canvas) {
-    ru::button(dl, animations::mode_button_target_rect(animations::MorphButton::Shop, canvas),
-               "Shop", focus_on(kFocusModeShop));
-    ru::button(dl, animations::mode_button_target_rect(animations::MorphButton::Help, canvas),
-               "Help", focus_on(kFocusModeHelp));
-    ru::button(dl, animations::mode_button_target_rect(animations::MorphButton::Settings, canvas),
-               "Settings", focus_on(kFocusModeSettings));
-    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), assets::AssetId::IconHome,
-                        ru::SlotFallback::Icon, focus_on(kFocusModeHome));
+    const std::array<animations::Rect, 4> rects{
+        animations::mode_button_target_rect(animations::MorphButton::Shop, canvas),
+        animations::mode_button_target_rect(animations::MorphButton::Help, canvas),
+        animations::mode_button_target_rect(animations::MorphButton::Settings, canvas),
+        animations::home_icon_rect(canvas)};
+    const std::array<backbone::FocusableId, 4> ids{kFocusModeShop, kFocusModeHelp,
+                                                   kFocusModeSettings, kFocusModeHome};
+    modal::render_persistent_cluster(
+        dl, modal::ClusterContext{.screen = modal::ClusterScreen::ModeSelection,
+                                  .style = modal::ClusterStyle::MorphButton,
+                                  .rects = rects,
+                                  .ids = ids});
 }
 
 // Open the Custom configuration popup, seeded with the last-saved split (or 50/50
@@ -108,7 +113,7 @@ void install_mode_selection_handlers(CustomPopupState& popup, const CustomWeight
     // it; the popup.open guard is belt-and-suspenders.
     backbone::register_key_handler(
         [&popup] {
-            return !popup.open &&
+            return !popup.open && !backbone::is_any_modal_open() &&
                    backbone::read_screen_state().current == backbone::ScreenId::ModeSelection;
         },
         [](const backbone::KeyEvent& e) {
@@ -128,7 +133,7 @@ void install_mode_selection_handlers(CustomPopupState& popup, const CustomWeight
     // ensures these keys only reach the router when no text field is capturing.
     backbone::register_key_handler(
         [&popup] {
-            return !popup.open &&
+            return !popup.open && !backbone::is_any_modal_open() &&
                    backbone::read_screen_state().current == backbone::ScreenId::ModeSelection;
         },
         [&popup, &store](const backbone::KeyEvent& e) {
@@ -169,7 +174,7 @@ void install_mode_selection_handlers(CustomPopupState& popup, const CustomWeight
     // beneath it (Zone 11's modal infra refines this arbitration later).
     backbone::register_mouse_handler(
         [&popup] {
-            return !popup.open &&
+            return !popup.open && !backbone::is_any_modal_open() &&
                    backbone::read_screen_state().current == backbone::ScreenId::ModeSelection;
         },
         [&popup, &store](const backbone::MouseEvent& e) {
@@ -194,24 +199,13 @@ void install_mode_selection_handlers(CustomPopupState& popup, const CustomWeight
                 open_custom_popup_for(popup, store);
                 return true;
             }
-            // Persistent top-right cluster. Hit-tested at the exact rects
-            // render_cluster draws (mode_button_target_rect / home_icon_rect), so
-            // visible == clickable.
-            if (point_in_rect(e.x, e.y, animations::home_icon_rect(canvas))) {
-                // Home returns to Root (Notes — Escape Key Behavior: from Mode
-                // Selection, Home and Escape share the return-to-Root path).
-                on_mode_selection_escape();
+            // Persistent top-right cluster: Zone 11 resolves the hit from the geometry
+            // it cached in render_persistent_cluster and performs the action
+            // (Shop/Help/Settings open their modal; Home returns to Root).
+            if (const std::optional<modal::ClusterIcon> icon =
+                    modal::cluster_hit_test(e.x, e.y)) {
+                modal::activate_cluster_icon(*icon);
                 return true;
-            }
-            for (const animations::MorphButton icon :
-                 {animations::MorphButton::Shop, animations::MorphButton::Help,
-                  animations::MorphButton::Settings}) {
-                if (point_in_rect(e.x, e.y, animations::mode_button_target_rect(icon, canvas))) {
-                    // SEAM(Z11): Shop / Help / Settings each open their centered
-                    // modal. Zone 11 (Wave 3) owns the modal system; until it lands
-                    // the hit is consumed as a graceful no-op (no crash, no effect).
-                    return true;
-                }
             }
             return false;
         },

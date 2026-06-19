@@ -9,6 +9,7 @@
 #include "render/render_constants.hpp"
 #include "render/table.hpp"
 
+#include "animations/button_morph.hpp"
 #include "animations/chip_slide.hpp"
 #include "easter_egg/frog_toggle.hpp"
 
@@ -25,7 +26,9 @@
 #include "audio/audio_paths.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -35,6 +38,8 @@
 #include "bridge/screen_dispatch.hpp"
 
 #include "math/interrogator.hpp"
+
+#include "modal/modals.hpp"
 
 #ifdef __EMSCRIPTEN__
 // load_frog_bundle() (Tier-4 on-demand fetch) lives in the wasm-only
@@ -62,10 +67,6 @@ constexpr float kBoardReadoutScale = 1.0f;      // x the base card size
 // install / in tests that never install.
 const GameScreenRuntime* g_installed_runtime = nullptr;
 
-[[nodiscard]] ImU32 token_u32(theme::ColorToken token) {
-    return ImGui::ColorConvertFloat4ToU32(theme::get_color(token));
-}
-
 [[nodiscard]] float lerp(float a, float b, float t) noexcept { return a + (b - a) * t; }
 
 // Build the per-frame UI snapshot from the live settings (or documented defaults).
@@ -79,38 +80,46 @@ const GameScreenRuntime* g_installed_runtime = nullptr;
     };
 }
 
-// Draw the top-right persistent cluster (Shop / Help / Settings / X). The icons
-// are now Tab focus stops (their ids are the Game focus-list tail Z08 composes —
-// see install_game_screen); the focused one shows the same 2px border_focus ring
-// the math boxes use. Their click/Enter activation (opening the modals / Leave-
-// Drill popup) is still the Z11 no-op seam. The Z10 Visual Countdown sits below
-// this region and is left empty.
-//
-// The ring is drawn into the SAME background draw list as the icons (not via
-// bridge::draw_focus_ring_rect, whose GetWindowDrawList target is unsafe here:
-// this renderer runs between NewFrame and Render with no active ImGui window).
-// This mirrors Z07's background-cluster focus ring (render_util::focus_outline),
-// gated on keyboard mode + focus exactly as the bridge helper would be.
-void draw_cluster_stub(ImDrawList* dl, const rnd::GameLayout& layout) {
-    constexpr std::array<const char*, 4> labels = {"Sh", "?", "Se", "X"};
+// The four Game-cluster icon rects (left -> right: Shop, Help, Settings, X) at the
+// layout's cluster anchor — the same positions Z08's prior stub used, so the Zone 11
+// takeover conforms to the existing layout.
+[[nodiscard]] std::array<animations::Rect, 4> game_cluster_rects(const rnd::GameLayout& layout) {
     const float box = layout.w * 0.024f;
     const float gap = box * 0.35f;
+    std::array<animations::Rect, 4> rects{};
     float x = layout.cluster_anchor.x;
     const float y = layout.cluster_anchor.y;
-    const ImU32 border = token_u32(theme::ColorToken::BorderDefault);
-    const ImU32 text = token_u32(theme::ColorToken::TextSecondary);
-    const ImU32 focus_ring = token_u32(theme::ColorToken::BorderFocus);
-    const bool keyboard = backbone::is_keyboard_mode_active();
-    const backbone::FocusableId focused = backbone::get_focused_element();
-    for (std::size_t i = 0; i < labels.size(); ++i) {
-        const char* label = labels[i];
-        dl->AddRect(ImVec2{x, y}, ImVec2{x + box, y + box}, border, 4.0f, 0, 1.0f);
-        const ImVec2 ts = ImGui::CalcTextSize(label);
-        dl->AddText(ImVec2{x + (box - ts.x) * 0.5f, y + (box - ts.y) * 0.5f}, text, label);
-        if (keyboard && focused == kGameClusterFocusIds[i]) {
-            dl->AddRect(ImVec2{x, y}, ImVec2{x + box, y + box}, focus_ring, 4.0f, 0, 2.0f);
-        }
+    for (std::size_t i = 0; i < rects.size(); ++i) {
+        rects[i] = animations::Rect{x, y, box, box};
         x += box + gap;
+    }
+    return rects;
+}
+
+// Zone 11 owns the persistent cluster (render + activation). Game hands it the icon
+// geometry + focus ids; the fourth icon is X (Close -> Leave-Drill confirm). The ids
+// are the Game focus-list tail Z08 composes (see install_game_screen) and Z09
+// re-registers per tier, so Tab reaches them; render_persistent_cluster draws the
+// glyphs + focus rings and caches the geometry for the mouse hit-test + the Zone 11
+// cluster keyboard handler (Space-only on the Game screen).
+void draw_cluster(ImDrawList* dl, const rnd::GameLayout& layout) {
+    modal::render_persistent_cluster(
+        dl, modal::ClusterContext{.screen = modal::ClusterScreen::Game,
+                                  .style = modal::ClusterStyle::IconGlyph,
+                                  .rects = game_cluster_rects(layout),
+                                  .ids = kGameClusterFocusIds});
+}
+
+// Mouse click on a cluster icon (inline, like the dealer easter-egg): Zone 11
+// resolves the hit from its cached geometry and performs the action (open modal, or
+// X -> Leave-Drill confirm). Paused while a modal is open (the modal traps input).
+void handle_cluster_click() {
+    if (backbone::is_any_modal_open() || !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        return;
+    }
+    const ImVec2 m = ImGui::GetIO().MousePos;
+    if (const std::optional<modal::ClusterIcon> icon = modal::cluster_hit_test(m.x, m.y)) {
+        modal::activate_cluster_icon(*icon);
     }
 }
 
@@ -254,14 +263,16 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
 
     // 8) Dealer (right side, profile Butler or front-facing Frog) + the cluster.
     rnd::draw_dealer(dl, layout, easter_egg::frog_active(runtime.frog));
-    draw_cluster_stub(dl, layout);
+    draw_cluster(dl, layout);
 
     // 8b) Top-center community-card readout (HUD overlay, screen-space). Additive
     //    flat copy of the board for legibility; always visible (not HUD-gated).
     draw_board_readout(dl, layout, scenario);
 
-    // 9) Mouse-only Frog easter egg on the dealer hit region.
+    // 9) Mouse-only Frog easter egg on the dealer hit region, then the cluster click
+    //    (both inline, paused while a modal is open).
     handle_dealer_click(runtime, layout);
+    handle_cluster_click();
 
     // 10) Math inputs LAST so they compose on top (Z09 owns them; do not reimplement
     //    — call render_math_inputs). They are an ImGui window, above the background

@@ -81,6 +81,9 @@ enum class AssetId : std::uint16_t {
     IconShare,         // Share glyph (Post-Round Scenario ID)
     IconTomato,        // currency icon (Shop / Profile / Leaderboard)
     IconSidePotChip,   // side-pot stacked-chip icon (Post-Round stat-modal Overall row)
+    IconOffline,       // offline sync indicator (cloud-with-slash), left of the cluster
+    IconWarning,       // Service Outage Banner warning glyph
+    IconTrophy,        // Leaderboard view header glyph
 
     // --- Tier 2: Side pot all-in marker (table-side) ---
     SidePotAllInMarker,
@@ -91,7 +94,7 @@ enum class AssetId : std::uint16_t {
     FrogExpressionFail,
 };
 
-inline constexpr std::size_t kAssetCount = 84;
+inline constexpr std::size_t kAssetCount = 87;
 
 // Cross-check: the enum is contiguous from 0, so the last enumerator + 1 is
 // the asset count. Keep this in lock-step with the kAssetEntries array size.
@@ -201,6 +204,9 @@ inline constexpr std::array<AssetEntry, kAssetCount> kAssetEntries = {{
     {"assets/images/tier2/icons/share.png",                AssetTier::Tier2},
     {"assets/images/tier2/icons/tomato.png",               AssetTier::Tier2},
     {"assets/images/tier2/icons/side_pot_chip.png",        AssetTier::Tier2},
+    {"assets/images/tier2/icons/offline.png",              AssetTier::Tier2},
+    {"assets/images/tier2/icons/warning.png",              AssetTier::Tier2},
+    {"assets/images/tier2/icons/trophy.png",               AssetTier::Tier2},
 
     // --- Tier 2: Side pot all-in marker ---
     {"assets/images/tier2/side_pot_all_in_marker.png",     AssetTier::Tier2},
