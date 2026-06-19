@@ -12,6 +12,7 @@
 #include "bridge/tier_orchestrator.hpp"
 
 #include "screens/game_screen.hpp"
+#include "screens/post_round_screen.hpp"
 #include "screens/screen_registration.hpp"
 
 #include "math/interrogator.hpp"
@@ -67,6 +68,11 @@ struct BootState {
     // live-settings source it reads for Show/Hide HUD, Units, and the chip
     // denomination mode). Threaded into install_game_screen below.
     screens::GameScreenRuntime game_screen;
+    // Zone 13 Post-Round runtime (captured recap snapshot + Again machine +
+    // clipboard fallback + active recap tab + the live-settings source it reads for
+    // the Recap dealer-arrival toggle and default tab). Threaded into
+    // install_post_round_screen below.
+    screens::PostRoundRuntime post_round;
 };
 BootState g_boot;
 
@@ -181,6 +187,13 @@ void finish_boot_after_persistence() {
     // same live settings source for Show/Hide HUD, Units, and the denomination mode.
     g_boot.game_screen.settings_source = live_settings_source;
     screens::install_game_screen(g_boot.game_screen, g_boot.interrogator);
+
+    // Install Zone 13: it takes ScreenId::PostRound's renderer slot (no conflict
+    // with Z08's Game slot), subscribes to GradingComplete to capture Z09's grading
+    // result + drive the transition into Post-Round, and reads the Recap settings
+    // (dealer-arrival animation + default tab) from the same live source.
+    g_boot.post_round.settings_source = live_settings_source;
+    screens::install_post_round_screen(g_boot.post_round, g_boot.interrogator);
 
     // Install Zone 03: subscribe to scenario_spawned for the spawn audio
     // choreography (the per-frame audio_update + first-gesture autoplay gate are

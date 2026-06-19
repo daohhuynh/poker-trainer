@@ -54,6 +54,27 @@ inline constexpr int kMaxSelectAttempts = 4096;
 void request_game_launch(backbone::GameMode mode,
                          std::optional<backbone::CustomConfig> custom);
 
+// ----- Persisted last-launch config (the Z13 Again / replay input) -----
+//
+// The configuration of a launch: the top-level mode plus the Custom split weights
+// (present only for GameMode::Custom). The launch path records the config of the
+// launch that actually proceeds so a replay (Z13's Again) re-launches with the SAME
+// mode the user started with — a STANDARD launch stays a STANDARD mix, an Aggressor
+// stays Aggressor, a Custom keeps its weights. The launch mode is unrecoverable from
+// the finished scenario (a STANDARD launch produces a Caller-or-Aggressor hand), so
+// it must be persisted rather than derived; this resolves the replay-mode question
+// as "replay == same launch config".
+struct LaunchConfig {
+    backbone::GameMode mode{backbone::GameMode::Standard};
+    std::optional<backbone::CustomConfig> custom{};
+};
+
+// The config of the most recent launch (a Mode-Selection Play or an Again replay),
+// or nullopt before any launch this session. Set the moment a launch proceeds (not
+// while one is deferred on Tier-2 assets). Z13's Again reads it to replay; see
+// post_round_screen.cpp::commit_again.
+[[nodiscard]] std::optional<LaunchConfig> last_launch_config() noexcept;
+
 // ----- Live-settings source (the launch's generation input) -----
 
 // Inject the app's live-settings provider, used by request_game_launch to

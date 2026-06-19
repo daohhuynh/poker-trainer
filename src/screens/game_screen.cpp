@@ -49,6 +49,13 @@ namespace {
 
 namespace rnd = poker_trainer::render;
 
+// Top-center community-card readout (Part B): a flat, screen-space copy of the
+// board so the user reads the cards without parsing the perspective felt. Anchored
+// near the top edge at a legible size (visual-pass values; the on-felt board is
+// untouched).
+constexpr float kBoardReadoutTopFrac = 0.015f;  // top anchor, fraction of height
+constexpr float kBoardReadoutScale = 1.0f;      // x the base card size
+
 // File-static pointer to the installed runtime, for the easter-egg-active free
 // query Z13 reads later. Set once at install; mirrors the file-static integration
 // state the bridge uses (e.g. game_launch.cpp's active scenario). Null before
@@ -137,6 +144,20 @@ void handle_dealer_click(GameScreenRuntime& runtime, const rnd::GameLayout& layo
     runtime.frog.tier4_requested = true;
     // The Butler<->Frog toggle SFX (Z08 owns this cue; Z03 owns the spawn cues).
     audio::play_sfx(audio::SfxId::FrogToggle);
+}
+
+// Draw the top-center community-card readout (Part B). ADDITIVE: the on-felt
+// community cards (render step 4) are unchanged. Each card routes through
+// rnd::draw_card -> bridge::draw_asset_image, so the readout swaps to real art with
+// the felt copy (zero code change). Always visible: the board is not a HUD number,
+// so Show/Hide HUD does not gate it.
+void draw_board_readout(ImDrawList* dl, const rnd::GameLayout& layout,
+                        const engine::ScenarioState& scenario) {
+    if (scenario.board_count == 0) {
+        return;  // pre-flop: no community cards to read
+    }
+    rnd::draw_card_fan(dl, layout.w * 0.5f, layout.h * kBoardReadoutTopFrac, scenario.board.data(),
+                       scenario.board_count, kBoardReadoutScale);
 }
 
 }  // namespace
@@ -234,6 +255,10 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
     // 8) Dealer (right side, profile Butler or front-facing Frog) + the cluster.
     rnd::draw_dealer(dl, layout, easter_egg::frog_active(runtime.frog));
     draw_cluster_stub(dl, layout);
+
+    // 8b) Top-center community-card readout (HUD overlay, screen-space). Additive
+    //    flat copy of the board for legibility; always visible (not HUD-gated).
+    draw_board_readout(dl, layout, scenario);
 
     // 9) Mouse-only Frog easter egg on the dealer hit region.
     handle_dealer_click(runtime, layout);

@@ -78,6 +78,11 @@ void begin_ceremonial_transition_to_game() noexcept {}
 std::optional<engine::ScenarioState> g_active_scenario;
 std::function<settings::Settings()> g_launch_settings_source;
 
+// The config of the most recent launch that actually proceeded (see do_launch).
+// Z13's Again replays with it; unrecoverable from the finished scenario, hence
+// persisted here rather than derived.
+std::optional<LaunchConfig> g_last_launch_config;
+
 // The injected Tier-2 required-asset readiness guard (unset -> always Ready) and
 // the launch deferred while required assets are still downloading.
 std::function<LaunchAssetReadiness()> g_launch_asset_guard;
@@ -103,6 +108,10 @@ std::optional<PendingLaunch> g_pending_launch;
 // assets are Ready (directly, or deferred via poll_pending_launch).
 void do_launch(backbone::GameMode mode,
                std::optional<backbone::CustomConfig> custom) {
+    // Record what we are about to launch so a later replay (Z13 Again) re-launches
+    // in the same mode rather than deriving it from the finished scenario.
+    g_last_launch_config = LaunchConfig{mode, custom};
+
     const engine::ScenarioId id = select_scenario_id(mode, custom, master_rng());
 
     set_active_scenario(engine::generate_scenario(id, launch_settings()));
@@ -191,11 +200,16 @@ void set_active_scenario(const engine::ScenarioState& scenario) {
     g_active_scenario = scenario;
 }
 
+std::optional<LaunchConfig> last_launch_config() noexcept {
+    return g_last_launch_config;
+}
+
 void reset_game_launch_for_testing() noexcept {
     g_active_scenario.reset();
     g_launch_settings_source = nullptr;
     g_launch_asset_guard = nullptr;
     g_pending_launch.reset();
+    g_last_launch_config.reset();
 }
 
 }  // namespace poker_trainer::bridge

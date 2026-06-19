@@ -246,3 +246,73 @@ TEST_F(LaunchTest, PollWithoutPendingLaunchIsNoOp) {
     EXPECT_EQ(br::active_scenario(), nullptr);
     EXPECT_EQ(bb::read_screen_state().current, bb::ScreenId::Root);
 }
+
+// ----- Persisted last-launch config (the Z13 Again / replay input) -----
+
+TEST_F(LaunchTest, NoLaunchConfigBeforeAnyLaunch) {
+    EXPECT_FALSE(br::last_launch_config().has_value());
+}
+
+TEST_F(LaunchTest, StandardLaunchRecordsStandardModeAndNoCustom) {
+    br::request_game_launch(bb::GameMode::Standard, std::nullopt);
+    const std::optional<br::LaunchConfig> cfg = br::last_launch_config();
+    ASSERT_TRUE(cfg.has_value());
+    EXPECT_EQ(cfg->mode, bb::GameMode::Standard);
+    EXPECT_FALSE(cfg->custom.has_value());
+}
+
+TEST_F(LaunchTest, CustomLaunchRecordsModeAndWeights) {
+    const bb::CustomConfig weights{/*aggressor_weight=*/70, /*caller_weight=*/30};
+    br::request_game_launch(bb::GameMode::Custom, weights);
+    const std::optional<br::LaunchConfig> cfg = br::last_launch_config();
+    ASSERT_TRUE(cfg.has_value());
+    EXPECT_EQ(cfg->mode, bb::GameMode::Custom);
+    ASSERT_TRUE(cfg->custom.has_value());
+    EXPECT_EQ(cfg->custom->aggressor_weight, 70);
+    EXPECT_EQ(cfg->custom->caller_weight, 30);
+}
+
+// The replay path (Z13 Again): read the stored config and re-launch with it. The
+// recorded config must round-trip identically so a STANDARD launch stays STANDARD
+// (rather than collapsing to the finished scenario's single type) and a Custom keeps
+// its weights.
+TEST_F(LaunchTest, ReplayWithStoredConfigPreservesModeAndWeights) {
+    const bb::CustomConfig weights{/*aggressor_weight=*/40, /*caller_weight=*/60};
+    br::request_game_launch(bb::GameMode::Custom, weights);
+
+    const std::optional<br::LaunchConfig> first = br::last_launch_config();
+    ASSERT_TRUE(first.has_value());
+
+    // Re-launch exactly as commit_again does: request_game_launch(stored config).
+    br::request_game_launch(first->mode, first->custom);
+
+    const std::optional<br::LaunchConfig> second = br::last_launch_config();
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(second->mode, bb::GameMode::Custom);
+    ASSERT_TRUE(second->custom.has_value());
+    EXPECT_EQ(second->custom->aggressor_weight, 40);
+    EXPECT_EQ(second->custom->caller_weight, 60);
+}
+
+// A deferred (Tier-2 pending) launch records the config only once it actually
+// proceeds, not at the click — last_launch_config reflects what truly launched.
+TEST_F(LaunchTest, DeferredLaunchRecordsConfigOnlyWhenItProceeds) {
+    br::LaunchAssetReadiness readiness = br::LaunchAssetReadiness::Pending;
+    br::set_launch_asset_guard([&] { return readiness; });
+
+    br::request_game_launch(bb::GameMode::Aggressor, std::nullopt);
+    EXPECT_FALSE(br::last_launch_config().has_value());  // deferred: nothing recorded yet
+
+    readiness = br::LaunchAssetReadiness::Ready;
+    br::poll_pending_launch();
+    const std::optional<br::LaunchConfig> cfg = br::last_launch_config();
+    ASSERT_TRUE(cfg.has_value());
+    EXPECT_EQ(cfg->mode, bb::GameMode::Aggressor);
+}
+
+TEST_F(LaunchTest, ResetClearsLaunchConfig) {
+    br::request_game_launch(bb::GameMode::Caller, std::nullopt);
+    ASSERT_TRUE(br::last_launch_config().has_value());
+    br::reset_game_launch_for_testing();
+    EXPECT_FALSE(br::last_launch_config().has_value());
+}

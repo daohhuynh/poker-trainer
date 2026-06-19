@@ -308,6 +308,37 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_compile_options(game PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
     target_link_libraries(game PUBLIC
         backbone engine theme bridge interrogator audio)  # theme brings imgui
+
+    # ---------------------------------------------------------------------
+    # Zone 13 (Post-Round Screen). Built here in the shared section so Z05 can link
+    # the recap render into the wasm app and the native tests exercise the same
+    # objects. The render / logic TUs are held to the full warning baseline; the
+    # clipboard_fallback_modal TU carries the Copy/Share browser interop (EM_JS) and
+    # is held to the reduced binding baseline (no -Wpedantic), mirroring the
+    # bridge / bridge_platform and audio / audio_backend pure-vs-binding split.
+    # Warning flags are set per source (not at target level) so the binding TU gets
+    # only the reduced set. game: Z13 reads Z08's easter_egg_frog_active() query;
+    # interrogator: Z13 reads Z09's GradingResult handoff (InterrogatorState::
+    # last_result). None of those depend on post_round, so this is a one-way edge.
+    add_library(post_round STATIC
+        src/screens/again_button.cpp
+        src/render/front_dealer.cpp
+        src/render/stat_modal.cpp
+        src/screens/post_round_screen.cpp
+        src/screens/clipboard_fallback_modal.cpp
+    )
+    target_include_directories(post_round PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    set_source_files_properties(
+        src/screens/again_button.cpp
+        src/render/front_dealer.cpp
+        src/render/stat_modal.cpp
+        src/screens/post_round_screen.cpp
+        PROPERTIES COMPILE_OPTIONS "${POKER_TRAINER_WARNING_FLAGS}")
+    set_source_files_properties(
+        src/screens/clipboard_fallback_modal.cpp
+        PROPERTIES COMPILE_OPTIONS "${POKER_TRAINER_BINDING_WARNING_FLAGS}")
+    target_link_libraries(post_round PUBLIC
+        backbone engine theme bridge interrogator game)  # theme brings imgui
 endif()
 
 # =========================================================================
@@ -348,8 +379,11 @@ if(EMSCRIPTEN)
     # and platform.cpp calls on_first_user_gesture() (audio_backend comes via audio).
     # game: Z08's Game-screen render; boot adds one install_game_screen(...) call
     # after install_interrogator so Z08's renderer wins the single Game slot.
+    # post_round: Z13's Post-Round render; boot adds one install_post_round_screen
+    # call. It registers ScreenId::PostRound's renderer slot (no conflict with Z08's
+    # Game slot) and the GradingComplete capture that drives the transition.
     target_link_libraries(bridge_platform PUBLIC
-        bridge screens interrogator game audio backbone engine assets persistence theme imgui)
+        bridge screens interrogator game post_round audio backbone engine assets persistence theme imgui)
 
     target_link_libraries(poker_trainer PRIVATE bridge_platform)
     target_link_options(poker_trainer PRIVATE
@@ -675,4 +709,26 @@ if(ENABLE_TESTS)
     target_link_libraries(game_test PRIVATE game GTest::gtest_main)
 
     add_test(NAME game_test COMMAND game_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 13 (Post-Round Screen) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # The `post_round` library (shared section above) is held to its warning
+    # baselines, including the ImGui render TUs. These tests exercise only the pure
+    # recap model — stat-modal row assembly, tier-tab content selection, Summary
+    # aggregation, tab-strip geometry hit-test, the Again state machine, the
+    # pass -> dealer-expression mapping, the Time-Grade overtime/undertime decision,
+    # and the side-pot-icon condition — never the render TUs (no live ImGui frame).
+    add_executable(post_round_test
+        tests/screens/again_button_test.cpp
+        tests/render/stat_modal_test.cpp
+    )
+    target_include_directories(post_round_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(post_round_test PRIVATE post_round GTest::gtest_main)
+
+    add_test(NAME post_round_test COMMAND post_round_test)
 endif()
