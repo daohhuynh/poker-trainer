@@ -26,6 +26,8 @@
 
 #include "modal/modals.hpp"
 
+#include "temporal/delta_timer.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -95,11 +97,6 @@ constexpr std::array<backbone::FocusableId, 4> kClusterFocusIds = {
 constexpr float kDealerFadeMs = 600.0f;
 constexpr float kModalFadeMs = 600.0f;
 constexpr std::uint64_t kCopyFlashMs = 1000;  // "Copied" flash window
-
-// SEAM(Z10): the Temporal layer supplies the real target time; until then the
-// Time-Grade row renders against this stub (with elapsed_ms, which is also 0 until
-// Z10). The overtime/undertime coloring logic is real; only the values are stubs.
-constexpr int kStubTargetSeconds = 15;
 
 [[nodiscard]] ImU32 token_u32(theme::ColorToken token) {
     return ImGui::ColorConvertFloat4ToU32(theme::get_color(token));
@@ -463,7 +460,12 @@ void render_post_round_screen(PostRoundRuntime& runtime) {
     modal.bottom_right = &modal_br;
     modal.alpha = modal_alpha;
     modal.strip_focused = tabbed && focused_is(kFocusTierStrip);
-    const render::TimeGrade tg{kStubTargetSeconds,
+    // Z10 (Temporal): real Target from the live (frozen-at-submit) timer; Actual from
+    // the GradingComplete snapshot (elapsed at submit). Both floored ms->s for display
+    // to match the existing Actual read; the pass/overtime verdict stays ms-exact in
+    // Z10's time_within_target(), so the row's coloring may read equal at a sub-second
+    // boundary while the dealer still grades it correctly.
+    const render::TimeGrade tg{static_cast<int>(temporal::target_time_ms() / 1000u),
                                static_cast<int>(runtime.snap.elapsed_ms / 1000u)};
     render::render_stat_modal(dl, runtime.snap.scenario, runtime.snap.result, runtime.active_tab,
                               tg, modal);

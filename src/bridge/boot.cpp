@@ -21,6 +21,8 @@
 
 #include "audio/audio.hpp"
 
+#include "temporal/delta_timer.hpp"
+
 #include "settings/settings.hpp"
 
 #include "backbone/event_router.hpp"
@@ -181,11 +183,20 @@ void finish_boot_after_persistence() {
     // card asset shows the Error screen; an in-flight one defers the launch).
     set_launch_asset_guard(game_launch_asset_readiness);
     g_boot.interrogator.settings_source = live_settings_source;
+    // SEAM(Z10): Zone 10's Delta Timer supplies the elapsed-time source Z09 reads at
+    // submit (for the GradingComplete payload and the math-and-time pass conjunction).
+    g_boot.interrogator.elapsed_ms_source =
+        [] { return static_cast<std::uint32_t>(temporal::timer_elapsed_ms()); };
     // Wire the shared focus-reconciliation registry (owned off BridgeRuntime) into
     // Z09 so its inputs register their text/non-text reconcile behavior and the
     // render hook reconciles ImGui through the substrate.
     g_boot.interrogator.focus_registry = &g_runtime->focus_registry;
     interrogator::install_interrogator(g_boot.interrogator);
+
+    // Install Zone 10 (Temporal): wires its live-settings source, the scenario-
+    // lifecycle subscriptions (start on spawn / freeze on submit / clear on exit),
+    // and the per-frame timer_update tick. Reads the same single live-settings source.
+    temporal::install_temporal(live_settings_source);
 
     // Install Zone 08 AFTER Zone 09: the render-dispatch registry is single-slot
     // last-writer-wins, so Z08's Game renderer must register last to take over the

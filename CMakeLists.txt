@@ -243,7 +243,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     )
     target_include_directories(interrogator PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(interrogator PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
-    target_link_libraries(interrogator PUBLIC backbone engine theme bridge)  # theme brings imgui
+    target_link_libraries(interrogator PUBLIC backbone engine theme bridge temporal)  # theme brings imgui
 
     # ---------------------------------------------------------------------
     # Zone 03 (Audio Engine). The pure logic + integration (shuffle pool,
@@ -307,7 +307,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_include_directories(game PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(game PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
     target_link_libraries(game PUBLIC
-        backbone engine theme bridge interrogator audio modal)  # theme brings imgui
+        backbone engine theme bridge interrogator audio modal temporal)  # theme brings imgui
 
     # ---------------------------------------------------------------------
     # Zone 13 (Post-Round Screen). Built here in the shared section so Z05 can link
@@ -338,7 +338,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/screens/clipboard_fallback_modal.cpp
         PROPERTIES COMPILE_OPTIONS "${POKER_TRAINER_BINDING_WARNING_FLAGS}")
     target_link_libraries(post_round PUBLIC
-        backbone engine theme bridge interrogator game modal)  # theme brings imgui
+        backbone engine theme bridge interrogator game modal temporal)  # theme brings imgui
 
     # ---------------------------------------------------------------------
     # Zone 11 (Modal Infrastructure + Persistent Cluster). Built here in the shared
@@ -362,6 +362,25 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_include_directories(modal PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(modal PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
     target_link_libraries(modal PUBLIC backbone theme bridge persistence)  # theme brings imgui
+
+    # ---------------------------------------------------------------------
+    # Zone 10 (Temporal Layer). Built here in the shared section so Z05 links the
+    # Delta Timer + Visual Countdown into the wasm app and the native tests exercise
+    # the same -Werror-clean objects. The pure cores (target-time table, the advance
+    # state machine, the display format) are unit-tested; visual_countdown.cpp's
+    # ImGui draw is browser-verified only. delta_timer.cpp reads the backbone (clock /
+    # modal poll / scenario bus / screen state) and bridge (active_scenario for the
+    # spawn handler — the documented path, mirroring Z03 audio; register_frame_tick
+    # for the per-frame update). None of those depend on temporal, so this is a
+    # one-way edge (no cycle).
+    add_library(temporal STATIC
+        src/temporal/target_time.cpp
+        src/temporal/delta_timer.cpp
+        src/temporal/visual_countdown.cpp
+    )
+    target_include_directories(temporal PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(temporal PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(temporal PUBLIC backbone engine theme bridge)  # theme brings imgui
 endif()
 
 # =========================================================================
@@ -406,7 +425,7 @@ if(EMSCRIPTEN)
     # call. It registers ScreenId::PostRound's renderer slot (no conflict with Z08's
     # Game slot) and the GradingComplete capture that drives the transition.
     target_link_libraries(bridge_platform PUBLIC
-        bridge screens interrogator game post_round audio modal backbone engine assets persistence theme imgui)
+        bridge screens interrogator game post_round audio modal temporal backbone engine assets persistence theme imgui)
 
     target_link_libraries(poker_trainer PRIVATE bridge_platform)
     target_link_options(poker_trainer PRIVATE
@@ -779,4 +798,28 @@ if(ENABLE_TESTS)
     target_link_libraries(modal_test PRIVATE modal GTest::gtest_main)
 
     add_test(NAME modal_test COMMAND modal_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 10 (Temporal Layer) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # The `temporal` library (shared section above) is held to -Werror, including the
+    # ImGui draw TU. These tests exercise only the pure logic: the target-time table +
+    # modifiers + custom override, the advance state machine (accumulate / modal pause
+    # / resume / disabled / clock-regression clamp), the countdown display format
+    # (ceil undertime, the "0s" overtime pivot, the color token on each side), and the
+    # exposed time-result queries (time_within_target inclusive, result-valid). They
+    # never invoke render_countdown (no live ImGui frame).
+    add_executable(temporal_test
+        tests/temporal/target_time_test.cpp
+        tests/temporal/delta_timer_test.cpp
+        tests/temporal/visual_countdown_test.cpp
+    )
+    target_include_directories(temporal_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(temporal_test PRIVATE temporal GTest::gtest_main)
+
+    add_test(NAME temporal_test COMMAND temporal_test)
 endif()

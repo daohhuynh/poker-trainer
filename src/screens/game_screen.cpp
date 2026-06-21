@@ -41,6 +41,8 @@
 
 #include "modal/modals.hpp"
 
+#include "temporal/visual_countdown.hpp"
+
 #ifdef __EMSCRIPTEN__
 // load_frog_bundle() (Tier-4 on-demand fetch) lives in the wasm-only
 // bridge_platform layer; the native `game` library / test never links it, so the
@@ -264,6 +266,11 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
     // 8) Dealer (right side, profile Butler or front-facing Frog) + the cluster.
     rnd::draw_dealer(dl, layout, easter_egg::frog_active(runtime.frog));
     draw_cluster(dl, layout);
+
+    // 8a) Visual Countdown (Z10): top-right Game chrome directly below the cluster.
+    // Self-gates on the Show-countdown setting (off by default) and self-positions;
+    // the timer accumulates every frame via Z10's frame-tick regardless of this draw.
+    temporal::render_countdown();
 
     // 8b) Top-center community-card readout (HUD overlay, screen-space). Additive
     //    flat copy of the board for legibility; always visible (not HUD-gated).

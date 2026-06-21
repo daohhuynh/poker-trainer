@@ -7,6 +7,8 @@
 #include "engine/evaluator.hpp"
 #include "engine/scenario.hpp"
 
+#include "temporal/delta_timer.hpp"
+
 #include <cstddef>
 #include <cstdint>
 
@@ -109,13 +111,16 @@ engine::GradingResult on_submit(InterrogatorRuntime& runtime) {
 
     // GradingComplete fires once the True Evaluator has produced the result. Z09
     // is the firer: it owns the evaluate() call, holds the GradingResult, and owns
-    // the single SEAM(Z10) elapsed-time injection point (see the report's firer
-    // decision). `passed` carries the math verdict (is_pass); consumers combine it
-    // with elapsed_ms (against the target time) for the time-aware overall pass.
+    // the elapsed-time injection point. `passed` carries the time-aware OVERALL
+    // verdict (math correctness AND finishing at/under target -- Module 5 output #2,
+    // Module 7's two award conditions): Z10 (Temporal) supplies the elapsed source
+    // read here and time_within_target() for the conjunction. The timer froze on the
+    // AnswersSubmitted fired above, so both read the submit-instant value.
     const std::uint32_t elapsed_ms =
-        runtime.elapsed_ms_source ? runtime.elapsed_ms_source() : 0U;  // SEAM(Z10)
+        runtime.elapsed_ms_source ? runtime.elapsed_ms_source() : 0U;
+    const PassState pass = compute_pass(result, temporal::time_within_target());
     backbone::fire_grading_complete(
-        backbone::GradingCompleteEvent{id, engine::is_pass(result), elapsed_ms});
+        backbone::GradingCompleteEvent{id, pass.overall_pass, elapsed_ms});
     return result;
 }
 
