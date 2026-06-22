@@ -20,10 +20,12 @@
 #include "modal/modals.hpp"
 
 #include "audio/audio.hpp"
+#include "audio/audio_paths.hpp"
 
 #include "temporal/delta_timer.hpp"
 
 #include "settings/settings.hpp"
+#include "settings/settings_modal.hpp"
 
 #include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
@@ -81,6 +83,10 @@ struct BootState {
     // cluster geometry cache). install_modals registers the overlay renderer + the
     // modal/cluster event handlers and stores a pointer to this.
     modal::ModalRuntime modals;
+    // Zone 12 Settings page view-state. Wired with the mutable live-settings handle,
+    // the persist + apply-audio + reset-tomatoes callbacks, and the shared focus
+    // registry; install_settings_content registers its content provider with Zone 11.
+    settings::SettingsModalState settings;
 };
 BootState g_boot;
 
@@ -146,31 +152,26 @@ void finish_boot_after_persistence() {
     g_boot.store.emplace(*g_boot.storage);
     const persistence::AppState state = g_boot.store->load_state();
 
-    // Apply the persisted theme before the first frame (default No Limit when
-    // nothing valid is saved). A boot responsibility: Zone 12's Settings page
-    // changes the theme at runtime, but restoring the saved one at launch is the
-    // boot path's job (it owns the persistence read and runs before any frame).
-    theme::set_theme(read_persisted_theme_id(state));
+    // Build the app's live settings from persisted state via Zone 12's full codec
+    // ('PTS1'), migrating a legacy interim blob (theme + custom split) when present.
+    // This single snapshot is the one source the scenario generator + every consumer
+    // reads; Zone 12's Settings page mutates it in place through &g_boot.live_settings.
+    g_boot.live_settings = read_persisted_settings(state);
+
+    // Apply the persisted theme before the first frame (default No Limit when nothing
+    // valid is saved). A boot responsibility: Zone 12 changes the theme at runtime, but
+    // restoring the saved one at launch is the boot path's job (it owns the persistence
+    // read and runs before any frame).
+    theme::set_theme(g_boot.live_settings.display.active_theme_id);
 
     // Persistence-backed Custom-weights store (Mode Selection popup Save/Reset),
-    // reading/writing the custom_*_weight settings through the interim codec.
+    // reading/writing the custom_*_weight settings through the full settings codec.
     g_boot.weights_store.emplace(*g_boot.store);
 
     // Zone 07 self-registers its real Root / Mode Selection renders + handlers,
     // replacing the blank default in the dispatch registry.
     screens::install_screens(g_boot.screens, *g_boot.weights_store);
 
-    // Build the app's live settings from persisted state. Until Zone 12 (W4) ships
-    // the full settings serializer, only the theme id and the Custom split
-    // round-trip (the interim codec); the rest are the documented Settings{}
-    // defaults. This single snapshot is what the scenario generator reads, both at
-    // launch and in Z09's fallback — one source of truth for settings.
-    g_boot.live_settings = settings::Settings{};
-    g_boot.live_settings.display.active_theme_id = read_persisted_theme_id(state);
-    if (const auto custom = read_persisted_custom_weights(state)) {
-        g_boot.live_settings.gameplay.custom_aggressor_weight = custom->aggressor_weight;
-        g_boot.live_settings.gameplay.custom_caller_weight = custom->caller_weight;
-    }
     const auto live_settings_source = [] { return g_boot.live_settings; };
 
     // Wire the LIVE settings into the launch path (scenario generation) and into
@@ -220,6 +221,35 @@ void finish_boot_after_persistence() {
     // BridgeRuntime) for the text-field modals (leaderboard search).
     g_boot.modals.focus_registry = &g_runtime->focus_registry;
     modal::install_modals(g_boot.modals);
+
+    // Install Zone 12 (Settings page) AFTER Zone 11: it registers its content provider
+    // with the modal runtime (so the cog's Settings modal renders the Z12 body instead
+    // of the placeholder shell). Wire the seams: the mutable live-settings handle, the
+    // autosave (full-codec write-through to IDBFS), the immediate audio apply (Z03), the
+    // tomato-wallet reset, and the shared focus registry.
+    g_boot.settings.focus_registry = &g_runtime->focus_registry;
+    g_boot.settings.live = &g_boot.live_settings;
+    g_boot.settings.persist = [] {
+        if (g_boot.store.has_value()) {
+            g_boot.store->save_state(with_settings(g_boot.store->state(), g_boot.live_settings));
+        }
+    };
+    g_boot.settings.apply_audio = [](const settings::AudioSettings& a) {
+        audio::set_volume(static_cast<int>(a.volume));
+        audio::set_mute_all(a.mute_all);
+        audio::set_mute_sfx(a.mute_sfx);
+        audio::set_mute_music(a.mute_music);
+        audio::set_active_genre(
+            static_cast<audio::MusicGenre>(static_cast<std::uint8_t>(a.current_music_genre)));
+    };
+    g_boot.settings.reset_tomatoes = [] {
+        if (g_boot.store.has_value()) {
+            persistence::AppState next = g_boot.store->state();
+            next.tomatoes = persistence::TomatoesState{};  // wipe spendable + lifetime
+            g_boot.store->save_state(next);
+        }
+    };
+    settings::install_settings_content(g_boot.settings);
 
     // Install Zone 03: subscribe to scenario_spawned for the spawn audio
     // choreography (the per-frame audio_update + first-gesture autoplay gate are

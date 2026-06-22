@@ -381,6 +381,26 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_include_directories(temporal PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(temporal PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
     target_link_libraries(temporal PUBLIC backbone engine theme bridge)  # theme brings imgui
+
+    # ---------------------------------------------------------------------
+    # Zone 12 (Settings Page). The Settings modal CONTENT rendered into Zone 11's
+    # cluster-modal shell via Z11's generic content-provider seam: the section sidebar,
+    # the scrollable body, the fuzzy search, the nine per-section renders, and the
+    # coupled/clamped widgets. The pure cores (street redistribution, difficulty clamp,
+    # int parse/step, search match, validate) are unit-tested; the section render TUs
+    # are browser-verified (CLAUDE.md §9). Links modal (Z11 host shell + confirm +
+    # asset ids), theme (Z06 tokens + set_theme), bridge (the focus-reconcile
+    # substrate), backbone (focus / router). Zone 04 persistence and Zone 03 audio are
+    # reached through boot-injected callbacks rather than a direct link, keeping this
+    # library's dependency edges minimal. modal / theme / bridge / backbone do NOT
+    # depend on settings, so this is a one-way edge (no cycle).
+    add_library(settings STATIC
+        src/settings/search.cpp
+        src/settings/settings_modal.cpp
+    )
+    target_include_directories(settings PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(settings PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(settings PUBLIC backbone theme bridge modal)  # theme brings imgui
 endif()
 
 # =========================================================================
@@ -425,7 +445,7 @@ if(EMSCRIPTEN)
     # call. It registers ScreenId::PostRound's renderer slot (no conflict with Z08's
     # Game slot) and the GradingComplete capture that drives the transition.
     target_link_libraries(bridge_platform PUBLIC
-        bridge screens interrogator game post_round audio modal temporal backbone engine assets persistence theme imgui)
+        bridge screens interrogator game post_round audio modal settings temporal backbone engine assets persistence theme imgui)
 
     target_link_libraries(poker_trainer PRIVATE bridge_platform)
     target_link_options(poker_trainer PRIVATE
@@ -822,4 +842,26 @@ if(ENABLE_TESTS)
     target_link_libraries(temporal_test PRIVATE temporal GTest::gtest_main)
 
     add_test(NAME temporal_test COMMAND temporal_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 12 (Settings Page) — native unit tests.
+    # -------------------------------------------------------------------------
+    #
+    # The `settings` library (shared section above) is held to -Werror. These tests
+    # exercise only the pure logic: the coupled street-split redistribution, the
+    # two-handle difficulty-range clamp + display<->internal round-trip, the integer
+    # parse/clamp/step behind the volume and custom-time inputs, the slider ghost
+    # fraction, and the fuzzy search match / empty-result state. The section render
+    # TUs (sections/*.cpp) are browser-verified, never invoked here (no ImGui frame).
+    add_executable(settings_test
+        tests/settings/settings_logic_test.cpp
+        tests/settings/search_test.cpp
+    )
+    target_include_directories(settings_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(settings_test PRIVATE settings GTest::gtest_main)
+
+    add_test(NAME settings_test COMMAND settings_test)
 endif()

@@ -24,7 +24,7 @@ The aesthetic is a high-limit private cardroom (leather, wood, brass, dim lighti
 
 ## Architecture
 
-The codebase is organized around a few load-bearing decisions. Each section below is one problem and the specific mechanism that solves it.
+The codebase is organized around a few decisions. Each section below is one problem and the specific mechanism that solves it.
 
 ### Zones behind frozen contracts
 

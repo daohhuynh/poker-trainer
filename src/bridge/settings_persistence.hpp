@@ -2,6 +2,7 @@
 
 #include "backbone/game_mode.hpp"
 #include "persistence/persistence_schema.hpp"
+#include "settings/settings.hpp"
 #include "theme/theme_tokens.hpp"
 
 #include <cstdint>
@@ -65,5 +66,36 @@ struct InterimSettings {
 // other AppState field. The write path for both theme and custom weights.
 [[nodiscard]] persistence::AppState with_interim_settings(const persistence::AppState& state,
                                                           const InterimSettings& settings);
+
+// ============================================================================
+// Zone 12: full settings-blob codec ('PTS1').
+// ============================================================================
+//
+// The Settings page (Z12) owns the settings_blob format outright (the interim
+// 'PTS0' codec above foreshadowed this). encode_settings serializes EVERY
+// settings::Settings field into the existing opaque AppState::settings_blob — no
+// persistence_schema change. decode_settings round-trips a 'PTS1' blob; it returns
+// std::nullopt for any other blob (absent / interim / foreign) so the readers can
+// fall back. The readers below are now format-agnostic: they understand 'PTS1'
+// first, then migrate the interim 'PTS0' (theme + custom weights), then default —
+// so a returning user's saved theme/split survive the format change with no reset.
+
+// Encode every settings field into the 'PTS1' settings_blob layout.
+[[nodiscard]] std::vector<std::uint8_t> encode_settings(const settings::Settings& s);
+
+// Decode a 'PTS1' settings_blob, or std::nullopt when the blob is absent, truncated,
+// or not a 'PTS1' blob (e.g. the interim 'PTS0' or a foreign blob).
+[[nodiscard]] std::optional<settings::Settings> decode_settings(
+    std::span<const std::uint8_t> blob) noexcept;
+
+// The full persisted settings: a decoded 'PTS1' blob, else a defaults Settings
+// hydrated with the interim 'PTS0' theme + custom weights when present, else plain
+// defaults. The single read used by boot (live snapshot) and by the Custom-weights
+// store (read-modify-write of the custom split without clobbering other fields).
+[[nodiscard]] settings::Settings read_persisted_settings(const persistence::AppState& state) noexcept;
+
+// A copy of `state` whose settings_blob carries the full `settings` ('PTS1').
+[[nodiscard]] persistence::AppState with_settings(const persistence::AppState& state,
+                                                  const settings::Settings& s);
 
 }  // namespace poker_trainer::bridge

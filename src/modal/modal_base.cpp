@@ -22,6 +22,9 @@
 #include <string_view>
 
 #include <imgui.h>
+#ifdef __EMSCRIPTEN__
+#include <imgui_internal.h>  // ImGui::ClearActiveID — drop a provider modal's active text input on close
+#endif
 
 #include "bridge/asset_image.hpp"
 #include "bridge/focus_registry.hpp"
@@ -54,6 +57,13 @@ void tutorial_start_seam() {
 
 // Push the focus trap for `id` (the modal's own focusables, armed at its default).
 void push_modal_focus(backbone::ModalId id) {
+    // A registered content provider supplies its own focus list (the generic seam,
+    // checked first so a provider modal traps on its full list, not the shell's X).
+    if (const ModalContentProvider* p = modal_content_for(id);
+        p != nullptr && p->focus_list) {
+        backbone::push_focus_context(p->focus_list(), p->initial_focus, "modal.content");
+        return;
+    }
     if (id == kHelpModalId) {
         static constexpr std::array<backbone::FocusableId, 2> kHelp{kHelpTutorial, kHelpClose};
         backbone::push_focus_context(kHelp, kHelpTutorial, "modal.help");
@@ -75,6 +85,31 @@ void push_modal_focus(backbone::ModalId id) {
 
 ModalRuntime* modal_runtime() { return g_runtime; }
 
+const ModalContentProvider* modal_content_for(backbone::ModalId id) {
+    if (g_runtime == nullptr) {
+        return nullptr;
+    }
+    for (const auto& [pid, provider] : g_runtime->content_providers) {
+        if (pid == id) {
+            return &provider;
+        }
+    }
+    return nullptr;
+}
+
+void register_modal_content(backbone::ModalId id, ModalContentProvider provider) {
+    if (g_runtime == nullptr) {
+        return;  // native tests never install; the registry is wired at boot
+    }
+    for (auto& [pid, existing] : g_runtime->content_providers) {
+        if (pid == id) {
+            existing = std::move(provider);  // replace
+            return;
+        }
+    }
+    g_runtime->content_providers.emplace_back(id, std::move(provider));
+}
+
 // ===== Open / close lifecycle =====
 
 void open_modal(backbone::ModalId id) {
@@ -84,12 +119,22 @@ void open_modal(backbone::ModalId id) {
     g_runtime->modal_just_opened = true;
     backbone::notify_modal_opened(id);  // drives modal_stack_depth (swoosh edge + Z10 pause)
     push_modal_focus(id);
+    if (const ModalContentProvider* p = modal_content_for(id); p != nullptr && p->on_open) {
+        p->on_open();  // provider builds its registry / resets per-open state
+    }
 }
 
 void close_modal() {
     const std::optional<backbone::ModalId> id = backbone::current_modal_id();
     if (!id.has_value()) {
         return;
+    }
+    // Provider on_close BEFORE the pop: it clears the provider's focus-registry
+    // entries while its context is still the active one (mirrors custom_popup's
+    // close-before-launch ordering — no provider closure is mid-invocation here).
+    const ModalContentProvider* p = modal_content_for(*id);
+    if (p != nullptr && p->on_close) {
+        p->on_close();
     }
     backbone::notify_modal_closed(*id);
     // Invariant: every modal open pushed exactly one focus context, so there is one
@@ -99,6 +144,20 @@ void close_modal() {
     // FULLY first (pop here), then the caller navigates.
     assert(backbone::context_depth() > 0 && "modal close without a pushed focus context");
     backbone::pop_focus_context();
+#ifdef __EMSCRIPTEN__
+    // Generic provider-modal text-capture teardown. A provider modal (Zone 12 Settings;
+    // a future Shop) may carry text inputs that grabbed ImGui's keyboard focus. Popping
+    // the focus context above restores the underlying screen's focus pointer, but ImGui's
+    // active text item does NOT tear down with it — left active, it captures the next
+    // keystrokes on the restored screen (e.g. the Game screen's math boxes, which then
+    // swallow Space as a literal space and eat digits). Drop it here so any text-field
+    // provider modal relinquishes ImGui keyboard capture on every close path (X / click-
+    // outside / Escape all route through here). Gated to provider modals so the non-text
+    // Help / confirm / Shop shells are untouched.
+    if (p != nullptr) {
+        ImGui::ClearActiveID();
+    }
+#endif
     if (g_runtime != nullptr) {
         g_runtime->modal_just_opened = false;
         g_runtime->confirm = ConfirmSpec{};
@@ -108,6 +167,16 @@ void close_modal() {
 void open_help_modal() { open_modal(kHelpModalId); }
 void open_settings_modal() { open_modal(kSettingsModalId); }
 void open_shop_modal() { open_modal(kShopModalId); }
+
+void open_confirm_modal(ConfirmSpec spec) {
+    if (g_runtime == nullptr) {
+        return;
+    }
+    // Reuse the shared confirmation instance + its No->Yes->X focus list and the
+    // ModalLayer Yes/No handling. Stacks over an open Settings modal (push/pop).
+    g_runtime->confirm = std::move(spec);
+    open_modal(kLeaveDrillConfirmId);
+}
 
 void open_leave_drill_confirm() {
     if (g_runtime == nullptr) {
@@ -252,7 +321,36 @@ void render_seam_shell(const char* imgui_id, assets::AssetId icon, const char* n
 
 }  // namespace
 
+// Render a registered content provider into the standard cluster-modal shell: chrome
+// (window + X close + pill header + lock banner) drawn by the shell, the interior by
+// the provider's render_body. Dismiss on X / click-outside (Escape + keyboard X are
+// the ModalLayer handler's job). The provider's own controls (reset buttons, inputs)
+// drive themselves inside render_body.
+void render_provider_shell(const ModalContentProvider& p) {
+    if (modal_begin_centered("##settings_modal", kClusterModalWidthFrac, kClusterModalHeightFrac)) {
+        const bool x_clicked = modal_draw_x_close(p.close_focus);
+        modal_draw_pill_header(p.header_icon, p.header_name);
+        modal_draw_lock_banner();
+        if (p.render_body) {
+            p.render_body();
+        }
+        if (x_clicked || modal_click_outside_dismissed()) {
+            modal_end();
+            close_modal();
+            return;
+        }
+    }
+    modal_end();
+}
+
 void render_settings_shell() {
+    // Zone 12 fills the body via the content-provider seam; until it registers one
+    // (or in a build without Z12) the placeholder seam shell renders.
+    if (const ModalContentProvider* p = modal_content_for(kSettingsModalId);
+        p != nullptr && p->render_body) {
+        render_provider_shell(*p);
+        return;
+    }
     render_seam_shell("##settings_modal", assets::AssetId::IconSettings, "Settings",
                       kSettingsShellClose,
                       "Settings content is implemented by Zone 12 (Settings Page). This shell "
@@ -316,6 +414,13 @@ bool on_modal_key(const backbone::KeyEvent& e) {
     if (e.code == backbone::KeyCode::Escape) {
         close_modal();  // confirmations: Escape == No
         return true;
+    }
+    // A provider modal (Zone 12 Settings) owns Space/Enter/arrows on its controls;
+    // route the key to its dispatch (which withholds text-cursor keys itself). Keys it
+    // does not consume fall through to the backbone focus-nav handler (Tab). Modals
+    // without a provider keep the legacy Space/Enter activation below, unchanged.
+    if (const ModalContentProvider* p = modal_content_for(*id); p != nullptr) {
+        return p->dispatch ? p->dispatch(e) : false;
     }
     if (e.code != backbone::KeyCode::Space && e.code != backbone::KeyCode::Enter) {
         return false;

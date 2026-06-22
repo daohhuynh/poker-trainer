@@ -7,6 +7,8 @@
 #include "bridge/persistent_weights_store.hpp"
 #include "bridge/settings_persistence.hpp"
 
+#include "settings/settings.hpp"
+
 #include "screens/custom_popup.hpp"
 
 #include "backbone/game_mode.hpp"
@@ -149,6 +151,101 @@ TEST(PersistentWeightsStore, ResetWithoutPriorSaveIs5050) {
     const bb::CustomConfig reset = sc::reset_to_saved(weights_store);
     EXPECT_EQ(aggr(reset), 50);
     EXPECT_EQ(call(reset), 50);
+}
+
+// ----- full settings codec ('PTS1') -----
+
+namespace st = poker_trainer::settings;
+
+TEST(FullSettingsCodec, RoundTripsEveryField) {
+    st::Settings in{};
+    in.gameplay.street_weight_preflop = 10;
+    in.gameplay.street_weight_flop = 40;
+    in.gameplay.street_weight_turn = 30;
+    in.gameplay.street_weight_river = 20;
+    in.gameplay.custom_aggressor_weight = 65;
+    in.gameplay.custom_caller_weight = 35;
+    in.gameplay.side_pot_frequency = 0.25f;
+    in.gameplay.chip_denomination_mode = st::ChipDenominationMode::Fixed;
+    in.gameplay.bet_sizing_engine_enabled = false;
+    in.gameplay.difficulty_min = 0.3f;
+    in.gameplay.difficulty_max = 0.6f;
+    in.gameplay.time_pressure_custom_enabled = true;
+    in.gameplay.time_pressure_custom_seconds = 123;
+    in.gameplay.show_hud = false;
+    in.gameplay.show_countdown = true;
+    in.units.cash_mode = false;
+    in.display.active_theme_id = th::kThemeIdOcean;
+    in.display.reduce_motion = true;
+    in.display.particle_drift = false;
+    in.audio.volume = 73;
+    in.audio.current_music_genre = st::ActiveMusicGenre::BossaNova;
+    in.audio.mute_sfx = true;
+    in.recap.transitions_enabled = false;
+    in.recap.default_aggressor_recap_tab = st::DefaultAggressorRecapTab::Summary;
+    in.tomatoes.shop_button_visible = false;
+    in.tomatoes.leaderboard_opt_in = true;
+    in.account.display_name_override = "Stack_Jack";
+    in.general.confirm_before_leaving_site = false;
+
+    const std::vector<std::uint8_t> blob = br::encode_settings(in);
+    const std::optional<st::Settings> out = br::decode_settings(blob);
+    ASSERT_TRUE(out.has_value());
+    EXPECT_EQ(out->gameplay.street_weight_flop, 40);
+    EXPECT_EQ(out->gameplay.custom_aggressor_weight, 65);
+    EXPECT_FLOAT_EQ(out->gameplay.side_pot_frequency, 0.25f);
+    EXPECT_EQ(out->gameplay.chip_denomination_mode, st::ChipDenominationMode::Fixed);
+    EXPECT_FALSE(out->gameplay.bet_sizing_engine_enabled);
+    EXPECT_FLOAT_EQ(out->gameplay.difficulty_min, 0.3f);
+    EXPECT_FLOAT_EQ(out->gameplay.difficulty_max, 0.6f);
+    EXPECT_TRUE(out->gameplay.time_pressure_custom_enabled);
+    EXPECT_EQ(out->gameplay.time_pressure_custom_seconds, 123);
+    EXPECT_FALSE(out->gameplay.show_hud);
+    EXPECT_TRUE(out->gameplay.show_countdown);
+    EXPECT_FALSE(out->units.cash_mode);
+    EXPECT_EQ(out->display.active_theme_id, th::kThemeIdOcean);
+    EXPECT_TRUE(out->display.reduce_motion);
+    EXPECT_FALSE(out->display.particle_drift);
+    EXPECT_EQ(out->audio.volume, 73);
+    EXPECT_EQ(out->audio.current_music_genre, st::ActiveMusicGenre::BossaNova);
+    EXPECT_TRUE(out->audio.mute_sfx);
+    EXPECT_FALSE(out->recap.transitions_enabled);
+    EXPECT_EQ(out->recap.default_aggressor_recap_tab, st::DefaultAggressorRecapTab::Summary);
+    EXPECT_FALSE(out->tomatoes.shop_button_visible);
+    EXPECT_TRUE(out->tomatoes.leaderboard_opt_in);
+    EXPECT_EQ(out->account.display_name_override, "Stack_Jack");
+    EXPECT_FALSE(out->general.confirm_before_leaving_site);
+}
+
+TEST(FullSettingsCodec, DecodeRejectsInterimAndForeignBlobs) {
+    const std::vector<std::uint8_t> interim =
+        br::encode_interim_settings(br::InterimSettings{th::kThemeIdSlate, bb::CustomConfig{60, 40}});
+    EXPECT_FALSE(br::decode_settings(interim).has_value());  // 'PTS0' is not 'PTS1'
+    const std::vector<std::uint8_t> empty;
+    EXPECT_FALSE(br::decode_settings(empty).has_value());
+}
+
+TEST(FullSettingsCodec, ReadPersistedSettingsMigratesInterimBlob) {
+    pe::AppState state{};
+    state.settings_blob =
+        br::encode_interim_settings(br::InterimSettings{th::kThemeIdSage, bb::CustomConfig{70, 30}});
+    const st::Settings s = br::read_persisted_settings(state);
+    EXPECT_EQ(s.display.active_theme_id, th::kThemeIdSage);          // migrated theme
+    EXPECT_EQ(s.gameplay.custom_aggressor_weight, 70);              // migrated split
+    EXPECT_EQ(s.gameplay.custom_caller_weight, 30);
+    EXPECT_TRUE(s.gameplay.show_hud);                              // everything else: defaults
+    EXPECT_EQ(s.audio.volume, 50);
+}
+
+TEST(FullSettingsCodec, ReadPersistedSettingsRoundTripsFullBlob) {
+    st::Settings in{};
+    in.audio.volume = 88;
+    in.display.active_theme_id = th::kThemeIdSlate;
+    pe::AppState state{};
+    state = br::with_settings(state, in);
+    const st::Settings out = br::read_persisted_settings(state);
+    EXPECT_EQ(out.audio.volume, 88);
+    EXPECT_EQ(out.display.active_theme_id, th::kThemeIdSlate);
 }
 
 TEST(PersistentWeightsStore, SavingWeightsPreservesPersistedTheme) {

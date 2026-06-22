@@ -3,16 +3,23 @@
 #include "modal/confirm_modal.hpp"
 #include "modal/outage_banner.hpp"
 
+#include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
 #include "backbone/modal_state.hpp"
+
+#include "assets/asset_paths.hpp"
 
 #include "animations/button_morph.hpp"
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 struct ImDrawList;
 
@@ -36,6 +43,9 @@ inline constexpr backbone::ModalId kSettingsModalId{2};
 inline constexpr backbone::ModalId kShopModalId{3};
 inline constexpr backbone::ModalId kLeaderboardModalId{4};
 inline constexpr backbone::ModalId kLeaveDrillConfirmId{5};
+// Zone 12 sub-modals, rendered via the content-provider seam, stacked over Settings.
+inline constexpr backbone::ModalId kSettingsSectionResetId{6};  // multi-select reset
+inline constexpr backbone::ModalId kSettingsDocId{7};           // ToS / Privacy / About
 
 // ----- Settings / Shop shell focusables (content is Z12 / Module 7 seams) -----
 inline constexpr backbone::FocusableId kSettingsShellClose =
@@ -63,6 +73,28 @@ struct ClusterContext {
     std::array<backbone::FocusableId, 4> ids{};
 };
 
+// ----- Generic per-modal content provider seam (additive) -----
+//
+// A zone (Zone 12 Settings; later the Shop/Module 7) registers a content provider for
+// a cluster-modal id. The shared shell renders the standard chrome (centered window,
+// X close, pill header, lock banner, click-outside) and calls render_body in between;
+// the modal focus trap is built from focus_list / initial_focus; and ModalLayer
+// Space/Enter/arrow keys route to dispatch. Modals WITHOUT a provider keep their
+// dedicated render / focus / key paths unchanged — only a provider-registered modal
+// changes behavior. The std::function members keep this an opaque hook, so modal/
+// never includes a consumer zone (no dependency inversion).
+struct ModalContentProvider {
+    assets::AssetId header_icon{};
+    const char* header_name{""};
+    backbone::FocusableId close_focus{};
+    std::function<void()> render_body{};
+    std::function<std::span<const backbone::FocusableId>()> focus_list{};
+    backbone::FocusableId initial_focus{};
+    std::function<bool(const backbone::KeyEvent&)> dispatch{};  // true => key consumed
+    std::function<void()> on_open{};
+    std::function<void()> on_close{};
+};
+
 // ----- App-root Z11 runtime (owned by Z05 boot; CLAUDE.md sec.10) -----
 struct ModalRuntime {
     // Shared focus/input reconciliation registry (off BridgeRuntime). Used only by
@@ -87,6 +119,10 @@ struct ModalRuntime {
 
     // Leaderboard search buffer (thin shell; data is a server-side seam).
     std::string leaderboard_search{};
+
+    // Content providers registered by consumer zones (Zone 12 Settings). Searched on
+    // open/close/render/key by id. Empty until a zone registers one.
+    std::vector<std::pair<backbone::ModalId, ModalContentProvider>> content_providers{};
 };
 
 // Boot wiring: store the runtime pointer, register the overlay renderer with the
@@ -105,6 +141,18 @@ void open_help_modal();
 void open_settings_modal();
 void open_shop_modal();
 void open_leave_drill_confirm();
+
+// Generic confirmation opener (foreshadowed by confirm_modal.hpp): sets the active
+// confirm spec (body + Yes action) and opens the shared confirmation modal. Used by
+// Zone 12's reset-all / reset-section / reset-tomatoes flows (and any future confirm).
+void open_confirm_modal(ConfirmSpec spec);
+
+// ----- Generic content-provider registry (additive seam) -----
+// Register (or replace) the content provider for a cluster-modal id. Called once at
+// boot by the owning zone, after install_modals.
+void register_modal_content(backbone::ModalId id, ModalContentProvider provider);
+// The provider for `id`, or nullptr when none is registered.
+[[nodiscard]] const ModalContentProvider* modal_content_for(backbone::ModalId id);
 
 // ----- Outage banner (callable from any zone) -----
 void trigger_outage_banner(std::string_view message);
