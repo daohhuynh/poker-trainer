@@ -1,5 +1,7 @@
 #include "settings/settings_modal.hpp"
 
+#include "settings/account_modal.hpp"
+#include "settings/auth_form.hpp"
 #include "settings/search.hpp"
 #include "settings/settings.hpp"
 #include "settings/settings_logic.hpp"
@@ -121,6 +123,44 @@ void clear_imgui_keyboard_nav() {
         ImGui::SetNavID(0, g.NavLayer, 0, ImRect{});  // forget the text field we left
     }
 #endif
+}
+
+// ----- Account auth state (read through the boot-wired seam; guest when unwired) -----
+
+[[nodiscard]] bool account_is_logged_in(const SettingsModalState& s) {
+    return s.account != nullptr && account_snapshot(*s.account).is_authenticated;
+}
+
+// The Account section's first focus stop for the active auth state (sidebar jump target).
+[[nodiscard]] backbone::FocusableId account_first_focus(const SettingsModalState& s) {
+    return account_is_logged_in(s) ? kAcViewProfile : kAcSignIn;
+}
+
+// Build the active focus order from kSettingsFocusOrder, swapping the two-stop account
+// block (Sign In / Sign Up) for the four-stop logged-in block when authenticated. For the
+// guest case the result is byte-for-byte kSettingsFocusOrder, so Part 1's Tab/search
+// behavior is unchanged; only the (currently unreachable) logged-in traversal differs.
+void build_account_focus_order(SettingsModalState& s) {
+    s.logged_in_focus = account_is_logged_in(s);
+    std::size_t n = 0;
+    for (const backbone::FocusableId id : kSettingsFocusOrder) {
+        if (id == kAcSignIn) {
+            if (s.logged_in_focus) {
+                s.active_focus_order[n++] = kAcViewProfile;
+                s.active_focus_order[n++] = kAcChangePassword;
+                s.active_focus_order[n++] = kAcSignOut;
+                s.active_focus_order[n++] = kAcDeleteAccount;
+            } else {
+                s.active_focus_order[n++] = kAcSignIn;
+                s.active_focus_order[n++] = kAcSignUp;
+            }
+        } else if (id == kAcSignUp) {
+            // already emitted alongside kAcSignIn
+        } else {
+            s.active_focus_order[n++] = id;
+        }
+    }
+    s.active_focus_count = n;
 }
 
 // Section header (accent label + scroll anchor + separator). Returns false when the
@@ -441,7 +481,12 @@ void activate_sidebar(SettingsModalState& s, SettingsSection section) {
     s.scroll_target = section;
     s.scroll_pending = true;
     backbone::activate_keyboard_mode();
-    backbone::snap_focus_to(first_control_of(section));  // jump to the section's first control
+    // Account's first control depends on auth state (logged out -> Sign In, logged in ->
+    // View Profile); every other section has a fixed first control.
+    const backbone::FocusableId target = section == SettingsSection::Account
+                                             ? account_first_focus(s)
+                                             : first_control_of(section);
+    backbone::snap_focus_to(target);  // jump to the section's first control
 }
 
 // ----- sub-modal focus ids -----
@@ -692,9 +737,41 @@ void populate_main_registry(SettingsModalState& s) {
                              on_setting_change(s, SettingId::LeaderboardOptIn);
                          }});
 
-    // Account — logged-out shell only; Part-2 seams (no Auth0). Inert activation.
-    reg.register_element(kAcSignIn, bridge::FocusableEntry{});
-    reg.register_element(kAcSignUp, bridge::FocusableEntry{});
+    // Account — logged-out (Sign In / Sign Up) and logged-in (View Profile / Change
+    // Password / Sign Out / Delete Account) controls. Both sets are registered; only the
+    // active set is in the focus order (build_account_focus_order), so the inactive set is
+    // never focused. All route through the boot-wired auth seams (null-guarded). The
+    // confirm/modal-opening hooks mirror kToResetTomatoes (open_confirm_modal in an activate
+    // closure is the established Part 1 pattern — it pushes a new context, never closes this
+    // registry mid-invocation).
+    reg.register_element(kAcSignIn, bridge::FocusableEntry{.activate = [&s] {
+                             if (s.account != nullptr) {
+                                 account_open_sign_in(*s.account);
+                             }
+                         }});
+    reg.register_element(kAcSignUp, bridge::FocusableEntry{.activate = [&s] {
+                             if (s.account != nullptr) {
+                                 account_open_sign_up(*s.account);
+                             }
+                         }});
+    reg.register_element(kAcViewProfile, bridge::FocusableEntry{.activate = [&s] {
+                             s.account_view_profile_open = !s.account_view_profile_open;
+                         }});
+    reg.register_element(kAcChangePassword, bridge::FocusableEntry{.activate = [&s] {
+                             if (s.account != nullptr) {
+                                 account_confirm_change_password(*s.account);
+                             }
+                         }});
+    reg.register_element(kAcSignOut, bridge::FocusableEntry{.activate = [&s] {
+                             if (s.account != nullptr) {
+                                 account_sign_out(*s.account);
+                             }
+                         }});
+    reg.register_element(kAcDeleteAccount, bridge::FocusableEntry{.activate = [&s] {
+                             if (s.account != nullptr) {
+                                 account_confirm_delete(*s.account);
+                             }
+                         }});
 
     // General
     reg.register_element(kGeConfirmLeave, bridge::FocusableEntry{.activate = [&s] {
@@ -761,7 +838,7 @@ struct BodyFocusOwner {
     backbone::FocusableId focus;
     SettingId setting;
 };
-constexpr std::array<BodyFocusOwner, 43> kBodyFocusOwners{{
+constexpr std::array<BodyFocusOwner, 47> kBodyFocusOwners{{
     {kGpStreetPreflopSlider, SettingId::StreetWeights},
     {kGpStreetPreflopInput, SettingId::StreetWeights},
     {kGpStreetFlopSlider, SettingId::StreetWeights},
@@ -799,6 +876,10 @@ constexpr std::array<BodyFocusOwner, 43> kBodyFocusOwners{{
     {kToLeaderboardOptIn, SettingId::LeaderboardOptIn},
     {kAcSignIn, SettingId::Account},
     {kAcSignUp, SettingId::Account},
+    {kAcViewProfile, SettingId::Account},
+    {kAcChangePassword, SettingId::Account},
+    {kAcSignOut, SettingId::Account},
+    {kAcDeleteAccount, SettingId::Account},
     {kGeConfirmLeave, SettingId::ConfirmLeaveSite},
     {kGeResetAll, SettingId::ResetAll},
     {kGeResetSection, SettingId::ResetSection},
@@ -846,9 +927,12 @@ bool dispatch_settings_key(SettingsModalState& s, const backbone::KeyEvent& e) {
             return false;
         }
         const bool reverse = backbone::has_mod(e.mods, backbone::ModMask::Shift);
-        // Advance, skipping stops not rendered under the filter. Bounded by the list
-        // length; search + X are always live, so the loop always lands on a real stop.
-        for (std::size_t step = 0; step < kSettingsFocusOrder.size(); ++step) {
+        // Advance, skipping stops not rendered under the filter. Bounded by the active list
+        // length (account auth state can change the count); search + X are always live, so
+        // the loop always lands on a real stop.
+        const std::size_t bound =
+            s.active_focus_count != 0 ? s.active_focus_count : kSettingsFocusOrder.size();
+        for (std::size_t step = 0; step < bound; ++step) {
             backbone::advance_focus(reverse);
             if (focus_stop_rendered(query, backbone::get_focused_element())) {
                 break;
@@ -1126,17 +1210,64 @@ void render_account(SettingsModalState& s, ImU32 ring, std::string_view q) {
     if (!begin_section(s, SettingsSection::Account, q)) {
         return;
     }
-    // Logged-out shell ONLY (Part-1). Sign In / Sign Up are inert; the Auth0 health
-    // check + modals + logged-in state are Part-2 seams.
-    ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-    ImGui::TextWrapped("Account sign-in is coming soon. (Auth0 flows are Part 2.)");
-    ImGui::PopStyleColor();
-    if (widget_button(kAcSignIn, "Sign In", ring, s.scroll_follow_focus)) {
-        // SEAM(Z12 Part 2): Auth0 health check -> open_sign_in_modal / outage banner.
+    if (s.account == nullptr) {
+        // Unwired (native tests / before install): inert logged-out shell.
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
+        ImGui::TextWrapped("Account is not available.");
+        ImGui::PopStyleColor();
+        widget_button(kAcSignIn, "Sign In", ring, s.scroll_follow_focus);
+        ImGui::SameLine();
+        widget_button(kAcSignUp, "Sign Up", ring, s.scroll_follow_focus);
+        ImGui::Spacing();
+        return;
     }
-    ImGui::SameLine();
-    if (widget_button(kAcSignUp, "Sign Up", ring, s.scroll_follow_focus)) {
-        // SEAM(Z12 Part 2): Auth0 health check -> open_sign_up_modal / outage banner.
+
+    const AccountSnapshot acc = account_snapshot(*s.account);
+    if (!acc.is_authenticated) {
+        // Logged out: the Sign In / Sign Up pair, each health-check-gated (a failed check
+        // triggers the outage banner instead of opening the modal).
+        if (widget_button(kAcSignIn, "Sign In", ring, s.scroll_follow_focus)) {
+            account_open_sign_in(*s.account);
+        }
+        ImGui::SameLine();
+        if (widget_button(kAcSignUp, "Sign Up", ring, s.scroll_follow_focus)) {
+            account_open_sign_up(*s.account);
+        }
+        ImGui::Spacing();
+        return;
+    }
+
+    // Logged in: identity + account actions.
+    ImGui::TextUnformatted(acc.display_name.c_str());  // username (text_primary)
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
+    const std::string masked = mask_email(acc.email);
+    ImGui::TextUnformatted(masked.c_str());  // partially masked email (text_secondary)
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
+
+    if (widget_button(kAcViewProfile, s.account_view_profile_open ? "Hide Profile" : "View Profile",
+                      ring, s.scroll_follow_focus)) {
+        s.account_view_profile_open = !s.account_view_profile_open;
+    }
+    if (s.account_view_profile_open) {
+        // The Profile view is one of the three sanctioned tomato-display surfaces.
+        const WalletSnapshot w = account_wallet(*s.account);
+        ImGui::Indent();
+        ImGui::Text("Spendable Tomatoes: %llu", static_cast<unsigned long long>(w.spendable));
+        ImGui::Text("Lifetime Tomatoes: %llu", static_cast<unsigned long long>(w.lifetime));
+        ImGui::Unindent();
+    }
+    if (widget_button(kAcChangePassword, "Change Password", ring, s.scroll_follow_focus)) {
+        account_confirm_change_password(*s.account);
+    }
+    if (widget_button(kAcSignOut, "Sign Out", ring, s.scroll_follow_focus)) {
+        account_sign_out(*s.account);
+    }
+    ImGui::PushStyleColor(ImGuiCol_Button, theme::get_color(theme::ColorToken::StateFail));
+    const bool del = widget_button(kAcDeleteAccount, "Delete Account", ring, s.scroll_follow_focus);
+    ImGui::PopStyleColor();
+    if (del) {
+        account_confirm_delete(*s.account);
     }
     ImGui::Spacing();
 }
@@ -1255,7 +1386,13 @@ modal::ModalContentProvider make_main_provider(SettingsModalState& s) {
     p.header_name = "Settings";
     p.close_focus = modal::kSettingsShellClose;
     p.render_body = [&s] { render_settings_modal(s); };
-    p.focus_list = [] { return std::span<const backbone::FocusableId>(kSettingsFocusOrder); };
+    // Built lazily here because push_modal_focus calls focus_list() at open BEFORE on_open;
+    // the account block reflects the current auth state at that moment.
+    p.focus_list = [&s] {
+        build_account_focus_order(s);
+        return std::span<const backbone::FocusableId>(s.active_focus_order.data(),
+                                                      s.active_focus_count);
+    };
     p.initial_focus = kFocusSearch;
     p.dispatch = [&s](const backbone::KeyEvent& e) { return dispatch_settings_key(s, e); };
     p.on_open = [&s] {

@@ -143,6 +143,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/persistence/sync.cpp
         src/persistence/migration.cpp
         src/persistence/auth.cpp
+        src/persistence/auth0_backend.cpp
         src/persistence/persistence_service.cpp
     )
     target_include_directories(persistence PUBLIC ${CMAKE_SOURCE_DIR}/src)
@@ -397,6 +398,9 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     add_library(settings STATIC
         src/settings/search.cpp
         src/settings/settings_modal.cpp
+        src/settings/username_denylist.cpp
+        src/settings/auth_form.cpp
+        src/settings/account_modal.cpp
     )
     target_include_directories(settings PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(settings PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
@@ -592,6 +596,7 @@ if(ENABLE_TESTS)
         tests/persistence/sync_test.cpp
         tests/persistence/migration_test.cpp
         tests/persistence/auth_test.cpp
+        tests/persistence/auth0_backend_test.cpp
         tests/persistence/credentials_test.cpp
     )
     target_include_directories(persistence_test PRIVATE
@@ -648,6 +653,7 @@ if(ENABLE_TESTS)
         tests/bridge/input_routing_test.cpp
         tests/bridge/focus_reconcile_test.cpp
         tests/bridge/frame_tick_test.cpp
+        tests/bridge/auth_outcome_test.cpp
     )
     target_include_directories(bridge_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src
@@ -856,6 +862,8 @@ if(ENABLE_TESTS)
     add_executable(settings_test
         tests/settings/settings_logic_test.cpp
         tests/settings/search_test.cpp
+        tests/settings/username_denylist_test.cpp
+        tests/settings/auth_form_test.cpp
     )
     target_include_directories(settings_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src

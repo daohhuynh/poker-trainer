@@ -24,6 +24,7 @@
 
 #include "temporal/delta_timer.hpp"
 
+#include "settings/account_modal.hpp"
 #include "settings/settings.hpp"
 #include "settings/settings_modal.hpp"
 
@@ -35,13 +36,23 @@
 
 #include "engine/scenario_id.hpp"
 
+#include "bridge/auth_outcome.hpp"
+
+#include "persistence/auth.hpp"
+#include "persistence/auth0_backend.hpp"
+#include "persistence/clock.hpp"
 #include "persistence/idbfs.hpp"
 #include "persistence/persistence_schema.hpp"
+#include "persistence/persistence_service.hpp"
+#include "persistence/sync.hpp"
 
 #include "theme/theme.hpp"
 
 #include <memory>
 #include <optional>
+#include <span>
+#include <string>
+#include <string_view>
 
 #include <emscripten/emscripten.h>
 
@@ -53,6 +64,28 @@ namespace {
 
 std::unique_ptr<BridgeRuntime> g_runtime;
 
+// SEAM(server sync): the server-side app-state backend does not exist yet (same as the
+// leaderboard). This local-only stub keeps AUTH non-blocking: fetch reports NotFound so a
+// sign-in/up seeds from local state (identity association + the local migration build run),
+// and push / upload_initial report success so the reconcile gate opens without a real
+// server. NOTHING is actually uploaded — the server upload is the stubbed part. Replace
+// with the real authenticated-HTTP SyncBackend when the backend lands.
+struct LocalOnlySyncBackend final : persistence::SyncBackend {
+    [[nodiscard]] persistence::FetchResult fetch(std::string_view /*user*/) override {
+        return persistence::FetchResult{persistence::FetchOutcome::NotFound,
+                                        persistence::AppState{}};
+    }
+    [[nodiscard]] bool push(std::string_view /*user*/,
+                            std::span<const persistence::AppState> /*writes*/) override {
+        return true;
+    }
+    [[nodiscard]] bool upload_initial(
+        std::string_view /*user*/,
+        const persistence::AccountMigrationState& /*initial*/) override {
+        return true;
+    }
+};
+
 // App-lifetime state owned by boot, alongside g_runtime (the bridge's app-root
 // state per CLAUDE.md §10): the production IDBFS storage backend, the Zone 04
 // store over it, the persistence-backed Custom-weights store, and the Zone 07
@@ -60,8 +93,15 @@ std::unique_ptr<BridgeRuntime> g_runtime;
 // registry. Populated in finish_boot_after_persistence once the initial IDBFS
 // sync completes.
 struct BootState {
+    // Zone 04 persistence stack. The PersistenceService is the single owner of the IDBFS
+    // store; it is wired over the production storage backend, the real Auth0 backend, the
+    // local-only sync stub, and the steady clock. The auth/sync backends + clock must
+    // outlive the service (it holds references), so they live here alongside it.
     std::unique_ptr<persistence::StorageBackend> storage;
-    std::optional<persistence::IdbfsStore> store;
+    persistence::SteadyClock clock;
+    std::optional<persistence::Auth0Backend> auth_backend;
+    LocalOnlySyncBackend sync_backend;
+    std::optional<persistence::PersistenceService> service;
     std::optional<PersistentCustomWeightsStore> weights_store;
     screens::ScreensRuntime screens;
     // The app's live settings snapshot (the one source the scenario generator
@@ -87,6 +127,11 @@ struct BootState {
     // the persist + apply-audio + reset-tomatoes callbacks, and the shared focus
     // registry; install_settings_content registers its content provider with Zone 11.
     settings::SettingsModalState settings;
+    // Zone 12 Account section auth seams + Sign In / Sign Up modal state. The read seams
+    // (account identity + wallet) are wired to the store below; the auth-OPERATION seams
+    // (sign in/up/out, delete, reset) are a Zone 04 / Zone 05 integration SEAM — see the
+    // wiring block in finish_boot_after_persistence.
+    settings::AccountModalState account;
 };
 BootState g_boot;
 
@@ -143,14 +188,16 @@ void init_assets(BootRoute route) {
 // persisted guest state, applies the saved theme before the first frame, wires
 // Zone 07's screens into the render registry, and starts the main loop.
 void finish_boot_after_persistence() {
-    // Zone 04 guest-mode load over the production IDBFS backend. Auth0 + server
-    // sync are out of V1 client scope (CLAUDE.md §1), so boot does a guest-mode
-    // IdbfsStore load only — the guest's local IDBFS is authoritative, there is
-    // no session-start server reconcile to run. A corrupt / missing blob yields
-    // fresh guest defaults rather than bricking the app.
+    // Zone 04 persistence service: the single owner of the IDBFS store, wired over the
+    // production storage backend, the real Auth0 backend (embedded login), the local-only
+    // sync stub, and the steady clock. Boot loads the persisted state (guest on first
+    // launch); a corrupt / missing blob yields fresh defaults rather than bricking the app.
+    // Server-side reconcile only runs once a user signs in (it is a no-op for guests).
     g_boot.storage = make_idbfs_storage_backend();
-    g_boot.store.emplace(*g_boot.storage);
-    const persistence::AppState state = g_boot.store->load_state();
+    g_boot.auth_backend.emplace();
+    g_boot.service.emplace(*g_boot.storage, *g_boot.auth_backend, g_boot.sync_backend,
+                           g_boot.clock);
+    const persistence::AppState state = g_boot.service->load_state();
 
     // Build the app's live settings from persisted state via Zone 12's full codec
     // ('PTS1'), migrating a legacy interim blob (theme + custom split) when present.
@@ -165,8 +212,9 @@ void finish_boot_after_persistence() {
     theme::set_theme(g_boot.live_settings.display.active_theme_id);
 
     // Persistence-backed Custom-weights store (Mode Selection popup Save/Reset),
-    // reading/writing the custom_*_weight settings through the full settings codec.
-    g_boot.weights_store.emplace(*g_boot.store);
+    // reading/writing the custom_*_weight settings through the full settings codec. The
+    // service owns the store; this borrows the raw handle the weights store needs.
+    g_boot.weights_store.emplace(g_boot.service->store());
 
     // Zone 07 self-registers its real Root / Mode Selection renders + handlers,
     // replacing the blank default in the dispatch registry.
@@ -230,8 +278,9 @@ void finish_boot_after_persistence() {
     g_boot.settings.focus_registry = &g_runtime->focus_registry;
     g_boot.settings.live = &g_boot.live_settings;
     g_boot.settings.persist = [] {
-        if (g_boot.store.has_value()) {
-            g_boot.store->save_state(with_settings(g_boot.store->state(), g_boot.live_settings));
+        if (g_boot.service.has_value()) {
+            g_boot.service->save_state(
+                with_settings(g_boot.service->state(), g_boot.live_settings));
         }
     };
     g_boot.settings.apply_audio = [](const settings::AudioSettings& a) {
@@ -243,13 +292,89 @@ void finish_boot_after_persistence() {
             static_cast<audio::MusicGenre>(static_cast<std::uint8_t>(a.current_music_genre)));
     };
     g_boot.settings.reset_tomatoes = [] {
-        if (g_boot.store.has_value()) {
-            persistence::AppState next = g_boot.store->state();
+        if (g_boot.service.has_value()) {
+            persistence::AppState next = g_boot.service->state();
             next.tomatoes = persistence::TomatoesState{};  // wipe spendable + lifetime
-            g_boot.store->save_state(next);
+            g_boot.service->save_state(next);
         }
     };
     settings::install_settings_content(g_boot.settings);
+
+    // Zone 12 Account section + Sign In / Sign Up modal. The READ seams reflect the live
+    // account identity + wallet from the store (guest until a sign-in), so the Account
+    // section renders the true logged-out/logged-in state and View Profile shows the live
+    // Tomatoes totals.
+    g_boot.settings.account = &g_boot.account;
+    g_boot.account.seams.account = [] {
+        settings::AccountSnapshot snap{};
+        if (g_boot.service.has_value()) {
+            const persistence::AccountState& a = g_boot.service->state().account;
+            snap.is_authenticated = a.is_authenticated;
+            snap.display_name = a.display_name;
+            snap.email = a.email;
+        }
+        return snap;
+    };
+    g_boot.account.seams.wallet = [] {
+        settings::WalletSnapshot w{};
+        if (g_boot.service.has_value()) {
+            const persistence::TomatoesState& t = g_boot.service->state().tomatoes;
+            w.spendable = t.spendable;
+            w.lifetime = t.lifetime;
+        }
+        return w;
+    };
+
+    // The seven auth-operation seams, pointed at the PersistenceService (real Auth0 backend).
+    // sign_in / sign_up return the categorized AuthError; bridge::to_auth_outcome translates
+    // it to the AuthOutcome the form layer renders. The guest->account migration runs inside
+    // Z04's sign-in/up reconcile (server upload stubbed — see LocalOnlySyncBackend). The
+    // void operations ignore their result here (the UI seams are void).
+    g_boot.account.seams.health_check = [] {
+        return g_boot.service.has_value() && g_boot.service->auth0_health_check();
+    };
+    g_boot.account.seams.sign_in = [](std::string_view id, std::string_view pw) {
+        if (!g_boot.service.has_value()) {
+            return settings::AuthOutcome::ServiceUnavailable;
+        }
+        const std::expected<void, persistence::AuthError> r =
+            g_boot.service->sign_in(persistence::AuthCredentials{std::string{id}, std::string{pw}});
+        return r.has_value() ? settings::AuthOutcome::Success
+                             : bridge::to_auth_outcome(r.error());
+    };
+    g_boot.account.seams.sign_up = [](std::string_view username, std::string_view email,
+                                      std::string_view pw) {
+        if (!g_boot.service.has_value()) {
+            return settings::AuthOutcome::ServiceUnavailable;
+        }
+        const std::expected<void, persistence::AuthError> r = g_boot.service->sign_up(
+            persistence::AuthCredentials{std::string{email}, std::string{pw}}, username);
+        return r.has_value() ? settings::AuthOutcome::Success
+                             : bridge::to_auth_outcome(r.error());
+    };
+    g_boot.account.seams.sign_out = [] {
+        if (g_boot.service.has_value()) {
+            static_cast<void>(g_boot.service->sign_out());
+        }
+    };
+    g_boot.account.seams.delete_account = [] {
+        if (g_boot.service.has_value()) {
+            static_cast<void>(g_boot.service->delete_account());
+        }
+    };
+    g_boot.account.seams.change_password = [] {
+        if (g_boot.service.has_value()) {
+            static_cast<void>(g_boot.service->change_password());
+        }
+    };
+    g_boot.account.seams.reset_password = [](std::string_view email) {
+        if (g_boot.service.has_value()) {
+            static_cast<void>(g_boot.service->send_password_reset(email));
+        }
+    };
+    // install_account_content wires the consent links to the legal-doc modal and registers
+    // the kAuthModalId content provider with Zone 11.
+    settings::install_account_content(g_boot.account, g_boot.settings);
 
     // Install Zone 03: subscribe to scenario_spawned for the spawn audio
     // choreography (the per-frame audio_update + first-gesture autoplay gate are

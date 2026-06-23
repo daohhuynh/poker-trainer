@@ -183,6 +183,19 @@ TEST_F(AuthFlowTest, ChangePasswordWhenGuestReturnsNotAuthenticated) {
     EXPECT_EQ(result.error(), pt::AuthError::NotAuthenticated);
 }
 
+TEST_F(AuthFlowTest, SendPasswordResetForwardsEmailWithoutAuthGate) {
+    // The Sign In "Forgot password?" path: works while logged out (no NotAuthenticated),
+    // forwarding whatever address the user typed to Auth0's reset flow.
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+
+    const std::expected<void, pt::AuthError> result =
+        svc.send_password_reset("forgot@example.com");
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(auth_.change_password_email, "forgot@example.com");
+}
+
 TEST_F(AuthFlowTest, HealthCheckReportsHealthy) {
     auth_.healthy = true;
     pt::PersistenceService svc = make_service();

@@ -61,6 +61,10 @@ std::expected<void, AuthError> PersistenceService::change_password() {
     return auth_.change_password();
 }
 
+std::expected<void, AuthError> PersistenceService::send_password_reset(std::string_view email) {
+    return auth_.send_password_reset(email);
+}
+
 bool PersistenceService::auth0_health_check() {
     return auth_.auth0_health_check();
 }

@@ -46,12 +46,21 @@ inline constexpr backbone::ModalId kLeaveDrillConfirmId{5};
 // Zone 12 sub-modals, rendered via the content-provider seam, stacked over Settings.
 inline constexpr backbone::ModalId kSettingsSectionResetId{6};  // multi-select reset
 inline constexpr backbone::ModalId kSettingsDocId{7};           // ToS / Privacy / About
+// Zone 12 Sign In / Sign Up auth modal (single, content-swapping). Rendered through the
+// auth_modals shell (render_auth_modal) + the generic content-provider seam (Zone 12
+// supplies the form body / focus list / dispatch). Openable from the Account section and
+// (later) the Tutorial Complete screen.
+inline constexpr backbone::ModalId kAuthModalId{8};
 
 // ----- Settings / Shop shell focusables (content is Z12 / Module 7 seams) -----
 inline constexpr backbone::FocusableId kSettingsShellClose =
     backbone::make_focusable_id("settings.close");
 inline constexpr backbone::FocusableId kShopShellClose =
     backbone::make_focusable_id("shop.close");
+// The auth modal's X-close focus id (last stop in every auth focus list; the form fields
+// are Zone 12 focusables).
+inline constexpr backbone::FocusableId kAuthShellClose =
+    backbone::make_focusable_id("auth.close");
 
 // ----- Persistent cluster -----
 enum class ClusterIcon : std::uint8_t { Shop, Help, Settings, Home, Close };

@@ -8,14 +8,14 @@ namespace poker_trainer::persistence {
 // The Auth0 tenant domain. Set at compile time so the auth bridge
 // never has to query for it. Tenant migrations require a rebuild.
 inline constexpr std::string_view kAuth0Domain =
-    "poker-trainer.us.auth0.com";
+    "dev-0ckb8z1lkfwt7tu2.us.auth0.com";
 
 // The Auth0 client ID for the trainer's Single Page Application. Tied
 // to the Auth0 tenant above. Public — Auth0 client IDs are not secrets
 // in SPA flows; the security model relies on the redirect URI allowlist
 // configured in the Auth0 dashboard.
 inline constexpr std::string_view kAuth0ClientId =
-    "REPLACE_WITH_ACTUAL_CLIENT_ID";
+    "kOUb6gUSF9OlCR1dxiovORNcay63ia7j";
 
 // The redirect URI Auth0 sends the user back to after authentication.
 // Must exactly match an entry in the Auth0 application's "Allowed

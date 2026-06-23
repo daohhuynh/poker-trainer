@@ -86,6 +86,13 @@ std::expected<void, AuthError> AuthManager::change_password() {
     return auth_.change_password(store_.state().account.email);
 }
 
+std::expected<void, AuthError> AuthManager::send_password_reset(std::string_view email) {
+    // No auth gate: the Sign In "Forgot password?" path runs while logged out. Auth0's
+    // change_password endpoint takes any address; it sends the email only if an account
+    // exists (and never reveals which), so this is safe to forward verbatim.
+    return auth_.change_password(email);
+}
+
 bool AuthManager::auth0_health_check() {
     const std::chrono::steady_clock::time_point now = clock_.now();
     if (health_ok_at_.has_value() &&

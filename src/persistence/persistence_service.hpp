@@ -45,6 +45,11 @@ public:
 
     [[nodiscard]] const AppState& state() const noexcept;
 
+    // The owned IDBFS store, for app-root collaborators that need the raw store handle
+    // (e.g. Z05's persistence-backed Custom-weights store). The service is the single
+    // owner of the store; this hands out a reference, not ownership.
+    [[nodiscard]] IdbfsStore& store() noexcept { return store_; }
+
     // Session-start reconciliation: for a logged-in user the server is the
     // source of truth and IDBFS reconciles to match (a never-seeded account
     // is seeded from local state instead). A no-op for guests.
@@ -59,6 +64,12 @@ public:
     [[nodiscard]] std::expected<void, AuthError> sign_out();
     [[nodiscard]] std::expected<void, AuthError> delete_account();
     [[nodiscard]] std::expected<void, AuthError> change_password();
+
+    // Logged-out password reset: trigger Auth0's reset email for an arbitrary address
+    // WITHOUT an authenticated session (the Sign In screen's "Forgot password?"). Distinct
+    // from change_password(), which resets the CURRENT account's email. Auth0 owns the
+    // reset flow end to end; Z04 only triggers the email.
+    [[nodiscard]] std::expected<void, AuthError> send_password_reset(std::string_view email);
 
     // Auth0 health check (cached per kAuth0HealthCheckCacheTtl). Callers:
     // Z11/Z12/Z14 before opening auth-dependent modals.

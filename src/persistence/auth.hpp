@@ -30,6 +30,21 @@ enum class AuthError : std::uint8_t {
     NotAuthenticated = 4,
     // Any other Auth0-reported failure.
     Unknown = 5,
+    // Sign-up rejected: the password failed Auth0's strength / history / dictionary
+    // policy (invalid_password, PasswordStrengthError and friends).
+    WeakPassword = 6,
+    // Sign-up rejected: the email address is malformed (signup payload validation).
+    InvalidEmail = 7,
+    // Throttled: too many attempts / brute-force protection / HTTP 429.
+    RateLimited = 8,
+    // The account or request was blocked (access_denied / blocked user / bot detection).
+    AccessBlocked = 9,
+    // Sign-up rejected: the USERNAME is already taken (Auth0 username_exists). Distinct
+    // from AccountExists, which is the EMAIL already being registered.
+    UsernameExists = 10,
+    // Sign-up rejected generically (invalid_signup) — Auth0's enumeration-masked response
+    // when it won't say whether the email or username is the duplicate.
+    SignupRejected = 11,
 };
 
 // Non-sensitive session identity returned by Auth0 after authentication.
@@ -112,6 +127,12 @@ public:
     [[nodiscard]] std::expected<void, AuthError> delete_account();
 
     [[nodiscard]] std::expected<void, AuthError> change_password();
+
+    // Logged-out password reset: forward an arbitrary email to Auth0's reset flow with NO
+    // authenticated-session requirement (the Sign In "Forgot password?" path). change_
+    // password() resets the current account; this resets whatever address the user typed.
+    // Z04 never sees the new password — Auth0 owns the reset end to end.
+    [[nodiscard]] std::expected<void, AuthError> send_password_reset(std::string_view email);
 
     // Auth0 health check with the success-result caching mandated by
     // auth0_config.hpp (kAuth0HealthCheckCacheTtl). A cached healthy result

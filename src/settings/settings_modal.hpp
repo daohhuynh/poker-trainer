@@ -25,6 +25,8 @@
 
 namespace poker_trainer::settings {
 
+struct AccountModalState;  // account_modal.hpp — the Account section's auth seams + state
+
 // ----- Focus ids, in the continuous traversal order -----
 // search -> 9 sidebar sections -> every body control (document order) -> X close,
 // wrapping from X back to search (Notes — Settings Page Specification).
@@ -91,9 +93,15 @@ inline constexpr backbone::FocusableId kToShopVisibility = backbone::make_focusa
 inline constexpr backbone::FocusableId kToResetTomatoes = backbone::make_focusable_id("settings.to.reset");
 inline constexpr backbone::FocusableId kToLeaderboardOptIn = backbone::make_focusable_id("settings.to.leaderboard");
 
-// Account (logged-out shell only; click handlers are Part-2 seams)
+// Account — logged-out stops (Sign In / Sign Up) and logged-in stops (View Profile /
+// Change Password / Sign Out / Delete Account). Only ONE set is in the active focus order
+// at a time (built per auth state); the other set is never traversed.
 inline constexpr backbone::FocusableId kAcSignIn = backbone::make_focusable_id("settings.ac.sign_in");
 inline constexpr backbone::FocusableId kAcSignUp = backbone::make_focusable_id("settings.ac.sign_up");
+inline constexpr backbone::FocusableId kAcViewProfile = backbone::make_focusable_id("settings.ac.view_profile");
+inline constexpr backbone::FocusableId kAcChangePassword = backbone::make_focusable_id("settings.ac.change_password");
+inline constexpr backbone::FocusableId kAcSignOut = backbone::make_focusable_id("settings.ac.sign_out");
+inline constexpr backbone::FocusableId kAcDeleteAccount = backbone::make_focusable_id("settings.ac.delete_account");
 
 // General
 inline constexpr backbone::FocusableId kGeConfirmLeave = backbone::make_focusable_id("settings.ge.confirm_leave");
@@ -159,9 +167,28 @@ struct SettingsModalState {
     std::function<void(const AudioSettings&)> apply_audio{};
     std::function<void()> reset_tomatoes{};               // wipe the tomato wallet + save
 
+    // The Account section's auth seams + the auth-modal state (owned by boot, wired in
+    // alongside the other seams). Null in native tests / before install; the Account
+    // render and registry null-guard it (rendering the inert logged-out shell).
+    AccountModalState* account{nullptr};
+
     // Per-open transient state:
     bool focus_registered{false};
     backbone::FocusableId last_synced_focus{backbone::kNoFocus};
+
+    // The Account section is the one section whose control set depends on runtime state
+    // (logged out: Sign In / Sign Up; logged in: View Profile / Change Password / Sign Out
+    // / Delete Account). The focus order is therefore built per-open into this buffer from
+    // kSettingsFocusOrder with the account block swapped for the active set; the content
+    // provider's focus_list returns a span over [0, active_focus_count). For the logged-out
+    // (guest) case it is byte-for-byte kSettingsFocusOrder, so Tab/search are unchanged.
+    bool logged_in_focus{false};                          // cached auth state at on_open
+    std::array<backbone::FocusableId, 56> active_focus_order{};
+    std::size_t active_focus_count{0};
+
+    // View Profile inline panel toggle (logged-in Account section). Shows Spendable +
+    // Lifetime tomatoes (a sanctioned currency-display surface).
+    bool account_view_profile_open{false};
 
     std::array<char, 64> search_buf{};
 

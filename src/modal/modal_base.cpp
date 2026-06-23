@@ -1,5 +1,6 @@
 #include "modal/modal_base.hpp"
 
+#include "modal/auth_modals.hpp"
 #include "modal/confirm_modal.hpp"
 #include "modal/help_modal.hpp"
 #include "modal/modals.hpp"
@@ -61,7 +62,16 @@ void push_modal_focus(backbone::ModalId id) {
     // checked first so a provider modal traps on its full list, not the shell's X).
     if (const ModalContentProvider* p = modal_content_for(id);
         p != nullptr && p->focus_list) {
-        backbone::push_focus_context(p->focus_list(), p->initial_focus, "modal.content");
+        // A provider that leaves initial_focus unset (kNoFocus) defaults to the first stop
+        // of its list. The auth modal uses this so its default focus tracks the mode-
+        // dependent list (Sign In -> id/email, Sign Up -> username) without a fixed id;
+        // Settings sets initial_focus explicitly (kFocusSearch) and is unaffected.
+        const std::span<const backbone::FocusableId> list = p->focus_list();
+        const backbone::FocusableId initial =
+            p->initial_focus != backbone::kNoFocus
+                ? p->initial_focus
+                : (list.empty() ? backbone::kNoFocus : list.front());
+        backbone::push_focus_context(list, initial, "modal.content");
         return;
     }
     if (id == kHelpModalId) {
@@ -389,6 +399,8 @@ void render_modal_overlay() {
             render_shop_shell();
         } else if (*id == kLeaderboardModalId) {
             render_leaderboard_view(*g_runtime);
+        } else if (*id == kAuthModalId) {
+            render_auth_modal();
         }
     }
 
