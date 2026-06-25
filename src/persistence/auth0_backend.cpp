@@ -280,7 +280,7 @@ namespace {
 // The database connection name. Not in the sealed auth0_config.hpp; this is Auth0's
 // default DB connection name. If the tenant uses a different one, update here (and the
 // dashboard "Default Directory" / connection settings — see the report).
-constexpr std::string_view kConnection = "Username-Password-Authentication";
+constexpr std::string_view kConnection = "poker-trainer-db";
 
 [[nodiscard]] std::string base_url() {
     return "https://" + std::string{kAuth0Domain};
