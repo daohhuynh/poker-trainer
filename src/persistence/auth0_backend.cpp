@@ -122,22 +122,19 @@ EM_JS(void, pt_auth0_init, (), {
 });
 
 // Sync ROPG (password-realm grant) login. On success stashes the session on globalThis and
-// returns 0; otherwise returns a bridge code. The `aud` (audience) is the registered Auth0
-// API identifier: requesting it makes Auth0 mint a JWT access token (a custom backend can
-// validate the audience), AND the openid+offline_access scope yields the id_token + refresh
-// token the trainer needs for Supabase RLS and stay-signed-in. NOTE: with `aud` set, sign-in
-// FAILS until the Auth0 API is registered (Auth0 returns "service not found") — see report.
+// returns 0; otherwise returns a bridge code. NO audience is requested: Supabase validates
+// the Auth0 ID TOKEN (sub + the role claim), which the openid+offline_access scope already
+// yields along with a refresh token — an access token for a custom API audience is not
+// needed, and requesting one the SPA is not authorized for fails the grant (400 "Client is
+// not authorized to access resource server ..."). See kAuth0Audience for the restore path.
 EM_JS(int, pt_auth0_sign_in, (const char* url, const char* cid, const char* scope,
-                              const char* realm, const char* aud,
-                              const char* user, const char* pw), {
+                              const char* realm, const char* user, const char* pw), {
     try {
         var body = new URLSearchParams();
         body.set("grant_type", "http://auth0.com/oauth/grant-type/password-realm");
         body.set("client_id", UTF8ToString(cid));
         body.set("realm", UTF8ToString(realm));
         body.set("scope", UTF8ToString(scope));
-        var a = UTF8ToString(aud);
-        if (a) { body.set("audience", a); }
         body.set("username", UTF8ToString(user));
         body.set("password", UTF8ToString(pw));
         var xhr = new XMLHttpRequest();
@@ -162,9 +159,9 @@ EM_JS(int, pt_auth0_sign_in, (const char* url, const char* cid, const char* scop
 // tokens and re-stash the session. Returns 0 on success; 1 = no durable token (no network
 // hit); 2 = the token is dead (4xx invalid_grant — dropped so we never retry it); 3 =
 // transient failure (network / 5xx — the token is kept for the next load). The openid scope
-// yields a fresh id_token; offline_access keeps a (rotated) refresh token alive.
-EM_JS(int, pt_auth0_restore, (const char* url, const char* cid, const char* scope,
-                              const char* aud), {
+// yields a fresh id_token; offline_access keeps a (rotated) refresh token alive. No audience
+// is requested, for the same reason as the login path above.
+EM_JS(int, pt_auth0_restore, (const char* url, const char* cid, const char* scope), {
     var rt = "";
     try { rt = localStorage.getItem("pt.auth0.rt") || ""; } catch (e) { rt = ""; }
     if (!rt) { return 1; }
@@ -174,8 +171,6 @@ EM_JS(int, pt_auth0_restore, (const char* url, const char* cid, const char* scop
         body.set("client_id", UTF8ToString(cid));
         body.set("refresh_token", rt);
         body.set("scope", UTF8ToString(scope));
-        var a = UTF8ToString(aud);
-        if (a) { body.set("audience", a); }
         var xhr = new XMLHttpRequest();
         xhr.open("POST", UTF8ToString(url), false);
         xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -303,8 +298,8 @@ constexpr std::string_view kConnection = "poker-trainer-db";
 }
 
 // openid (identity) + offline_access (refresh token for stay-signed-in). kAuth0Scopes is the
-// sealed base set; offline_access is composed here so the sealed header is untouched. The
-// audience makes the access token a JWT (see pt_auth0_sign_in).
+// sealed base set; offline_access is composed here so the sealed header is untouched. No
+// audience is requested — Supabase uses the id_token, not an access token (see pt_auth0_sign_in).
 [[nodiscard]] std::string token_scope() {
     return std::string{kAuth0Scopes} + " offline_access";
 }
@@ -320,9 +315,13 @@ bool Auth0Backend::health_check() noexcept {
 
 std::expected<AuthSession, AuthError> Auth0Backend::sign_in(const AuthCredentials& credentials) {
     const std::string url = base_url() + "/oauth/token";
+    // kAuth0Audience is intentionally NOT passed: Supabase validates the id_token, and the SPA
+    // is not authorized for that custom API under the password grant (it 400s). The constant
+    // stays in auth0_config.hpp so re-adding the audience is trivial when the leaderboard API
+    // is actually built.
     const int code = pt_auth0_sign_in(
         url.c_str(), std::string{kAuth0ClientId}.c_str(), token_scope().c_str(),
-        std::string{kConnection}.c_str(), std::string{kAuth0Audience}.c_str(),
+        std::string{kConnection}.c_str(),
         credentials.email.c_str(), credentials.password.c_str());
     if (code != 0) {
         return std::unexpected(auth0_code_to_error(code));
@@ -332,8 +331,10 @@ std::expected<AuthSession, AuthError> Auth0Backend::sign_in(const AuthCredential
 
 std::optional<AuthSession> Auth0Backend::restore_session() {
     const std::string url = base_url() + "/oauth/token";
+    // No audience, same as sign_in (kAuth0Audience kept in auth0_config.hpp for the future
+    // leaderboard API); the refresh grant returns a fresh id_token for Supabase RLS.
     const int code = pt_auth0_restore(url.c_str(), std::string{kAuth0ClientId}.c_str(),
-                                      token_scope().c_str(), std::string{kAuth0Audience}.c_str());
+                                      token_scope().c_str());
     if (code != 0) {
         return std::nullopt;  // no durable token, or the silent refresh failed
     }
