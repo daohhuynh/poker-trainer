@@ -280,3 +280,96 @@ TEST_F(AuthFlowTest, OfflineAtSessionStartWithholdsPushesUntilReconcileSucceeds)
     ASSERT_FALSE(server_.pushes.empty());
     EXPECT_EQ(server_.pushes.back().writes.back().tomatoes.spendable, 501u);
 }
+
+// --- Stay-signed-in (silent restore) ---
+
+TEST_F(AuthFlowTest, RestoreSessionReauthenticatesAndAdoptsServerState) {
+    // A returning user with a durable session: the seam restores the identity and
+    // the server is the source of truth on session start, so its state is adopted.
+    auth_.restore_ok = true;
+    pt::AppState server_state{};
+    server_state.tomatoes.spendable = 777;
+    server_state.tomatoes.lifetime = 1234;
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Found, server_state};
+
+    pt::PersistenceService svc = make_service();
+    svc.load_state();  // guest on disk
+
+    EXPECT_TRUE(svc.try_restore_session());
+    EXPECT_EQ(auth_.restore_calls, 1);
+    EXPECT_TRUE(svc.state().account.is_authenticated);
+    EXPECT_EQ(svc.state().account.auth0_user_id, "sub-123");
+    EXPECT_EQ(svc.state().tomatoes.spendable, 777u);
+    EXPECT_EQ(svc.state().tomatoes.lifetime, 1234u);
+
+    // The push gate opened, so subsequent writes sync.
+    pt::AppState next = svc.state();
+    next.tomatoes.spendable = 778;
+    svc.save_state(next);
+    ASSERT_FALSE(server_.pushes.empty());
+    EXPECT_EQ(server_.pushes.back().writes.back().tomatoes.spendable, 778u);
+}
+
+TEST_F(AuthFlowTest, RestoreSessionNoDurableSessionStaysGuest) {
+    // No stored refresh token (the default): restore is a no-op and the user
+    // stays a guest. No server fetch, no error.
+    auth_.restore_ok = false;
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+
+    EXPECT_FALSE(svc.try_restore_session());
+    EXPECT_EQ(auth_.restore_calls, 1);
+    EXPECT_FALSE(svc.state().account.is_authenticated);
+    EXPECT_EQ(server_.fetch_calls, 0);
+}
+
+TEST_F(AuthFlowTest, RestoreSessionSeedsServerWhenNeverPersisted) {
+    // Durable session but the server row was never seeded: migrate local up.
+    auth_.restore_ok = true;
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::NotFound, {}};
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+    pt::AppState guest{};
+    guest.tomatoes.spendable = 12;
+    guest.tomatoes.lifetime = 34;
+    guest.music_library.unlocked_track_ids = {7};
+    svc.save_state(guest);
+
+    EXPECT_TRUE(svc.try_restore_session());
+    ASSERT_EQ(server_.uploads.size(), 1u);
+    EXPECT_EQ(server_.uploads[0].payload,
+              (pt::AccountMigrationState{12, 34, {7}}));
+}
+
+// --- Delete account wipes the server row ---
+
+TEST_F(AuthFlowTest, DeleteAccountDeletesServerRow) {
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Found, pt::AppState{}};
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+    ASSERT_TRUE(svc.sign_in(kCreds).has_value());
+
+    const std::expected<void, pt::AuthError> result = svc.delete_account();
+
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(server_.deletes.size(), 1u);
+    EXPECT_EQ(server_.deletes[0], "sub-123");  // the server-side cleanup
+    EXPECT_EQ(auth_.deleted_user_id, "sub-123");
+    EXPECT_TRUE(storage_.cleared());
+}
+
+TEST_F(AuthFlowTest, DeleteAccountWipesLocallyEvenIfServerDeleteFails) {
+    // A failed server row delete (offline) must not block the terminal local wipe.
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Found, pt::AppState{}};
+    server_.delete_ok = false;
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+    ASSERT_TRUE(svc.sign_in(kCreds).has_value());
+
+    const std::expected<void, pt::AuthError> result = svc.delete_account();
+
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(server_.deletes.size(), 1u);  // attempted while the token was live
+    EXPECT_TRUE(storage_.cleared());
+    EXPECT_FALSE(svc.state().account.is_authenticated);
+}

@@ -44,6 +44,7 @@
 #include "persistence/idbfs.hpp"
 #include "persistence/persistence_schema.hpp"
 #include "persistence/persistence_service.hpp"
+#include "persistence/supabase_backend.hpp"
 #include "persistence/sync.hpp"
 
 #include "theme/theme.hpp"
@@ -64,28 +65,6 @@ namespace {
 
 std::unique_ptr<BridgeRuntime> g_runtime;
 
-// SEAM(server sync): the server-side app-state backend does not exist yet (same as the
-// leaderboard). This local-only stub keeps AUTH non-blocking: fetch reports NotFound so a
-// sign-in/up seeds from local state (identity association + the local migration build run),
-// and push / upload_initial report success so the reconcile gate opens without a real
-// server. NOTHING is actually uploaded — the server upload is the stubbed part. Replace
-// with the real authenticated-HTTP SyncBackend when the backend lands.
-struct LocalOnlySyncBackend final : persistence::SyncBackend {
-    [[nodiscard]] persistence::FetchResult fetch(std::string_view /*user*/) override {
-        return persistence::FetchResult{persistence::FetchOutcome::NotFound,
-                                        persistence::AppState{}};
-    }
-    [[nodiscard]] bool push(std::string_view /*user*/,
-                            std::span<const persistence::AppState> /*writes*/) override {
-        return true;
-    }
-    [[nodiscard]] bool upload_initial(
-        std::string_view /*user*/,
-        const persistence::AccountMigrationState& /*initial*/) override {
-        return true;
-    }
-};
-
 // App-lifetime state owned by boot, alongside g_runtime (the bridge's app-root
 // state per CLAUDE.md §10): the production IDBFS storage backend, the Zone 04
 // store over it, the persistence-backed Custom-weights store, and the Zone 07
@@ -100,7 +79,10 @@ struct BootState {
     std::unique_ptr<persistence::StorageBackend> storage;
     persistence::SteadyClock clock;
     std::optional<persistence::Auth0Backend> auth_backend;
-    LocalOnlySyncBackend sync_backend;
+    // The real Supabase SyncBackend: fetch PULLs the user's authoritative server
+    // state on session start, push/upload_initial WRITE through to Supabase over
+    // RLS-scoped authenticated HTTP. Replaces the former local-only stub.
+    persistence::SupabaseSyncBackend sync_backend;
     std::optional<persistence::PersistenceService> service;
     std::optional<PersistentCustomWeightsStore> weights_store;
     screens::ScreensRuntime screens;
@@ -183,6 +165,22 @@ void init_assets(BootRoute route) {
     start_tiered_loading(route);
 }
 
+// Refresh the live settings snapshot (and the visible theme + audio) from the
+// current persisted state. Invoked after an interactive sign-in/up adopts the
+// server's authoritative state, so cross-browser settings/theme surface
+// immediately without a reload — the boot path applies the same on the
+// stay-signed-in restore. A no-op before the service exists.
+void reload_live_settings_after_auth() {
+    if (!g_boot.service.has_value()) {
+        return;
+    }
+    g_boot.live_settings = read_persisted_settings(g_boot.service->state());
+    theme::set_theme(g_boot.live_settings.display.active_theme_id);
+    if (g_boot.settings.apply_audio) {
+        g_boot.settings.apply_audio(g_boot.live_settings.audio);
+    }
+}
+
 // Second half of boot, run once the initial IDBFS FS.syncfs(true) has populated
 // the mount (see begin_persistence_load / pt_boot_on_idbfs_ready). Loads the
 // persisted guest state, applies the saved theme before the first frame, wires
@@ -197,13 +195,21 @@ void finish_boot_after_persistence() {
     g_boot.auth_backend.emplace();
     g_boot.service.emplace(*g_boot.storage, *g_boot.auth_backend, g_boot.sync_backend,
                            g_boot.clock);
-    const persistence::AppState state = g_boot.service->load_state();
+    g_boot.service->load_state();
+
+    // Stay-signed-in: before building the live settings, silently restore a durable
+    // Auth0 session (refresh-token grant) and PULL the user's authoritative server
+    // state — the same reconcile path as an interactive sign-in. A returning user
+    // (non-incognito) lands signed in with the server state adopted; a guest or an
+    // expired/absent refresh token is a no-op. Doing it here means an adopted server
+    // state (settings, wallet, unlocks) is reflected from the very first frame.
+    static_cast<void>(g_boot.service->try_restore_session());
 
     // Build the app's live settings from persisted state via Zone 12's full codec
     // ('PTS1'), migrating a legacy interim blob (theme + custom split) when present.
     // This single snapshot is the one source the scenario generator + every consumer
     // reads; Zone 12's Settings page mutates it in place through &g_boot.live_settings.
-    g_boot.live_settings = read_persisted_settings(state);
+    g_boot.live_settings = read_persisted_settings(g_boot.service->state());
 
     // Apply the persisted theme before the first frame (default No Limit when nothing
     // valid is saved). A boot responsibility: Zone 12 changes the theme at runtime, but
@@ -339,8 +345,14 @@ void finish_boot_after_persistence() {
         }
         const std::expected<void, persistence::AuthError> r =
             g_boot.service->sign_in(persistence::AuthCredentials{std::string{id}, std::string{pw}});
-        return r.has_value() ? settings::AuthOutcome::Success
-                             : bridge::to_auth_outcome(r.error());
+        if (!r.has_value()) {
+            return bridge::to_auth_outcome(r.error());
+        }
+        // Sign-in may have adopted the server's authoritative state (settings,
+        // theme, wallet). Refresh the live snapshot so it surfaces without a reload
+        // — this is what makes a setting saved on another browser appear here.
+        reload_live_settings_after_auth();
+        return settings::AuthOutcome::Success;
     };
     g_boot.account.seams.sign_up = [](std::string_view username, std::string_view email,
                                       std::string_view pw) {
@@ -349,8 +361,11 @@ void finish_boot_after_persistence() {
         }
         const std::expected<void, persistence::AuthError> r = g_boot.service->sign_up(
             persistence::AuthCredentials{std::string{email}, std::string{pw}}, username);
-        return r.has_value() ? settings::AuthOutcome::Success
-                             : bridge::to_auth_outcome(r.error());
+        if (!r.has_value()) {
+            return bridge::to_auth_outcome(r.error());
+        }
+        reload_live_settings_after_auth();
+        return settings::AuthOutcome::Success;
     };
     g_boot.account.seams.sign_out = [] {
         if (g_boot.service.has_value()) {

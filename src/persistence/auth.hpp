@@ -87,6 +87,15 @@ public:
     [[nodiscard]] virtual std::expected<AuthSession, AuthError> sign_in(
         const AuthCredentials& credentials) = 0;
 
+    // Silently re-establish a durable session at app load WITHOUT credentials
+    // (the "stay signed in" path). The production backend redeems a persisted
+    // Auth0 refresh token for fresh tokens and re-derives the identity from the
+    // new id_token; std::nullopt when there is no durable session to restore or
+    // the silent refresh failed (absent / expired / revoked token, or offline).
+    // Carries no error category: a failed restore is simply "stay a guest this
+    // load", never a user-facing auth error.
+    [[nodiscard]] virtual std::optional<AuthSession> restore_session() = 0;
+
     // display_name has already passed the form-level username denylist check
     // (Account Creation Flow); Z04 does not re-validate it (see report).
     [[nodiscard]] virtual std::expected<AuthSession, AuthError> sign_up(
@@ -121,6 +130,13 @@ public:
 
     [[nodiscard]] std::expected<void, AuthError> sign_up(
         const AuthCredentials& credentials, std::string_view display_name);
+
+    // Stay-signed-in: at app load, ask the seam to silently restore a durable
+    // session (refresh-token redemption). On success it runs the same post-auth
+    // path as sign-in — pin the identity and reconcile against the server (the
+    // server is authoritative on session start) — and returns true. On no
+    // durable session it is a no-op and returns false (the user stays a guest).
+    bool restore_session();
 
     [[nodiscard]] std::expected<void, AuthError> sign_out();
 

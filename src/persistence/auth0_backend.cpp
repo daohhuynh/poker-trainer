@@ -42,6 +42,7 @@ AuthError auth0_code_to_error(int code) noexcept {
 #include "persistence/auth0_config.hpp"
 
 #include <array>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -94,20 +95,49 @@ EM_JS(void, pt_auth0_init, (), {
         if (code === "invalid_request" && /email/i.test(desc)) { return 7; }  // invalid email
         return 5;                                                        // unknown
     };
+    // Stash a token-endpoint response as the live session. Decodes identity from the
+    // id_token and keeps BOTH tokens: `token` (access token) for any audience-gated API,
+    // and `id_token` — the bearer Supabase's Auth0 third-party integration validates (the
+    // `role` claim must ride the id_token; Auth0 strips it from access tokens). A returned
+    // refresh_token is persisted (rotation-aware) so the session survives a reload.
+    globalThis.ptAuth0StashSession = function (d) {
+        var c = globalThis.ptAuth0DecodeJwt(d.id_token || "");
+        globalThis.ptAuth0Session = {
+            sub: c.sub || "",
+            name: c.name || c.nickname || c.preferred_username ||
+                  (c.email ? String(c.email).split("@")[0] : "") || "",
+            email: c.email || "",
+            token: d.access_token || "",
+            id_token: d.id_token || ""
+        };
+        try {
+            if (d.refresh_token) { localStorage.setItem("pt.auth0.rt", d.refresh_token); }
+        } catch (e) {}
+    };
+    // Drop the live session and the durable refresh token (sign-out / delete).
+    globalThis.ptAuth0ClearSession = function () {
+        globalThis.ptAuth0Session = null;
+        try { localStorage.removeItem("pt.auth0.rt"); } catch (e) {}
+    };
 });
 
 // Sync ROPG (password-realm grant) login. On success stashes the session on globalThis and
-// returns 0; otherwise returns a bridge code. Audience is intentionally omitted (the
-// backend API is not registered yet — see the boot SEAM); the id_token still carries the
-// identity claims the trainer needs.
+// returns 0; otherwise returns a bridge code. The `aud` (audience) is the registered Auth0
+// API identifier: requesting it makes Auth0 mint a JWT access token (a custom backend can
+// validate the audience), AND the openid+offline_access scope yields the id_token + refresh
+// token the trainer needs for Supabase RLS and stay-signed-in. NOTE: with `aud` set, sign-in
+// FAILS until the Auth0 API is registered (Auth0 returns "service not found") — see report.
 EM_JS(int, pt_auth0_sign_in, (const char* url, const char* cid, const char* scope,
-                              const char* realm, const char* user, const char* pw), {
+                              const char* realm, const char* aud,
+                              const char* user, const char* pw), {
     try {
         var body = new URLSearchParams();
         body.set("grant_type", "http://auth0.com/oauth/grant-type/password-realm");
         body.set("client_id", UTF8ToString(cid));
         body.set("realm", UTF8ToString(realm));
         body.set("scope", UTF8ToString(scope));
+        var a = UTF8ToString(aud);
+        if (a) { body.set("audience", a); }
         body.set("username", UTF8ToString(user));
         body.set("password", UTF8ToString(pw));
         var xhr = new XMLHttpRequest();
@@ -115,15 +145,7 @@ EM_JS(int, pt_auth0_sign_in, (const char* url, const char* cid, const char* scop
         xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
         xhr.send(body.toString());
         if (xhr.status >= 200 && xhr.status < 300) {
-            var d = JSON.parse(xhr.responseText);
-            var c = globalThis.ptAuth0DecodeJwt(d.id_token || "");
-            globalThis.ptAuth0Session = {
-                sub: c.sub || "",
-                name: c.name || c.nickname || c.preferred_username ||
-                      (c.email ? String(c.email).split("@")[0] : "") || "",
-                email: c.email || "",
-                token: d.access_token || ""
-            };
+            globalThis.ptAuth0StashSession(JSON.parse(xhr.responseText));
             return 0;
         }
         var code = "", nm = "", desc = "";
@@ -134,6 +156,40 @@ EM_JS(int, pt_auth0_sign_in, (const char* url, const char* cid, const char* scop
         } catch (e) {}
         return globalThis.ptAuth0MapStatus(xhr.status, code, nm, desc);
     } catch (e) { return 2; }
+});
+
+// Sync stay-signed-in: redeem the persisted refresh token (refresh_token grant) for fresh
+// tokens and re-stash the session. Returns 0 on success; 1 = no durable token (no network
+// hit); 2 = the token is dead (4xx invalid_grant — dropped so we never retry it); 3 =
+// transient failure (network / 5xx — the token is kept for the next load). The openid scope
+// yields a fresh id_token; offline_access keeps a (rotated) refresh token alive.
+EM_JS(int, pt_auth0_restore, (const char* url, const char* cid, const char* scope,
+                              const char* aud), {
+    var rt = "";
+    try { rt = localStorage.getItem("pt.auth0.rt") || ""; } catch (e) { rt = ""; }
+    if (!rt) { return 1; }
+    try {
+        var body = new URLSearchParams();
+        body.set("grant_type", "refresh_token");
+        body.set("client_id", UTF8ToString(cid));
+        body.set("refresh_token", rt);
+        body.set("scope", UTF8ToString(scope));
+        var a = UTF8ToString(aud);
+        if (a) { body.set("audience", a); }
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", UTF8ToString(url), false);
+        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+        xhr.send(body.toString());
+        if (xhr.status >= 200 && xhr.status < 300) {
+            globalThis.ptAuth0StashSession(JSON.parse(xhr.responseText));
+            return 0;
+        }
+        if (xhr.status >= 400 && xhr.status < 500) {
+            try { localStorage.removeItem("pt.auth0.rt"); } catch (e) {}
+            return 2;
+        }
+        return 3;
+    } catch (e) { return 3; }
 });
 
 // Sync database signup (creates the user). The caller logs in afterward to get tokens.
@@ -190,7 +246,7 @@ EM_JS(void, pt_auth0_change_password, (const char* url, const char* cid, const c
 });
 
 EM_JS(void, pt_auth0_sign_out, (), {
-    globalThis.ptAuth0Session = null;
+    globalThis.ptAuth0ClearSession();
 });
 
 // Delete is stubbed: the privileged Auth0 user-record deletion needs the Management API,
@@ -199,10 +255,10 @@ EM_JS(void, pt_auth0_sign_out, (), {
 EM_JS(void, pt_auth0_delete_stub, (), {
     if (typeof console !== "undefined") {
         console.warn("[pt] Auth0 user-record deletion requires the Management API and is " +
-                     "stubbed: the local IDBFS wipe + sign-out are performed, but the " +
-                     "server-side Auth0 account is NOT deleted.");
+                     "stubbed: the local IDBFS wipe + Supabase row delete + sign-out are " +
+                     "performed, but the server-side Auth0 account is NOT deleted.");
     }
-    globalThis.ptAuth0Session = null;
+    globalThis.ptAuth0ClearSession();
 });
 
 // Sync health probe (GET JWKS). 1 = reachable.
@@ -246,6 +302,13 @@ constexpr std::string_view kConnection = "Username-Password-Authentication";
     return s;
 }
 
+// openid (identity) + offline_access (refresh token for stay-signed-in). kAuth0Scopes is the
+// sealed base set; offline_access is composed here so the sealed header is untouched. The
+// audience makes the access token a JWT (see pt_auth0_sign_in).
+[[nodiscard]] std::string token_scope() {
+    return std::string{kAuth0Scopes} + " offline_access";
+}
+
 }  // namespace
 
 Auth0Backend::Auth0Backend() noexcept { pt_auth0_init(); }
@@ -258,10 +321,21 @@ bool Auth0Backend::health_check() noexcept {
 std::expected<AuthSession, AuthError> Auth0Backend::sign_in(const AuthCredentials& credentials) {
     const std::string url = base_url() + "/oauth/token";
     const int code = pt_auth0_sign_in(
-        url.c_str(), std::string{kAuth0ClientId}.c_str(), std::string{kAuth0Scopes}.c_str(),
-        std::string{kConnection}.c_str(), credentials.email.c_str(), credentials.password.c_str());
+        url.c_str(), std::string{kAuth0ClientId}.c_str(), token_scope().c_str(),
+        std::string{kConnection}.c_str(), std::string{kAuth0Audience}.c_str(),
+        credentials.email.c_str(), credentials.password.c_str());
     if (code != 0) {
         return std::unexpected(auth0_code_to_error(code));
+    }
+    return read_stashed_session();
+}
+
+std::optional<AuthSession> Auth0Backend::restore_session() {
+    const std::string url = base_url() + "/oauth/token";
+    const int code = pt_auth0_restore(url.c_str(), std::string{kAuth0ClientId}.c_str(),
+                                      token_scope().c_str(), std::string{kAuth0Audience}.c_str());
+    if (code != 0) {
+        return std::nullopt;  // no durable token, or the silent refresh failed
     }
     return read_stashed_session();
 }

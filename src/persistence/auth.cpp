@@ -10,6 +10,7 @@
 
 #include <chrono>
 #include <expected>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -47,6 +48,18 @@ std::expected<void, AuthError> AuthManager::sign_up(
     return {};
 }
 
+bool AuthManager::restore_session() {
+    std::optional<AuthSession> restored = auth_.restore_session();
+    if (!restored.has_value()) {
+        return false;  // no durable session: stay a guest this load
+    }
+    // Same post-auth path as an interactive sign-in: pin the identity and
+    // reconcile against the (authoritative) server. A returning user lands
+    // signed in with the server's state adopted.
+    establish_session(std::move(restored.value()));
+    return true;
+}
+
 std::expected<void, AuthError> AuthManager::sign_out() {
     std::expected<void, AuthError> result = auth_.sign_out();
     if (!result.has_value()) {
@@ -66,6 +79,15 @@ std::expected<void, AuthError> AuthManager::delete_account() {
         return std::unexpected(AuthError::NotAuthenticated);
     }
     const std::string user_id = store_.state().account.auth0_user_id;
+
+    // Delete the server-side row FIRST, while the session token is still live —
+    // the Auth0 backend's delete clears the in-memory session, after which a
+    // Supabase request would carry no bearer and RLS would reject it. Best
+    // effort: a failed remote delete (offline) still proceeds to the terminal
+    // local wipe, leaving the row to be reaped server-side (see report). The
+    // privileged Auth0 user-record deletion remains stubbed.
+    static_cast<void>(server_.delete_account_state(user_id));
+
     std::expected<void, AuthError> result = auth_.delete_account(user_id);
     if (!result.has_value()) {
         return std::unexpected(result.error());

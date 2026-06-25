@@ -92,6 +92,11 @@ public:
     bool sign_out_ok{true};
     bool delete_ok{true};
     bool change_password_ok{true};
+    // Stay-signed-in: off by default (most fixtures are guests / interactive
+    // sign-in). A test that exercises restore sets restore_ok = true; the
+    // restored identity is `session`.
+    bool restore_ok{false};
+    int restore_calls{0};
     AuthError error{AuthError::Unknown};
 
     std::vector<std::string> passwords_seen;
@@ -109,6 +114,14 @@ public:
         passwords_seen.push_back(credentials.password);
         if (!sign_in_ok) {
             return std::unexpected(error);
+        }
+        return session;
+    }
+
+    [[nodiscard]] std::optional<AuthSession> restore_session() override {
+        ++restore_calls;
+        if (!restore_ok) {
+            return std::nullopt;
         }
         return session;
     }
@@ -172,6 +185,9 @@ public:
     };
     std::vector<UploadRecord> uploads;
 
+    bool delete_ok{true};
+    std::vector<std::string> deletes;  // user ids whose server row was deleted
+
     [[nodiscard]] FetchResult fetch(std::string_view auth0_user_id) override {
         ++fetch_calls;
         static_cast<void>(auth0_user_id);
@@ -193,6 +209,12 @@ public:
         const AccountMigrationState& initial) override {
         uploads.push_back(UploadRecord{std::string(auth0_user_id), initial});
         return upload_ok;
+    }
+
+    [[nodiscard]] bool delete_account_state(
+        std::string_view auth0_user_id) override {
+        deletes.emplace_back(auth0_user_id);
+        return delete_ok;
     }
 };
 

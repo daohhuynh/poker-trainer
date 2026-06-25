@@ -55,6 +55,16 @@ public:
     // is seeded from local state instead). A no-op for guests.
     void reconcile_on_session_start();
 
+    // Stay-signed-in: at boot, silently restore a durable Auth0 session (refresh
+    // token) and reconcile against the server — the same path as an interactive
+    // sign-in. Returns true when a session was restored (the user is now signed
+    // in and the server state adopted); false when there was nothing to restore
+    // (the user stays a guest). Boot calls this once before building the live
+    // settings snapshot so an adopted server state is reflected from the first
+    // frame. Never throws and never surfaces an auth error — a failed restore is
+    // simply "guest this load".
+    [[nodiscard]] bool try_restore_session();
+
     // --- Auth (all via the auth seam) ---
 
     [[nodiscard]] std::expected<void, AuthError> sign_in(

@@ -67,6 +67,14 @@ public:
     [[nodiscard]] virtual bool upload_initial(
         std::string_view auth0_user_id,
         const AccountMigrationState& initial) = 0;
+
+    // Delete the user's server-side account state row (the delete-account flow,
+    // per ARCHITECTURE: "Auth0 deletion + server-side cleanup + local IDBFS
+    // wipe"). Returns true on success. The Auth0 user-record deletion itself
+    // stays stubbed (no Management token in a SPA); this removes the row the
+    // trainer owns — wallet, unlocks, and leaderboard standing.
+    [[nodiscard]] virtual bool delete_account_state(
+        std::string_view auth0_user_id) = 0;
 };
 
 // Server-sync orchestrator.

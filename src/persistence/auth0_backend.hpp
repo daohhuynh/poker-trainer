@@ -3,6 +3,7 @@
 #include "persistence/auth.hpp"
 
 #include <expected>
+#include <optional>
 #include <string_view>
 
 // Zone 04 — the PRODUCTION Auth0 AuthBackend (embedded login). Implements the same
@@ -59,6 +60,13 @@ public:
 
     [[nodiscard]] std::expected<AuthSession, AuthError> sign_in(
         const AuthCredentials& credentials) override;
+
+    // Stay-signed-in: redeem a persisted Auth0 refresh token (synchronous
+    // refresh_token grant) for fresh tokens and re-derive the identity from the
+    // new id_token. std::nullopt when no refresh token is stored or the silent
+    // refresh failed (expired / revoked -> the token is dropped; transient ->
+    // kept for the next load). No credentials, no user interaction.
+    [[nodiscard]] std::optional<AuthSession> restore_session() override;
 
     [[nodiscard]] std::expected<AuthSession, AuthError> sign_up(
         const AuthCredentials& credentials, std::string_view display_name) override;

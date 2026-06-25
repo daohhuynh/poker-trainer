@@ -144,6 +144,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/persistence/migration.cpp
         src/persistence/auth.cpp
         src/persistence/auth0_backend.cpp
+        src/persistence/supabase_backend.cpp
         src/persistence/persistence_service.cpp
     )
     target_include_directories(persistence PUBLIC ${CMAKE_SOURCE_DIR}/src)
@@ -597,6 +598,7 @@ if(ENABLE_TESTS)
         tests/persistence/migration_test.cpp
         tests/persistence/auth_test.cpp
         tests/persistence/auth0_backend_test.cpp
+        tests/persistence/supabase_backend_test.cpp
         tests/persistence/credentials_test.cpp
     )
     target_include_directories(persistence_test PRIVATE

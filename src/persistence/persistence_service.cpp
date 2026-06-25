@@ -39,6 +39,8 @@ void PersistenceService::reconcile_on_session_start() {
     auth_.reconcile_account(user_id);
 }
 
+bool PersistenceService::try_restore_session() { return auth_.restore_session(); }
+
 std::expected<void, AuthError> PersistenceService::sign_in(
     const AuthCredentials& credentials) {
     return auth_.sign_in(credentials);
