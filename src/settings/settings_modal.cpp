@@ -163,6 +163,48 @@ void build_account_focus_order(SettingsModalState& s) {
     s.active_focus_count = n;
 }
 
+// Auth state can flip WHILE the Settings modal is open: the account section's Sign In / Sign
+// Up open the auth sub-modal, and Sign Out / Delete Account act in place. When it does, the
+// rendered controls already follow the live auth state (the body reads it each frame), but
+// the focus ORDER was deep-copied into the focus_manager at open (push_focus_context copies),
+// so the now-rendered logged-in controls (View Profile / Change Password / Sign Out / Delete)
+// are absent from the traversal and never receive the focus ring, and the staged street
+// weights still hold the pre-sync values. Detect the flip and refresh BOTH: rebuild the
+// account block into the focus order, re-establish the modal's focus context (net-zero
+// pop+push, mirroring the auth modal's do_relayout), and re-read the staged copies from the
+// now-current (server-synced) live settings. A no-op when the auth state is unchanged, so the
+// logged-out path and the rest of the focus order are untouched. The FocusRegistry already
+// holds all six account controls (populate_main_registry registers both sets unconditionally),
+// so no re-registration is needed — only the copied focus order and the staged values go stale.
+void refresh_account_section_if_auth_changed(SettingsModalState& s) {
+    if (account_is_logged_in(s) == s.logged_in_focus) {
+        return;  // no auth-state change since the focus order was last built
+    }
+    if (s.live != nullptr) {
+        s.street_staged = street_weights_of(s.live->gameplay);  // adopt synced gameplay weights
+    }
+    s.account_view_profile_open = false;  // the logged-in-only panel never persists across a flip
+
+    // Preserve the focused stop if it survived the account-block swap; otherwise land on the
+    // section's first stop for the new state (View Profile when logged in, Sign In when out).
+    const backbone::FocusableId focused_before = backbone::get_focused_element();
+    build_account_focus_order(s);  // swaps the account block; updates s.logged_in_focus
+    backbone::FocusableId initial = account_first_focus(s);
+    if (focused_before != backbone::kNoFocus) {
+        for (std::size_t i = 0; i < s.active_focus_count; ++i) {
+            if (s.active_focus_order[i] == focused_before) {
+                initial = focused_before;
+                break;
+            }
+        }
+    }
+    backbone::pop_focus_context();
+    backbone::push_focus_context(
+        std::span<const backbone::FocusableId>(s.active_focus_order.data(), s.active_focus_count),
+        initial, "modal.content");
+    s.last_synced_focus = backbone::kNoFocus;  // force the reconcile to resync to the new focus
+}
+
 // Section header (accent label + scroll anchor + separator). Returns false when the
 // search query filters the whole section out (the body skips it).
 bool begin_section(SettingsModalState& s, SettingsSection section, std::string_view query) {
@@ -1494,6 +1536,11 @@ void on_setting_change(SettingsModalState& state, SettingId id) {
 }
 
 void render_settings_modal(SettingsModalState& state) {
+    // If auth flipped while the modal was open (sign-in/up via the auth sub-modal, or
+    // sign-out/delete in place), rebuild the account block in the focus order + context and
+    // re-read the synced live values BEFORE this frame's reconcile + render reads them, so
+    // the logged-in controls join the traversal with visible rings and show server state.
+    refresh_account_section_if_auth_changed(state);
     const ImU32 ring = token_u32(theme::ColorToken::BorderFocus);
     const bridge::FocusReconcile rec =
         state.focus_registry != nullptr
