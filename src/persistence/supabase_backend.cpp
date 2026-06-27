@@ -278,7 +278,17 @@ FetchResult parse_fetch_response(int http_status,
     if (parsed.result != SchemaValidationResult::Ok) {
         return FetchResult{FetchOutcome::Failed, AppState{}};
     }
-    return FetchResult{FetchOutcome::Found, parsed.state};
+    AppState state = parsed.state;
+    // Rehydrate the display name from the authoritative denormalized column (the chosen
+    // username), overriding whatever the blob carried. The leaderboard identity lives in
+    // this column — never in the id_token "name" claim, which defaults to the email — so
+    // adopting it here is what keeps the username stable across sign-ins.
+    if (const std::optional<std::string> display_name =
+            extract_json_string_field(response_body, "display_name");
+        display_name.has_value() && !display_name->empty()) {
+        state.account.display_name = *display_name;
+    }
+    return FetchResult{FetchOutcome::Found, state};
 }
 
 namespace {
@@ -475,14 +485,6 @@ EM_JS(int, pt_read_leaderboard_opt_in, (), {
     return (globalThis.ptLeaderboardOptIn === true) ? 1 : 0;
 });
 
-// Copy the live session display name into a C++ buffer (the migration payload omits it, so
-// the initial seed reads it here).
-EM_JS(void, pt_supabase_session_name, (char* out, int maxlen), {
-    var s = globalThis.ptAuth0Session || {};
-    var v = (typeof s.name === "string") ? s.name : "";
-    stringToUTF8(v, out, maxlen);
-});
-
 // clang-format on
 
 namespace poker_trainer::persistence {
@@ -502,13 +504,6 @@ constexpr int kLeaderboardBufferBytes = 64 * 1024;
 [[nodiscard]] std::string account_base() {
     return std::string{kSupabaseUrl} + std::string{kSupabaseRestPrefix} +
            std::string{kSupabaseAccountTable};
-}
-
-[[nodiscard]] std::string read_session_name() {
-    std::string buf(512, '\0');
-    pt_supabase_session_name(buf.data(), static_cast<int>(buf.size()));
-    buf.resize(std::char_traits<char>::length(buf.c_str()));
-    return buf;
 }
 
 }  // namespace
@@ -547,8 +542,12 @@ bool SupabaseSyncBackend::upload_initial(std::string_view auth0_user_id,
     const std::string url =
         account_base() + std::string{kSupabaseAccountUpsertQuery};
     const bool opted_in = pt_read_leaderboard_opt_in() != 0;
+    // Seed display_name from the migration payload (the chosen username, carried over from
+    // AppState.account.display_name) — the SAME source the regular push uses. The id_token
+    // "name" claim is NOT consulted: for a brand-new DB user it defaults to the email, which
+    // must never reach the public leaderboard column.
     const std::string body =
-        build_initial_body(auth0_user_id, initial, read_session_name(), opted_in);
+        build_initial_body(auth0_user_id, initial, initial.display_name, opted_in);
     return supabase_write_ok(
         pt_supabase_upsert(url.c_str(), anon_key().c_str(), body.c_str()));
 }

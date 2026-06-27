@@ -16,6 +16,7 @@
 #include "engine/scenario_id.hpp"
 #include "settings/settings.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <vector>
@@ -285,6 +286,40 @@ bool on_number_key(InterrogatorRuntime& runtime, const backbone::KeyEvent& e) {
     return true;
 }
 
+// Arrow key handler for the Bet Size group (Category B relative stepper, clamp).
+// Right/Down = next tier; Left/Up = previous tier. No selection yet → first arrow lands
+// on 1/3 Pot (index 0). Clamped at both ends — no wrap. Only fires when the bet group
+// has focus; falls through (returns false) otherwise so ImGui text-cursor arrows work.
+bool on_arrow_key(InterrogatorRuntime& runtime, const backbone::KeyEvent& e) {
+    if (e.type != backbone::KeyEventType::KeyDown) {
+        return false;
+    }
+    const bool is_forward = e.code == backbone::KeyCode::ArrowRight ||
+                            e.code == backbone::KeyCode::ArrowDown;
+    const bool is_back = e.code == backbone::KeyCode::ArrowLeft ||
+                         e.code == backbone::KeyCode::ArrowUp;
+    if (!is_forward && !is_back) {
+        return false;
+    }
+    InterrogatorState& state = runtime.state;
+    if (!state.bet_group.present ||
+        backbone::get_focused_element() != state.bet_group.focus_id) {
+        return false;  // not the bet group: let ImGui handle text-cursor movement
+    }
+    constexpr int kCount = static_cast<int>(engine::kBetTierCount);
+    int idx;
+    if (!state.bet_group.selected.has_value()) {
+        idx = 0;  // cold start: first arrow always lands on the first tier (1/3 Pot)
+    } else {
+        const int current =
+            static_cast<int>(static_cast<std::uint8_t>(*state.bet_group.selected));
+        idx = std::clamp(current + (is_forward ? 1 : -1), 0, kCount - 1);
+    }
+    state.bet_group.selected =
+        static_cast<engine::BetTier>(static_cast<std::uint8_t>(idx));
+    return true;
+}
+
 }  // namespace
 
 void install_interrogator(InterrogatorRuntime& runtime) {
@@ -301,11 +336,16 @@ void install_interrogator(InterrogatorRuntime& runtime) {
         game_input_active,
         [&runtime](const backbone::KeyEvent& e) { return on_number_key(runtime, e); },
         backbone::HandlerPriority::ScreenContext, "interrogator.number_keys");
+    // Bet-size group arrow navigation (Right/Down = next tier, Left/Up = prev, clamp).
+    // Falls through when the bet group is not focused, so ImGui handles text-cursor arrows
+    // in the numeric input boxes.
+    backbone::register_key_handler(
+        game_input_active,
+        [&runtime](const backbone::KeyEvent& e) { return on_arrow_key(runtime, e); },
+        backbone::HandlerPriority::ScreenContext, "interrogator.bet_size_arrows");
     // Tab / Shift-Tab navigation is the backbone's universal focus handler; the
     // focus segment registered on scenario entry gives it the math + bet stops.
-    // Backspace clears within the focused box via ImGui InputText (text entry is
-    // SEAM(Z05)); arrow keys are intentionally not bound (math boxes are
-    // unbounded decimals).
+    // Backspace clears within the focused box via ImGui InputText (text entry is SEAM(Z05)).
 
     // Reset + respawn inputs on a new scenario. Fired by the launch path
     // (bridge::request_game_launch) after it generates + stores the authoritative

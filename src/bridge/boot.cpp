@@ -292,9 +292,9 @@ void finish_boot_after_persistence() {
     // overlay renderer (drawn above the active screen each frame) and its event
     // handlers. The cluster keyboard handler is ScreenContext and must register after
     // the screens' own activate handlers, which leave a focused cluster icon's key
-    // unconsumed so this one activates it. It reaches the shared focus registry (off
-    // BridgeRuntime) for the text-field modals (leaderboard search).
-    g_boot.modals.focus_registry = &g_runtime->focus_registry;
+    // unconsumed so this one activates it. install_modals points the modal runtime's
+    // focus registry at its OWN store (the leaderboard search's text-field reconcile) —
+    // not the shared app-root registry Z09 uses, which sharing would clobber.
     modal::install_modals(g_boot.modals);
 
     // Install Zone 12 (Settings page) AFTER Zone 11: it registers its content provider
@@ -448,7 +448,7 @@ void finish_boot_after_persistence() {
             r.track = track;
             r.owned = persistence::is_track_owned(st.music_library, track);
             r.in_pool = persistence::is_track_in_pool(st.music_library, track);
-            r.price = audio::music_track_info(track).price_tomatoes;
+            r.price = persistence::track_price(track);
             r.affordable = persistence::can_afford(st.tomatoes, r.price);
         }
         return snap;
@@ -520,11 +520,15 @@ void finish_boot_after_persistence() {
         modal::close_modal();
         settings::account_open_sign_up(g_boot.account);
     };
-    g_boot.modals.leaderboard.open_settings_tomatoes = [] {
-        modal::close_modal();
-        modal::open_settings_modal();
-        g_boot.settings.scroll_target = settings::SettingsSection::Tomatoes;
-        g_boot.settings.scroll_pending = true;
+    g_boot.modals.leaderboard.enable_opt_in = [] {
+        // The opted-out "opt in" link: flip the leaderboard opt-in on directly — the exact
+        // same mutation the Settings -> Tomatoes checkbox performs. Set the live setting,
+        // then run the shared on_setting_change path, which persists through the full codec
+        // and restashes the opted_in flag so the Supabase push carries opted_in=true. The
+        // your-rank row reads this flag each frame, so it updates in place to the opted-in
+        // layout — no navigation to Settings.
+        g_boot.live_settings.tomatoes.leaderboard_opt_in = true;
+        settings::on_setting_change(g_boot.settings, settings::SettingId::LeaderboardOptIn);
     };
 
     // Install Zone 03: subscribe to scenario_spawned for the spawn audio

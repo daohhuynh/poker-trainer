@@ -49,6 +49,14 @@ void apply_pass_award(AppState& state) noexcept {
     state.tomatoes = awarded(state.tomatoes, kTomatoesPerPass);
 }
 
+std::uint32_t track_price(audio::MusicTrackId track) noexcept {
+    // Each genre owns three consecutive track ids (genre*3 + position), so the position
+    // within the genre is the id modulo the per-genre track count.
+    constexpr std::size_t kTracksPerGenre = audio::kMusicTrackCount / audio::kMusicGenreCount;
+    const std::size_t position = static_cast<std::size_t>(track) % kTracksPerGenre;
+    return kTrackPriceByGenrePosition[position];
+}
+
 bool can_afford(const TomatoesState& wallet, std::uint64_t price) noexcept {
     return wallet.spendable >= price;
 }
@@ -68,7 +76,7 @@ bool purchase_track(AppState& state, audio::MusicTrackId track) {
     if (is_track_owned(state.music_library, track)) {
         return false;  // already owned (starter or previously purchased)
     }
-    const std::uint64_t price = audio::music_track_info(track).price_tomatoes;
+    const std::uint64_t price = track_price(track);
     if (!can_afford(state.tomatoes, price)) {
         return false;  // insufficient Spendable Tomatoes
     }

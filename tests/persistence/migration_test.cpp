@@ -28,13 +28,23 @@ pt::AppState rich_guest_state() {
 
 }  // namespace
 
-TEST(Migration, BuildExtractsExactlyTheThreeFields) {
+TEST(Migration, BuildExtractsTheMigrationFields) {
     const pt::AppState state = rich_guest_state();
     const pt::AccountMigrationState payload =
         pt::Migrator::build_migration_state(state);
 
-    const pt::AccountMigrationState expected{120, 500, {1, 3, 5}};
+    // The three value fields plus the account display name (make_populated_state's
+    // "TestUser") — the username, not the email, seeds the server row.
+    const pt::AccountMigrationState expected{120, 500, {1, 3, 5}, "TestUser"};
     EXPECT_EQ(payload, expected);
+}
+
+TEST(Migration, CapturesChosenUsernameAsDisplayName) {
+    pt::AppState state = rich_guest_state();
+    state.account.display_name = "RyanTheGrinder";  // the user's chosen signup username
+    const pt::AccountMigrationState payload =
+        pt::Migrator::build_migration_state(state);
+    EXPECT_EQ(payload.display_name, "RyanTheGrinder");
 }
 
 TEST(Migration, UploadsInitialPayloadThroughSeam) {
@@ -48,7 +58,7 @@ TEST(Migration, UploadsInitialPayloadThroughSeam) {
     ASSERT_EQ(server.uploads.size(), 1u);
     EXPECT_EQ(server.uploads[0].user, "auth0|new");
     EXPECT_EQ(server.uploads[0].payload,
-              (pt::AccountMigrationState{120, 500, {1, 3, 5}}));
+              (pt::AccountMigrationState{120, 500, {1, 3, 5}, "TestUser"}));
 }
 
 TEST(Migration, ReturnsFalseWhenUploadFails) {

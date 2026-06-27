@@ -3,6 +3,7 @@
 #include "modal/auth_modals.hpp"
 #include "modal/confirm_modal.hpp"
 #include "modal/help_modal.hpp"
+#include "modal/leaderboard_view.hpp"
 #include "modal/modals.hpp"
 #include "modal/outage_banner.hpp"
 #include "modal/shop_view.hpp"
@@ -22,6 +23,7 @@
 #include <optional>
 #include <span>
 #include <string_view>
+#include <vector>
 
 #include <imgui.h>
 #ifdef __EMSCRIPTEN__
@@ -84,11 +86,18 @@ void push_modal_focus(backbone::ModalId id) {
         static constexpr std::array<backbone::FocusableId, 1> kS{kSettingsShellClose};
         backbone::push_focus_context(kS, kSettingsShellClose, "modal.settings");
     } else if (id == kShopModalId) {
-        static constexpr std::array<backbone::FocusableId, 1> kSh{kShopShellClose};
-        backbone::push_focus_context(kSh, kShopShellClose, "modal.shop");
-    } else {
-        static constexpr std::array<backbone::FocusableId, 1> kL{kShopShellClose};
-        backbone::push_focus_context(kL, kShopShellClose, "modal.leaderboard");
+        // The full Shop order: Leaderboard icon -> interactive rows (greyed rows skipped)
+        // -> X close, computed from the live snapshot at open time.
+        const ShopSnapshot snap =
+            (g_runtime != nullptr && g_runtime->shop.snapshot) ? g_runtime->shop.snapshot()
+                                                               : ShopSnapshot{};
+        const std::vector<backbone::FocusableId> list = shop_focus_list(snap);
+        backbone::push_focus_context(list, list.empty() ? backbone::kNoFocus : list.front(),
+                                     "modal.shop");
+    } else {  // kLeaderboardModalId
+        const std::span<const backbone::FocusableId> list = leaderboard_focus_list();
+        backbone::push_focus_context(list, list.empty() ? backbone::kNoFocus : list.front(),
+                                     "modal.leaderboard");
     }
 }
 
@@ -190,6 +199,7 @@ void open_leaderboard_modal() {
         g_runtime->leaderboard_loaded = false;   // re-fetch on each open
         g_runtime->leaderboard_search.clear();   // start unfiltered
         g_runtime->leaderboard_highlight_rank = -1;
+        leaderboard_on_open(*g_runtime);  // reset nav state + populate the search reconcile registry
     }
     open_modal(kLeaderboardModalId);
 }
@@ -473,10 +483,18 @@ bool on_modal_key(const backbone::KeyEvent& e) {
     if (const ModalContentProvider* p = modal_content_for(*id); p != nullptr) {
         return p->dispatch ? p->dispatch(e) : false;
     }
-    // A non-provider modal with an active ImGui text field (the leaderboard search) lets
-    // Space / Enter (and typing) reach the field rather than activating the X / closing —
-    // Space is a literal space, Enter is the search's jump-to-match. Without an active
-    // text field this is false, so the shells keep their Space/Enter-closes behavior.
+    // The Shop and Leaderboard are Zone-11 modals (no content provider); they own their
+    // Space/Enter — and the Leaderboard's digit/arrow list nav + search-field handoff —
+    // through their own dispatch. Keys they leave unconsumed (Tab; typing while the search
+    // field is focused) fall through to the backbone focus-nav handler / ImGui.
+    if (g_runtime != nullptr && *id == kShopModalId) {
+        return shop_dispatch_key(*g_runtime, e);
+    }
+    if (g_runtime != nullptr && *id == kLeaderboardModalId) {
+        return leaderboard_dispatch_key(*g_runtime, e);
+    }
+    // The remaining non-provider modals (Help, confirm) have no text fields; this guard is a
+    // defensive no-op for them.
     if (ImGui::GetIO().WantTextInput) {
         return false;
     }
@@ -506,7 +524,8 @@ bool on_modal_key(const backbone::KeyEvent& e) {
         }
         return true;
     }
-    // Settings / Shop / Leaderboard shells: the only focusable is the X close.
+    // The placeholder Settings shell (no Zone-12 provider registered): its only focusable
+    // is the X close, so any Space/Enter dismisses. Shop / Leaderboard are routed above.
     close_modal();
     return true;
 }
@@ -563,6 +582,11 @@ bool on_game_escape(const backbone::KeyEvent& e) {
 
 void install_modals(ModalRuntime& runtime) {
     g_runtime = &runtime;
+
+    // Point the modal runtime's focus registry at its OWN backing store — never the shared
+    // app-root registry Z09's Game-screen math inputs use (sharing it clobbers that
+    // reconcile). Used only by the leaderboard search's text-field reconcile.
+    runtime.focus_registry = &runtime.own_registry;
 
     bridge::register_overlay_renderer(render_modal_overlay);
 

@@ -3,6 +3,7 @@
 #include "persistence/persistence_schema.hpp"
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -11,9 +12,12 @@ namespace poker_trainer::persistence {
 class SyncBackend;
 
 // The exact payload uploaded when a guest creates an account. Per Module 7
-// "Account creation migration", precisely three pieces of state migrate to
-// the server as the initial account state — and nothing else (no shuffle
-// pool, settings, history, account, or tutorial fields).
+// "Account creation migration", precisely three pieces of value state migrate
+// to the server as the initial account state — and nothing else (no shuffle
+// pool, settings, history, or tutorial fields). The chosen account display name
+// rides alongside as the identity for the server row's display_name column (the
+// SAME source the regular push uses — AppState.account.display_name — so the
+// leaderboard shows the user's signup username, never the id_token email claim).
 struct AccountMigrationState {
     // Current Spendable Tomatoes balance.
     std::uint64_t spendable{0};
@@ -23,6 +27,10 @@ struct AccountMigrationState {
 
     // Full list of tracks unlocked via Shop purchases.
     std::vector<std::uint8_t> unlocked_track_ids;
+
+    // The account's display name (the user's chosen signup username). Seeds the
+    // server row's display_name column on initial upload.
+    std::string display_name;
 
     [[nodiscard]] bool operator==(const AccountMigrationState&) const = default;
 };

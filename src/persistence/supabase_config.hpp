@@ -41,14 +41,17 @@ inline constexpr std::string_view kSupabaseAccountTable = "account_state";
 //   - kSupabaseAccountUpsertPath: POST target for an upsert. on_conflict names
 //     the conflict target (the auth0_sub primary key) so a repeat write merges
 //     into the existing row instead of failing the unique constraint.
-//   - kSupabaseAccountSelectQuery: GET query selecting the blob column for the
-//     caller's row (RLS already restricts the result to that single row; the
-//     explicit auth0_sub filter is appended at call time as defense in depth).
+//   - kSupabaseAccountSelectQuery: GET query selecting the blob column AND the
+//     denormalized display_name column for the caller's row (RLS already restricts
+//     the result to that single row; the explicit auth0_sub filter is appended at
+//     call time as defense in depth). display_name is the authoritative leaderboard
+//     identity (the chosen username); the reconcile rehydrates it from here so a
+//     sign-in never falls back to the id_token email claim.
 inline constexpr std::string_view kSupabaseRestPrefix = "/rest/v1/";
 inline constexpr std::string_view kSupabaseAccountUpsertQuery =
     "?on_conflict=auth0_sub";
 inline constexpr std::string_view kSupabaseAccountSelectColumns =
-    "?select=state_blob&auth0_sub=eq.";
+    "?select=state_blob,display_name&auth0_sub=eq.";
 
 // PostgREST RPC for the global leaderboard. POST <kSupabaseUrl> + this returns the
 // top 100 accounts (rank, display_name, lifetime_tomatoes) ordered by Lifetime

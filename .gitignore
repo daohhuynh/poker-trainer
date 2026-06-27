@@ -30,3 +30,4 @@ compile_commands.json
 # Editor / LSP caches
 .cache/
 .ccls-cache/
+en.txt

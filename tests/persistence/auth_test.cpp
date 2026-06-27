@@ -77,7 +77,7 @@ TEST_F(AuthFlowTest, SignInFromGuestWithNoServerStateTriggersMigration) {
     ASSERT_TRUE(result.has_value());
     ASSERT_EQ(server_.uploads.size(), 1u);
     EXPECT_EQ(server_.uploads[0].payload,
-              (pt::AccountMigrationState{40, 90, {2, 4}}));
+              (pt::AccountMigrationState{40, 90, {2, 4}, "Alice"}));
     // Wallet continues from pre-account values.
     EXPECT_EQ(svc.state().tomatoes.spendable, 40u);
 }
@@ -100,7 +100,7 @@ TEST_F(AuthFlowTest, SignUpFromGuestSeedsServerViaMigration) {
     EXPECT_TRUE(svc.state().account.is_authenticated);
     ASSERT_EQ(server_.uploads.size(), 1u);
     EXPECT_EQ(server_.uploads[0].payload,
-              (pt::AccountMigrationState{50, 200, {1, 9}}));
+              (pt::AccountMigrationState{50, 200, {1, 9}, "Alice"}));
     EXPECT_EQ(auth_.display_names_seen.size(), 1u);
     EXPECT_EQ(auth_.display_names_seen[0], "Alice");
 }
@@ -338,7 +338,7 @@ TEST_F(AuthFlowTest, RestoreSessionSeedsServerWhenNeverPersisted) {
     EXPECT_TRUE(svc.try_restore_session());
     ASSERT_EQ(server_.uploads.size(), 1u);
     EXPECT_EQ(server_.uploads[0].payload,
-              (pt::AccountMigrationState{12, 34, {7}}));
+              (pt::AccountMigrationState{12, 34, {7}, "Alice"}));
 }
 
 // --- Delete account wipes the server row ---

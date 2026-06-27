@@ -126,6 +126,26 @@ bool auth_link(backbone::FocusableId id, const char* imgui_id, const char* label
     return clicked;
 }
 
+// Like auth_link but draws a persistent underline when `highlighted` is true (the
+// arrow-key positional highlight for Category A grouped stops). Also underlines on hover.
+bool auth_link_highlighted(backbone::FocusableId id, const char* imgui_id, const char* label,
+                           theme::ColorToken color, ImU32 ring, bool highlighted) {
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    const ImVec2 size = ImGui::CalcTextSize(label);
+    const bool clicked = ImGui::InvisibleButton(imgui_id, size);
+    if (ImGui::IsItemClicked()) {
+        focus_on_click(id);
+    }
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddText(pos, token_u32(color), label);
+    if (highlighted || ImGui::IsItemHovered()) {
+        dl->AddLine(ImVec2{pos.x, pos.y + size.y}, ImVec2{pos.x + size.x, pos.y + size.y},
+                    token_u32(color), 1.0f);
+    }
+    bridge::draw_focus_ring(id, ring);
+    return clicked;
+}
+
 // A simple procedural "person" silhouette (head + shoulders). No person AssetId exists in
 // the sealed asset_paths.hpp, so the header glyph is drawn (precedent: the Z11 cluster
 // glyphs). `c` is the glyph-box center; `r` half the box size.
@@ -271,6 +291,7 @@ void do_submit(AccountModalState& a) {
 void do_relayout(AccountModalState& a, AccountModalState::Layout target) {
     a.error_field = AuthField::None;
     a.error_message.clear();
+    a.tos_highlight = TosHighlight::None;
     switch (target) {
         case AccountModalState::Layout::SignIn:
             modal::set_auth_mode(modal::AuthMode::SignIn);
@@ -373,19 +394,28 @@ void render_sign_up(AccountModalState& a, const bridge::FocusReconcile& rec, ImU
 
     // ToS consent with inline document links (mouse-clickable; the focus list follows the
     // spec, which does not list the inline links as Tab stops — the docs are also reachable
-    // from the Settings Legal section for keyboard users).
+    // from the Settings Legal section for keyboard users). Arrow keys on this grouped stop
+    // move a positional highlight (Left/Up = Terms, Right/Down = Privacy); Enter/Space then
+    // opens the highlighted doc. Underline indicates the highlighted side when focused.
+    const bool tos_focused =
+        backbone::is_keyboard_mode_active() &&
+        backbone::get_focused_element() == kAuthTosConsent;
+    const bool terms_hl = tos_focused && a.tos_highlight == TosHighlight::Terms;
+    const bool privacy_hl = tos_focused && a.tos_highlight == TosHighlight::Privacy;
+
     auth_checkbox(kAuthTosConsent, "I agree to the", a.consent_tos, ring);
     ImGui::SameLine();
-    if (auth_link(kAuthTosConsent /*shares ring target*/, "##tos_link", "Terms of Service",
-                  theme::ColorToken::AccentPrimary, ring) &&
+    if (auth_link_highlighted(kAuthTosConsent /*shares ring target*/, "##tos_link",
+                              "Terms of Service", theme::ColorToken::AccentPrimary, ring,
+                              terms_hl) &&
         a.seams.open_legal) {
         a.seams.open_legal(LegalDoc::Terms);
     }
     ImGui::SameLine();
     ImGui::TextUnformatted("and");
     ImGui::SameLine();
-    if (auth_link(kAuthTosConsent, "##privacy_link", "Privacy Policy",
-                  theme::ColorToken::AccentPrimary, ring) &&
+    if (auth_link_highlighted(kAuthTosConsent, "##privacy_link", "Privacy Policy",
+                              theme::ColorToken::AccentPrimary, ring, privacy_hl) &&
         a.seams.open_legal) {
         a.seams.open_legal(LegalDoc::Privacy);
     }
@@ -458,6 +488,10 @@ void render_auth_body(AccountModalState& a) {
         a.forgot_open ? "Reset password"
                       : (modal::auth_mode() == modal::AuthMode::SignUp ? "Sign Up" : "Sign In");
     ImGui::TextUnformatted(title);
+    // The X close (Zone 11, top-right) is ~1.6 line-heights tall and overlaps this header
+    // row; pad the header band so the separator below clears the X box instead of cutting
+    // into it. Body content shifts down with the separator, preserving the form's spacing.
+    ImGui::Dummy(ImVec2{0.0f, h * 0.8f});
     ImGui::Separator();
 
     if (a.forgot_open) {
@@ -478,20 +512,40 @@ bool dispatch_auth_key(AccountModalState& a, const backbone::KeyEvent& e) {
     const bridge::FocusRegistry& reg = *a.focus_registry;
     const backbone::FocusableId focused = bridge::active_focus_or_none();
 
-    // Intra-group keys on the ToS consent row (mirrors the Game bet-size group's digit
-    // handling): the row stays a single tab stop and Space still toggles the checkbox, but
-    // while it is focused, 1 opens Terms and 2 opens Privacy. Other keys fall through (Tab
-    // proceeds to the Sign Up button). Opening the doc modal pushes a stacked focus context,
-    // which is safe inside a dispatch closure — it never clears this registry (same as the
-    // bet-size handler and Part 1's reset-confirm).
-    if (focused == kAuthTosConsent && a.seams.open_legal) {
-        if (e.code == backbone::KeyCode::Digit1) {
-            a.seams.open_legal(LegalDoc::Terms);
+    // Intra-group keys on the ToS/Privacy consent grouped stop (Category A positional
+    // toggle): the row stays a single tab stop. Arrow keys move the highlight absolutely
+    // (Left/Up = Terms, Right/Down = Privacy); Enter/Space opens the highlighted doc (or
+    // toggles the checkbox if no highlight has been set). Digit 1/2 jump immediately (and
+    // set the highlight so Enter follows). Tab falls through to the backbone focus-nav handler.
+    if (focused == kAuthTosConsent) {
+        if (e.code == backbone::KeyCode::ArrowLeft || e.code == backbone::KeyCode::ArrowUp) {
+            a.tos_highlight = TosHighlight::Terms;
             return true;
         }
-        if (e.code == backbone::KeyCode::Digit2) {
-            a.seams.open_legal(LegalDoc::Privacy);
+        if (e.code == backbone::KeyCode::ArrowRight || e.code == backbone::KeyCode::ArrowDown) {
+            a.tos_highlight = TosHighlight::Privacy;
             return true;
+        }
+        if (a.seams.open_legal) {
+            if (e.code == backbone::KeyCode::Digit1) {
+                a.tos_highlight = TosHighlight::Terms;
+                a.seams.open_legal(LegalDoc::Terms);
+                return true;
+            }
+            if (e.code == backbone::KeyCode::Digit2) {
+                a.tos_highlight = TosHighlight::Privacy;
+                a.seams.open_legal(LegalDoc::Privacy);
+                return true;
+            }
+            // Enter/Space with a highlight: open the highlighted doc instead of toggling the
+            // checkbox. Without a highlight, fall through so dispatch_focus_key toggles it.
+            const bool activate_key = e.code == backbone::KeyCode::Space ||
+                                      e.code == backbone::KeyCode::Enter;
+            if (activate_key && a.tos_highlight != TosHighlight::None) {
+                a.seams.open_legal(a.tos_highlight == TosHighlight::Terms ? LegalDoc::Terms
+                                                                          : LegalDoc::Privacy);
+                return true;
+            }
         }
     }
 
@@ -499,6 +553,20 @@ bool dispatch_auth_key(AccountModalState& a, const backbone::KeyEvent& e) {
         (e.code == backbone::KeyCode::ArrowLeft || e.code == backbone::KeyCode::ArrowRight)) {
         return false;  // text-cursor keys belong to ImGui's InputText
     }
+
+    // Enter submits the SIGN IN form only — equivalent to clicking the Sign In button — when
+    // it would be enabled (both fields filled) and a text field is focused (so Enter on a
+    // link/button still activates that control). Routed through request_submit so do_submit
+    // runs in the deferred block below, never mid-dispatch (it may close + clear the
+    // registry). Sign Up / Forgot keep their behavior: Enter on a field does nothing here.
+    const bool enter_submit_sign_in =
+        e.code == backbone::KeyCode::Enter && !a.forgot_open &&
+        modal::auth_mode() == modal::AuthMode::SignIn && reg.is_text_field(focused) &&
+        sign_in_submittable(buf_view(a.id_or_email_buf.data()), buf_view(a.password_buf.data()));
+    if (enter_submit_sign_in) {
+        a.request_submit = true;
+    }
+
     const bool handled = bridge::dispatch_focus_key(reg, focused, e.code);
 
     // Deferred actions, AFTER dispatch_focus_key returns (no registry-clearing close runs
@@ -513,7 +581,7 @@ bool dispatch_auth_key(AccountModalState& a, const backbone::KeyEvent& e) {
         a.request_relayout = false;
         do_relayout(a, a.pending_layout);
     }
-    return handled;
+    return handled || enter_submit_sign_in;
 }
 
 void on_auth_open(AccountModalState& a) {
@@ -525,6 +593,7 @@ void on_auth_open(AccountModalState& a) {
     a.show_password = false;
     a.consent_age = false;
     a.consent_tos = false;
+    a.tos_highlight = TosHighlight::None;
     a.error_field = AuthField::None;
     a.error_message.clear();
     a.forgot_open = false;

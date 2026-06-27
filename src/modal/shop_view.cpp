@@ -3,18 +3,25 @@
 #include "modal/modal_base.hpp"
 #include "modal/modals.hpp"
 
+#include "backbone/event_router.hpp"
+#include "backbone/focus_manager.hpp"
+
 #include "audio/audio_paths.hpp"
 
 #include "assets/asset_paths.hpp"
 #include "theme/theme_tokens.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include <imgui.h>
 
 #include "bridge/asset_image.hpp"
+#include "bridge/focus_registry.hpp"
 
 // Zone 11 — Module 7 Shop content. The render is a marked seam (browser-verified); the
 // pure shop_button_kind helper is unit-tested. Wallet reads come from a boot-computed
@@ -28,6 +35,24 @@ namespace {
 
 [[nodiscard]] ImU32 token_u32(theme::ColorToken token) {
     return ImGui::ColorConvertFloat4ToU32(theme::get_color(token));
+}
+
+// Stable focusable id per track row (indexed by the MusicTrackId value 0..11). Distinct
+// hashed literals, so the ids never collide with one another or with the icon/X-close ids.
+constexpr std::array<backbone::FocusableId, audio::kMusicTrackCount> kShopRowIds{{
+    backbone::make_focusable_id("shop.row.0"), backbone::make_focusable_id("shop.row.1"),
+    backbone::make_focusable_id("shop.row.2"), backbone::make_focusable_id("shop.row.3"),
+    backbone::make_focusable_id("shop.row.4"), backbone::make_focusable_id("shop.row.5"),
+    backbone::make_focusable_id("shop.row.6"), backbone::make_focusable_id("shop.row.7"),
+    backbone::make_focusable_id("shop.row.8"), backbone::make_focusable_id("shop.row.9"),
+    backbone::make_focusable_id("shop.row.10"), backbone::make_focusable_id("shop.row.11")}};
+
+// Click on a focusable: activate keyboard mode + move the focus pointer to it (so the ring
+// tracks the click and a subsequent Space/Enter activates the same control). Mirrors
+// account_modal.cpp's focus_on_click.
+void focus_on_click(backbone::FocusableId id) {
+    backbone::activate_keyboard_mode();
+    backbone::snap_focus_to(id);
 }
 
 [[nodiscard]] const char* button_label(ShopButtonKind kind) noexcept {
@@ -82,6 +107,9 @@ namespace {
     if (!bridge::draw_asset_image(dl, bmin, bmax, assets::AssetId::IconTrophy)) {
         dl->AddRect(bmin, bmax, token_u32(theme::ColorToken::TextPrimary), 0.0f, 0, 1.0f);
     }
+    // Focus ring on the swap icon (the first focus stop); it navigates away on click, so it
+    // takes no click-to-snap (keyboard reaches it via Tab).
+    bridge::draw_focus_ring(kShopLeaderboardIcon, token_u32(theme::ColorToken::BorderFocus));
 
     ImGui::SetCursorPos(saved);
     return clicked;
@@ -106,6 +134,58 @@ void draw_price(std::uint32_t price, bool red) {
                 num.c_str());
     const ImVec2 num_sz = ImGui::CalcTextSize(num.c_str());
     ImGui::Dummy(ImVec2{line + line * 0.25f + num_sz.x, line});
+}
+
+// Recompute the Shop focus order from the live snapshot and re-push it, preserving the
+// currently focused element when it survives the rebuild (mirrors account_modal's
+// do_relayout). Called after a purchase commits, since the spend can push other rows into
+// the non-stop insufficient-funds state.
+void rebuild_shop_focus(ModalRuntime& rt) {
+    const ShopSnapshot snap = rt.shop.snapshot ? rt.shop.snapshot() : ShopSnapshot{};
+    const std::vector<backbone::FocusableId> list = shop_focus_list(snap);
+    const backbone::FocusableId focused = backbone::get_focused_element();
+    backbone::FocusableId initial = list.empty() ? backbone::kNoFocus : list.front();
+    for (const backbone::FocusableId id : list) {
+        if (id == focused) {
+            initial = focused;
+            break;
+        }
+    }
+    backbone::pop_focus_context();
+    backbone::push_focus_context(list, initial, "modal.shop");
+}
+
+// Apply a row button's action (shared by the mouse click in render_shop_row and the
+// Space/Enter dispatch in shop_dispatch_key). Buy arms; a second activation (Confirm)
+// commits the purchase and rebuilds the focus order; Add/Remove toggle rotation;
+// BuyDisabled is inert.
+void apply_shop_button(ModalRuntime& rt, audio::MusicTrackId track, ShopButtonKind kind) {
+    switch (kind) {
+        case ShopButtonKind::Buy:
+            rt.shop_armed_buy = track;  // arm; a second activation commits
+            break;
+        case ShopButtonKind::Confirm:
+            if (rt.shop.on_buy) {
+                rt.shop.on_buy(track);
+            }
+            rt.shop_armed_buy.reset();
+            rebuild_shop_focus(rt);
+            break;
+        case ShopButtonKind::Add:
+            if (rt.shop.on_add) {
+                rt.shop.on_add(track);
+            }
+            rt.shop_armed_buy.reset();
+            break;
+        case ShopButtonKind::Remove:
+            if (rt.shop.on_remove) {
+                rt.shop.on_remove(track);
+            }
+            rt.shop_armed_buy.reset();
+            break;
+        case ShopButtonKind::BuyDisabled:
+            break;
+    }
 }
 
 // Render one track row: the in-rotation dot, the track name, the price (locked rows), and
@@ -167,33 +247,14 @@ void render_shop_row(ModalRuntime& rt, const ShopRowView& row) {
     if (armed) {
         ImGui::PopStyleColor();
     }
+    const backbone::FocusableId row_id = shop_row_focus_id(row.track);
+    if (ImGui::IsItemClicked()) {
+        focus_on_click(row_id);
+    }
+    bridge::draw_focus_ring(row_id, token_u32(theme::ColorToken::BorderFocus));
 
     if (clicked) {
-        switch (kind) {
-            case ShopButtonKind::Buy:
-                rt.shop_armed_buy = row.track;  // arm; a second click commits
-                break;
-            case ShopButtonKind::Confirm:
-                if (rt.shop.on_buy) {
-                    rt.shop.on_buy(row.track);
-                }
-                rt.shop_armed_buy.reset();
-                break;
-            case ShopButtonKind::Add:
-                if (rt.shop.on_add) {
-                    rt.shop.on_add(row.track);
-                }
-                rt.shop_armed_buy.reset();
-                break;
-            case ShopButtonKind::Remove:
-                if (rt.shop.on_remove) {
-                    rt.shop.on_remove(row.track);
-                }
-                rt.shop_armed_buy.reset();
-                break;
-            case ShopButtonKind::BuyDisabled:
-                break;
-        }
+        apply_shop_button(rt, row.track, kind);
     }
     ImGui::PopID();
 }
@@ -221,6 +282,61 @@ ShopButtonKind shop_button_kind(const ShopRowView& row, bool armed) noexcept {
         return ShopButtonKind::BuyDisabled;
     }
     return armed ? ShopButtonKind::Confirm : ShopButtonKind::Buy;
+}
+
+backbone::FocusableId shop_row_focus_id(audio::MusicTrackId track) noexcept {
+    return kShopRowIds[static_cast<std::size_t>(track)];
+}
+
+std::optional<audio::MusicTrackId> shop_track_for_focus_id(backbone::FocusableId id) noexcept {
+    for (std::size_t i = 0; i < kShopRowIds.size(); ++i) {
+        if (kShopRowIds[i] == id) {
+            return static_cast<audio::MusicTrackId>(i);
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<backbone::FocusableId> shop_focus_list(const ShopSnapshot& snap) {
+    std::vector<backbone::FocusableId> list;
+    list.reserve(snap.rows.size() + 2);
+    list.push_back(kShopLeaderboardIcon);  // first stop
+    for (const ShopRowView& row : snap.rows) {
+        // The greyed insufficient-funds rows are non-interactive — not focus stops. The
+        // armed flag never changes membership (Buy<->Confirm are both stops), so pass false.
+        if (shop_button_kind(row, /*armed=*/false) != ShopButtonKind::BuyDisabled) {
+            list.push_back(shop_row_focus_id(row.track));
+        }
+    }
+    list.push_back(kShopShellClose);  // last stop (wraps back to the Leaderboard icon)
+    return list;
+}
+
+bool shop_dispatch_key(ModalRuntime& runtime, const backbone::KeyEvent& e) {
+    if (e.type != backbone::KeyEventType::KeyDown) {
+        return false;
+    }
+    if (e.code != backbone::KeyCode::Space && e.code != backbone::KeyCode::Enter) {
+        return false;  // Tab (and any other key) falls through to the backbone focus-nav handler
+    }
+    const backbone::FocusableId focused = backbone::get_focused_element();
+    if (focused == kShopShellClose) {
+        close_modal();
+        return true;
+    }
+    if (focused == kShopLeaderboardIcon) {
+        swap_to_leaderboard();
+        return true;
+    }
+    const std::optional<audio::MusicTrackId> track = shop_track_for_focus_id(focused);
+    if (!track.has_value()) {
+        return false;
+    }
+    const ShopSnapshot snap = runtime.shop.snapshot ? runtime.shop.snapshot() : ShopSnapshot{};
+    const ShopRowView& row = snap.rows[static_cast<std::size_t>(*track)];
+    const ShopButtonKind kind = shop_button_kind(row, runtime.shop_armed_buy == *track);
+    apply_shop_button(runtime, *track, kind);
+    return true;
 }
 
 void render_shop_view(ModalRuntime& runtime) {

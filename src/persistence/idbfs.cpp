@@ -337,11 +337,18 @@ void IdbfsStore::save_state(const AppState& state) {
 }
 
 void IdbfsStore::adopt_server_state(const AppState& server_state) {
-    // Server is the source of truth for everything except the local
-    // authenticated identity, which is pinned by the live Auth0 session.
-    const AccountState local_account = state_.account;
+    // Server is the source of truth for everything except the local authenticated
+    // identity (is_authenticated, auth0_user_id, email), which is pinned by the live
+    // Auth0 session. The display_name is the EXCEPTION to that pin: it is the user's
+    // chosen username, owned by the server (the public leaderboard identity). The live
+    // session's "name" claim is the email, so adopting it would leak the email onto the
+    // board; instead take the server's display_name when present.
+    AccountState account = state_.account;
+    if (!server_state.account.display_name.empty()) {
+        account.display_name = server_state.account.display_name;
+    }
     state_ = server_state;
-    state_.account = local_account;
+    state_.account = account;
     state_.schema_version = kCurrentSchemaVersion;
     persist();
 }

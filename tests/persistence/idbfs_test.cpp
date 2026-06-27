@@ -59,29 +59,50 @@ TEST(Idbfs, LoadFallsBackToFreshOnCorruptBlob) {
     EXPECT_TRUE(pt::test::app_states_equal(loaded, pt::AppState{}));
 }
 
-TEST(Idbfs, AdoptServerStatePreservesLocalAccountIdentity) {
+TEST(Idbfs, AdoptServerStatePinsLocalIdentityButTakesServerDisplayName) {
     pt::test::MemoryStorage storage;
     pt::IdbfsStore store(storage);
 
-    // Local identity: authenticated as sub "local|me".
+    // Local identity from the live Auth0 session: the "name" claim defaults to the email
+    // for a brand-new DB user, so display_name here is the email — which must NOT win.
     pt::AccountState identity{};
     identity.is_authenticated = true;
     identity.auth0_user_id = "local|me";
-    identity.display_name = "Me";
+    identity.display_name = "me@example.com";
     identity.email = "me@example.com";
     store.update_account(identity);
 
-    // Server's authoritative wallet differs, and its blob carries a *different*
-    // account that must NOT override the live local identity.
+    // Server's authoritative state: a different wallet and sub (the sub/email stay local),
+    // and the chosen username in display_name — which MUST win (it's the leaderboard id).
     pt::AppState server_state = pt::test::make_populated_state();
     server_state.tomatoes.spendable = 999;
     server_state.account.auth0_user_id = "server|other";
+    server_state.account.display_name = "RyanTheGrinder";
     store.adopt_server_state(server_state);
 
     EXPECT_EQ(store.state().tomatoes.spendable, 999u);
-    EXPECT_EQ(store.state().account.auth0_user_id, "local|me");
-    EXPECT_EQ(store.state().account.display_name, "Me");
+    EXPECT_EQ(store.state().account.auth0_user_id, "local|me");      // session-pinned
+    EXPECT_EQ(store.state().account.email, "me@example.com");        // session-pinned
+    EXPECT_EQ(store.state().account.display_name, "RyanTheGrinder");  // server-owned username
     EXPECT_EQ(store.state().schema_version, pt::kCurrentSchemaVersion);
+}
+
+TEST(Idbfs, AdoptServerStateKeepsLocalDisplayNameWhenServerEmpty) {
+    pt::test::MemoryStorage storage;
+    pt::IdbfsStore store(storage);
+
+    pt::AccountState identity{};
+    identity.is_authenticated = true;
+    identity.auth0_user_id = "local|me";
+    identity.display_name = "LocalName";
+    store.update_account(identity);
+
+    // A server row with no display_name must not blank out the live local name.
+    pt::AppState server_state = pt::test::make_populated_state();
+    server_state.account.display_name.clear();
+    store.adopt_server_state(server_state);
+
+    EXPECT_EQ(store.state().account.display_name, "LocalName");
 }
 
 TEST(Idbfs, WipeClearsStorageAndResetsToGuest) {

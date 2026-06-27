@@ -42,14 +42,45 @@ TEST(ApplyPassAward, AccumulatesAcrossPasses) {
     EXPECT_EQ(s.tomatoes.lifetime, 30u * pt::kTomatoesPerPass);
 }
 
+// ----- Track pricing (position-based: free / 5 / 10 per genre) -----
+
+TEST(TrackPrice, StarterIsFree) {
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::LoungeJazz_Starter), 0u);
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::Classical_Starter), 0u);
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::BossaNova_Starter), 0u);
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::Ambient_Starter), 0u);
+}
+
+TEST(TrackPrice, SecondTrackOfEachGenreIsFive) {
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::LoungeJazz_Track2), 5u);
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::Classical_Track2), 5u);
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::BossaNova_Track2), 5u);
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::Ambient_Track2), 5u);
+}
+
+TEST(TrackPrice, ThirdTrackOfEachGenreIsTen) {
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::LoungeJazz_Track3), 10u);
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::Classical_Track3), 10u);
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::BossaNova_Track3), 10u);
+    EXPECT_EQ(pt::track_price(audio::MusicTrackId::Ambient_Track3), 10u);
+}
+
+TEST(TrackPrice, PaidCatalogTotalsSixty) {
+    std::uint64_t total = 0;
+    for (std::size_t i = 0; i < audio::kMusicTrackCount; ++i) {
+        total += pt::track_price(static_cast<audio::MusicTrackId>(i));
+    }
+    EXPECT_EQ(total, 60u);  // 4 genres x (5 + 10)
+}
+
 // ----- Affordability -----
 
 TEST(CanAfford, ExactBalanceIsAffordable) {
-    EXPECT_TRUE(pt::can_afford(pt::TomatoesState{25, 0}, 25));
+    EXPECT_TRUE(pt::can_afford(pt::TomatoesState{10, 0}, 10));
 }
 
 TEST(CanAfford, OneShortIsNotAffordable) {
-    EXPECT_FALSE(pt::can_afford(pt::TomatoesState{24, 0}, 25));
+    EXPECT_FALSE(pt::can_afford(pt::TomatoesState{9, 0}, 10));
 }
 
 TEST(CanAfford, FreeIsAlwaysAffordable) {
@@ -76,8 +107,9 @@ TEST(IsTrackOwned, PaidTrackNotOwnedUntilUnlocked) {
 TEST(PurchaseTrack, CommitsDecrementsSpendableAndUnlocks) {
     pt::AppState s{};
     s.tomatoes = pt::TomatoesState{25, 100};
+    // Classical_Track2 is the genre's second track (price 5): 25 - 5 = 20 spendable.
     EXPECT_TRUE(pt::purchase_track(s, audio::MusicTrackId::Classical_Track2));
-    EXPECT_EQ(s.tomatoes.spendable, 0u);
+    EXPECT_EQ(s.tomatoes.spendable, 20u);
     EXPECT_EQ(s.tomatoes.lifetime, 100u);  // spending never reduces the leaderboard metric
     EXPECT_TRUE(pt::is_track_owned(s.music_library, audio::MusicTrackId::Classical_Track2));
     // A freshly bought track is Owned-not-in-shuffle (not yet in rotation).
@@ -86,9 +118,9 @@ TEST(PurchaseTrack, CommitsDecrementsSpendableAndUnlocks) {
 
 TEST(PurchaseTrack, InsufficientFundsLeavesStateUnchanged) {
     pt::AppState s{};
-    s.tomatoes = pt::TomatoesState{24, 24};  // one short of the 25-tomato price
+    s.tomatoes = pt::TomatoesState{9, 9};  // one short of the 10-tomato third-track price
     EXPECT_FALSE(pt::purchase_track(s, audio::MusicTrackId::BossaNova_Track3));
-    EXPECT_EQ(s.tomatoes.spendable, 24u);
+    EXPECT_EQ(s.tomatoes.spendable, 9u);
     EXPECT_TRUE(s.music_library.unlocked_track_ids.empty());
 }
 

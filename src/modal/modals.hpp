@@ -23,11 +23,9 @@
 #include <utility>
 #include <vector>
 
-struct ImDrawList;
+#include "bridge/focus_registry.hpp"
 
-namespace poker_trainer::bridge {
-class FocusRegistry;
-}
+struct ImDrawList;
 
 // Zone 11 — Modal Infrastructure + Persistent Cluster: the public interface.
 //
@@ -63,6 +61,39 @@ inline constexpr backbone::FocusableId kShopShellClose =
 // are Zone 12 focusables).
 inline constexpr backbone::FocusableId kAuthShellClose =
     backbone::make_focusable_id("auth.close");
+
+// ----- Shop traversal focusables -----
+// The Leaderboard-swap icon (first stop) and the X close (kShopShellClose, last stop); the
+// per-track row buttons sit between them, their ids derived from the track index in
+// shop_view (shop_row_focus_id). The greyed insufficient-funds rows are not focus stops.
+inline constexpr backbone::FocusableId kShopLeaderboardIcon =
+    backbone::make_focusable_id("shop.leaderboard_icon");
+
+// ----- Leaderboard traversal focusables (5 stops, fixed order) -----
+inline constexpr backbone::FocusableId kLeaderboardShopIcon =
+    backbone::make_focusable_id("leaderboard.shop_icon");
+inline constexpr backbone::FocusableId kLeaderboardSearch =
+    backbone::make_focusable_id("leaderboard.search");
+inline constexpr backbone::FocusableId kLeaderboardList =
+    backbone::make_focusable_id("leaderboard.list");
+inline constexpr backbone::FocusableId kLeaderboardYourRow =
+    backbone::make_focusable_id("leaderboard.your_row");
+inline constexpr backbone::FocusableId kLeaderboardClose =
+    backbone::make_focusable_id("leaderboard.close");
+
+// Rolling window (ms) within which successive digit keystrokes on the leaderboard list
+// stop APPEND to one rank number; after this long without a digit the buffer clears and
+// the next digit starts a fresh number.
+inline constexpr std::uint64_t kRankJumpWindowMs = 3000;
+
+// Digit-accumulation state for the list-stop "jump to rank" navigation. `active` false
+// means no sequence is in progress (the next digit starts fresh). The pure operators on
+// this buffer live in leaderboard_view (rank_jump_digit / rank_jump_arrow).
+struct RankJumpBuffer {
+    std::int64_t value{-1};    // raw rank number typed so far (-1 when inactive)
+    std::uint64_t last_ms{0};  // timestamp of the last accepted digit
+    bool active{false};
+};
 
 // ----- Persistent cluster -----
 enum class ClusterIcon : std::uint8_t { Shop, Help, Settings, Home, Close };
@@ -162,16 +193,28 @@ struct LeaderboardController {
     std::function<LeaderboardSelf()> self{};             // your-rank row content
     std::function<void()> open_sign_in{};                // guest row link
     std::function<void()> open_sign_up{};                // guest row link
-    std::function<void()> open_settings_tomatoes{};      // opted-out "opt in" link
+    std::function<void()> enable_opt_in{};               // opted-out "opt in" link: flips
+                                                         // the persisted+synced opt-in on
+                                                         // in place (no nav to Settings)
     [[nodiscard]] bool wired() const noexcept { return static_cast<bool>(fetch); }
 };
 
+// Which option in the leaderboard guest-row grouped stop is arrow-highlighted (Category A
+// positional toggle). None = no highlight; Enter/Space defaults to Sign in. SignIn/SignUp =
+// the respective link is highlighted; Enter/Space opens it.
+enum class GuestRowHighlight : std::uint8_t { None, SignIn, SignUp };
+
 // ----- App-root Z11 runtime (owned by Z05 boot; CLAUDE.md sec.10) -----
 struct ModalRuntime {
-    // Shared focus/input reconciliation registry (off BridgeRuntime). Used only by
-    // text-field modals (the leaderboard search); Help / confirm / shells have no
-    // text fields and never touch it.
+    // Focus/input reconciliation registry for the one text-field modal (the leaderboard
+    // search). install_modals points this at own_registry below — NOT the shared app-root
+    // registry, which Z09's Game-screen math inputs use: sharing it would clobber that
+    // reconcile (see the shared-focus-registry lesson). Help / confirm / shop shells have
+    // no text fields and never touch it.
     bridge::FocusRegistry* focus_registry{nullptr};
+    // Backing store for focus_registry, owned by this runtime (clobber-safe, mirrors the
+    // auth modal's AccountModalState::own_registry).
+    bridge::FocusRegistry own_registry{};
 
     BannerState banner{};
 
@@ -205,9 +248,24 @@ struct ModalRuntime {
     // it opened (so the blocking fetch runs once per open / Retry, not every frame).
     LeaderboardData leaderboard_data{};
     bool leaderboard_loaded{false};
-    // Row rank to highlight after an Enter-jump (-1 = none). The Enter handler clears
-    // the live filter and scrolls/highlights the highest-ranked match.
+    // The single highlighted-player cursor shared by both jump mechanisms — the search
+    // jump-by-name (Enter / click a result) and the list-stop jump-by-rank (digits /
+    // arrows). -1 = none. The highlighted row is tinted and scrolled into view.
     std::int64_t leaderboard_highlight_rank{-1};
+    // Rolling digit buffer for the list stop's jump-by-rank (reset on open, on an arrow,
+    // and on a name jump).
+    RankJumpBuffer leaderboard_rank_buffer{};
+    // The element ImGui's keyboard focus was last reconciled to (search-field text-capture
+    // sync); reset to kNoFocus on open. Mirrors AccountModalState::last_synced_focus.
+    backbone::FocusableId leaderboard_last_synced{backbone::kNoFocus};
+    // Set when navigation moves the highlight (digit / arrow / Enter / click); the list
+    // render scrolls the highlighted row into view once, then clears it, so the user can
+    // still scroll the list manually between jumps.
+    bool leaderboard_scroll_to_highlight{false};
+
+    // Arrow highlight for the leaderboard guest-row grouped stop (Category A positional
+    // toggle). Reset on open; set by Left/Right/digit keys while the stop is focused.
+    GuestRowHighlight guest_row_highlight{GuestRowHighlight::None};
 
     // Content providers registered by consumer zones (Zone 12 Settings). Searched on
     // open/close/render/key by id. Empty until a zone registers one.

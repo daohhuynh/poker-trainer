@@ -202,6 +202,22 @@ TEST(SupabaseTranslate, ParseFetchResponseFoundRoundTrips) {
     EXPECT_TRUE(pt::test::app_states_equal(result.state, server_state));
 }
 
+TEST(SupabaseTranslate, ParseFetchResponseRehydratesDisplayNameFromColumn) {
+    // The denormalized display_name column is authoritative for the leaderboard identity:
+    // it overrides whatever the blob carried, so a sign-in recovers the chosen username
+    // (never the id_token email). Here the blob says "StaleInBlob" but the column wins.
+    pt::AppState server_state = pt::test::make_populated_state();
+    server_state.account.display_name = "StaleInBlob";
+    const std::string blob_b64 =
+        pt::base64_encode(pt::serialize_app_state(server_state));
+    const std::string response =
+        "[{\"state_blob\":\"" + blob_b64 + "\",\"display_name\":\"RealUsername\"}]";
+
+    const pt::FetchResult result = pt::parse_fetch_response(200, response);
+    EXPECT_EQ(result.outcome, pt::FetchOutcome::Found);
+    EXPECT_EQ(result.state.account.display_name, "RealUsername");
+}
+
 TEST(SupabaseTranslate, ParseFetchResponseEmptyArrayIsNotFound) {
     const pt::FetchResult result = pt::parse_fetch_response(200, "[]");
     EXPECT_EQ(result.outcome, pt::FetchOutcome::NotFound);

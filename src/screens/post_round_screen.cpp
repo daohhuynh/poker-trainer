@@ -550,10 +550,10 @@ bool on_tab_nav_key(PostRoundRuntime& runtime, const backbone::KeyEvent& e) {
     }
     int idx = static_cast<int>(runtime.active_tab);
     const int count = static_cast<int>(render::kRecapTabCount);
-    if (e.code == backbone::KeyCode::ArrowLeft) {
-        idx = (idx - 1 + count) % count;
-    } else if (e.code == backbone::KeyCode::ArrowRight) {
-        idx = (idx + 1) % count;
+    if (e.code == backbone::KeyCode::ArrowLeft || e.code == backbone::KeyCode::ArrowUp) {
+        idx = std::max(0, idx - 1);  // clamp: left/up of first stays on first (no wrap)
+    } else if (e.code == backbone::KeyCode::ArrowRight || e.code == backbone::KeyCode::ArrowDown) {
+        idx = std::min(count - 1, idx + 1);  // clamp: right/down of last stays on last (no wrap)
     } else {
         // Keys 1-5 select a tab directly (1 = Tier 1 ... 5 = Summary).
         const int digit = static_cast<int>(e.code) - static_cast<int>(backbone::KeyCode::Digit1);

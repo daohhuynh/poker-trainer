@@ -2,7 +2,14 @@
 
 #include "modal/modals.hpp"
 
+#include "backbone/event_router.hpp"
+#include "backbone/focus_manager.hpp"
+
+#include "audio/audio_paths.hpp"
+
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 // Zone 11 — Module 7 Shop content, rendered inside the cluster-modal frame
 // (ARCHITECTURE Module 7 "The Shop UI"). Fixed size, no scroll: all 12 tracks render at
@@ -28,5 +35,26 @@ enum class ShopButtonKind : std::uint8_t { Buy, Confirm, Add, Remove, BuyDisable
 // Render the Shop content into the open cluster-modal frame. Dispatched from
 // render_shop_shell when a ShopController is wired (else the placeholder shell renders).
 void render_shop_view(ModalRuntime& runtime);
+
+// ----- Keyboard focus traversal (Leaderboard icon -> interactive rows -> X close) -----
+
+// The focusable id for a track row's action button (stable, derived from the track index).
+[[nodiscard]] backbone::FocusableId shop_row_focus_id(audio::MusicTrackId track) noexcept;
+
+// The track whose row owns `id`, or nullopt when `id` is not a row id.
+[[nodiscard]] std::optional<audio::MusicTrackId> shop_track_for_focus_id(
+    backbone::FocusableId id) noexcept;
+
+// Pure: the Shop focus order for a snapshot — the Leaderboard-swap icon, then each
+// interactive row's action button TOP TO BOTTOM (insufficient-funds BuyDisabled rows are
+// skipped, not focus stops), then the X close. Used to push the modal's focus context on
+// open and to rebuild it after a purchase changes affordability.
+[[nodiscard]] std::vector<backbone::FocusableId> shop_focus_list(const ShopSnapshot& snap);
+
+// ModalLayer Space/Enter dispatch for the Shop modal: activates the focused control
+// (Leaderboard icon -> swap, a row -> its Buy/Confirm/Add/Remove action, X -> close).
+// Returns true when the key was consumed; false (e.g. Tab) falls through to the backbone
+// focus-nav handler that cycles the trapped context.
+[[nodiscard]] bool shop_dispatch_key(ModalRuntime& runtime, const backbone::KeyEvent& e);
 
 }  // namespace poker_trainer::modal

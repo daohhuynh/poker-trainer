@@ -3,6 +3,7 @@
 #include "audio/audio_paths.hpp"
 #include "persistence/persistence_schema.hpp"
 
+#include <array>
 #include <cstdint>
 
 // Module 7 — the tomato economy core (pure logic over the persisted wallet + music
@@ -32,6 +33,18 @@ inline constexpr std::uint64_t kTomatoesPerPass = 1;
 // Apply one scenario-pass award (kTomatoesPerPass) to `state` in place. Called from the
 // grading-complete hook only on a passing verdict.
 void apply_pass_award(AppState& state) noexcept;
+
+// Position-based Shop track prices — the single retune point for the catalog. Within each
+// genre the three consecutive tracks are the free starter (position 0) and the two paid
+// unlocks (positions 1 and 2). The sealed catalog field MusicTrackInfo::price_tomatoes is a
+// frozen Phase-0 contract and is NOT the live price; this table supersedes it. Paid catalog
+// total: 4 genres x (5 + 10) = 60 tomatoes. Change these three values to retune pricing.
+inline constexpr std::array<std::uint32_t, 3> kTrackPriceByGenrePosition{0u, 5u, 10u};
+
+// The live Shop price of `track`, derived from its position within its genre (the starter,
+// position 0, is free). This — not the sealed price_tomatoes field — is the source of truth
+// for the Shop snapshot and purchase_track.
+[[nodiscard]] std::uint32_t track_price(audio::MusicTrackId track) noexcept;
 
 // True when the spendable balance covers `price` (price 0 — the starter tracks — is
 // always affordable).
