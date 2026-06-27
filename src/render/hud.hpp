@@ -31,6 +31,14 @@ float draw_pot_size(ImDrawList* dl, float x, float y, const engine::ScenarioStat
 float draw_blinds(ImDrawList* dl, float x, float y, const engine::ScenarioState& scenario,
                   bool cash_mode, bool show_hud);
 
+// Draw the "To Call: $X" line left-aligned at (x, y) in the top-left info stack,
+// directly below the blinds. Caller scenarios only (Aggressor faces no bet) and
+// only when show_hud. Reads scenario.faced_bet — the same value the floating call
+// number by the pushed chips shows — so the two can never disagree. Returns the
+// line height advanced (even when nothing is drawn, for stable stacking).
+float draw_to_call(ImDrawList* dl, float x, float y, const engine::ScenarioState& scenario,
+                   bool cash_mode, bool show_hud);
+
 // Draw the Caller floating bet amount centered at (anchor_x, anchor_y), adjacent
 // to the pushed bet chips (only when show_hud). The chips themselves are drawn by
 // the chip layer and stay visible regardless.

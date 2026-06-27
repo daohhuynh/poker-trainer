@@ -58,24 +58,29 @@ namespace poker_trainer::persistence {
 
 // Build the JSON object body for an account-state upsert. Exactly the columns the
 // account_state row carries: the Auth0 sub (RLS key), the base64 state blob, the
-// denormalized lifetime-tomatoes (the leaderboard metric), and the display name.
+// denormalized lifetime-tomatoes (the leaderboard metric), the display name, and the
+// denormalized leaderboard opt-in flag (the queryable column the leaderboard RPC
+// filters on; the flag itself lives in the opaque settings blob, so it is denormalized
+// out here by the caller, which reads it live — see push / upload_initial).
 [[nodiscard]] std::string build_account_upsert_body(
     std::string_view auth0_sub, std::string_view state_blob_b64,
-    std::uint64_t lifetime, std::string_view display_name);
+    std::uint64_t lifetime, std::string_view display_name, bool opted_in);
 
 // Build the upsert body for a full state push: the newest snapshot serialized +
-// base64'd into state_blob, with lifetime + display name denormalized out of it.
+// base64'd into state_blob, with lifetime + display name + opt-in denormalized out.
+// opted_in is supplied by the caller (read live off the session) since it is not a
+// field on AppState.
 [[nodiscard]] std::string build_push_body(std::string_view auth0_sub,
-                                          const AppState& state);
+                                          const AppState& state, bool opted_in);
 
 // Build the upsert body for the guest->account seed. Exactly the three migration
 // fields become a minimal AppState (spendable / lifetime / unlocked tracks; every
-// other field default), serialized into state_blob. The display name is not part
-// of the migration payload, so it is supplied by the caller (read from the live
-// Auth0 session).
+// other field default), serialized into state_blob. The display name and opt-in flag
+// are not part of the migration payload, so they are supplied by the caller (read from
+// the live Auth0 session / settings).
 [[nodiscard]] std::string build_initial_body(
     std::string_view auth0_sub, const AccountMigrationState& initial,
-    std::string_view display_name);
+    std::string_view display_name, bool opted_in);
 
 // --- Response translation (pure) ---
 
@@ -103,6 +108,15 @@ namespace poker_trainer::persistence {
 [[nodiscard]] FetchResult parse_fetch_response(int http_status,
                                                std::string_view response_body);
 
+// Parse the leaderboard_top_100() RPC response into ranked entries. The body is a
+// PostgREST JSON array of {rank, display_name, lifetime_tomatoes} objects, ordered by
+// rank. Non-2xx -> not ok (the UI shows the error/Retry state); 2xx -> ok with one
+// entry per well-formed object (objects missing a required field are skipped). Pure
+// and native-testable (the leaderboard fetch/parse is the tested boundary; the HTTP
+// round-trip is browser-verified).
+[[nodiscard]] LeaderboardFetchResult parse_leaderboard_response(
+    int http_status, std::string_view response_body);
+
 #ifdef __EMSCRIPTEN__
 
 // Production Supabase backend. Constructed once at boot. Holds no per-call state:
@@ -123,6 +137,10 @@ public:
 
     [[nodiscard]] bool delete_account_state(
         std::string_view auth0_user_id) override;
+
+    [[nodiscard]] LeaderboardFetchResult fetch_leaderboard() override;
+
+    [[nodiscard]] bool delete_auth0_user() override;
 };
 
 #endif  // __EMSCRIPTEN__

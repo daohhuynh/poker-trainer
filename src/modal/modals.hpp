@@ -9,6 +9,8 @@
 
 #include "assets/asset_paths.hpp"
 
+#include "audio/audio_paths.hpp"
+
 #include "animations/button_morph.hpp"
 
 #include <array>
@@ -104,6 +106,66 @@ struct ModalContentProvider {
     std::function<void()> on_close{};
 };
 
+// ----- Module 7 Shop seam (additive; dependency-inverted like ModalContentProvider) -----
+//
+// The Shop body (Zone 11) renders from a boot-computed snapshot and drives mutations
+// through injected callbacks. Z11 holds only the Phase-0 audio track types + plain data;
+// the wallet mutation (Zone 04) + audio shuffle-pool changes (Zone 03) + persistence are
+// wired at boot, where that cross-zone composition is legal. Empty until boot wires it.
+
+// Per-track render state for one Shop row, computed each frame from the live wallet +
+// music library. Drives the three-state button (Buy / Add / Remove) and the price/dot.
+struct ShopRowView {
+    audio::MusicTrackId track{};
+    bool owned{false};       // starter or purchased
+    bool in_pool{false};     // currently in its genre's shuffle rotation (the dot)
+    bool affordable{false};  // spendable >= price (meaningful only when !owned)
+    std::uint32_t price{0};  // tomato price (0 for starters / owned)
+};
+
+struct ShopSnapshot {
+    std::uint64_t spendable{0};
+    std::array<ShopRowView, audio::kMusicTrackCount> rows{};
+};
+
+struct ShopController {
+    std::function<ShopSnapshot()> snapshot{};             // live read each frame
+    std::function<void(audio::MusicTrackId)> on_buy{};    // commit a purchase (+ persist)
+    std::function<void(audio::MusicTrackId)> on_add{};    // add to rotation (+ audio + persist)
+    std::function<void(audio::MusicTrackId)> on_remove{}; // remove from rotation (+ audio + persist)
+    [[nodiscard]] bool wired() const noexcept { return static_cast<bool>(snapshot); }
+};
+
+// ----- Leaderboard seam (additive) -----
+struct LeaderboardRow {
+    std::uint32_t rank{0};
+    std::string name;
+    std::uint64_t lifetime{0};
+};
+
+// One leaderboard fetch outcome (cached on open / Retry, not refetched per frame).
+struct LeaderboardData {
+    bool ok{false};  // false => fetch failed (error + Retry state)
+    std::vector<LeaderboardRow> rows;
+};
+
+// Account state for the persistent "your rank" bottom row.
+enum class LeaderboardSelfState : std::uint8_t { Guest, OptedIn, OptedOut };
+struct LeaderboardSelf {
+    LeaderboardSelfState state{LeaderboardSelfState::Guest};
+    std::string name;          // logged-in display name (empty for guests)
+    std::uint64_t lifetime{0};  // logged-in Lifetime Tomatoes
+};
+
+struct LeaderboardController {
+    std::function<LeaderboardData()> fetch{};            // hit the server (blocking)
+    std::function<LeaderboardSelf()> self{};             // your-rank row content
+    std::function<void()> open_sign_in{};                // guest row link
+    std::function<void()> open_sign_up{};                // guest row link
+    std::function<void()> open_settings_tomatoes{};      // opted-out "opt in" link
+    [[nodiscard]] bool wired() const noexcept { return static_cast<bool>(fetch); }
+};
+
 // ----- App-root Z11 runtime (owned by Z05 boot; CLAUDE.md sec.10) -----
 struct ModalRuntime {
     // Shared focus/input reconciliation registry (off BridgeRuntime). Used only by
@@ -126,8 +188,26 @@ struct ModalRuntime {
     // suppresses the click that opened the modal from immediately dismissing it.
     bool modal_just_opened{false};
 
-    // Leaderboard search buffer (thin shell; data is a server-side seam).
+    // Leaderboard search buffer (live case-insensitive substring filter).
     std::string leaderboard_search{};
+
+    // Module 7 Shop controller (snapshot + buy/add/remove), wired at boot. Empty in
+    // a build without the Module 7 wiring — render_shop_shell then falls back to the
+    // placeholder seam shell.
+    ShopController shop{};
+    // The track whose Buy button is armed ("CONFIRM"); a second click on the same row
+    // commits. Cleared on commit, on any other Buy arming, and on modal close.
+    std::optional<audio::MusicTrackId> shop_armed_buy{};
+
+    // Leaderboard controller (fetch + your-rank + guest/opt-out links), wired at boot.
+    LeaderboardController leaderboard{};
+    // Cached fetch for the open leaderboard view + whether a fetch has completed since
+    // it opened (so the blocking fetch runs once per open / Retry, not every frame).
+    LeaderboardData leaderboard_data{};
+    bool leaderboard_loaded{false};
+    // Row rank to highlight after an Enter-jump (-1 = none). The Enter handler clears
+    // the live filter and scrolls/highlights the highest-ranked match.
+    std::int64_t leaderboard_highlight_rank{-1};
 
     // Content providers registered by consumer zones (Zone 12 Settings). Searched on
     // open/close/render/key by id. Empty until a zone registers one.
@@ -150,6 +230,17 @@ void open_help_modal();
 void open_settings_modal();
 void open_shop_modal();
 void open_leave_drill_confirm();
+
+// Open the Leaderboard view fresh (resets the cached fetch, the search buffer, and the
+// Enter-jump highlight so each open re-fetches and starts unfiltered).
+void open_leaderboard_modal();
+
+// In-place content swap between the Shop and Leaderboard views (same modal frame, per
+// the Module 7 modal-swap): close the current cluster modal then open the target. The
+// modal-depth pollers (Z03 swoosh / Z10 pause) sample once per frame, so the
+// within-frame close+open nets to no depth edge.
+void swap_to_leaderboard();
+void swap_to_shop();
 
 // Generic confirmation opener (foreshadowed by confirm_modal.hpp): sets the active
 // confirm spec (body + Yes action) and opens the shared confirmation modal. Used by

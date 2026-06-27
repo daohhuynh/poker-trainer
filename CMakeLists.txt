@@ -145,6 +145,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/persistence/auth.cpp
         src/persistence/auth0_backend.cpp
         src/persistence/supabase_backend.cpp
+        src/persistence/economy.cpp
         src/persistence/persistence_service.cpp
     )
     target_include_directories(persistence PUBLIC ${CMAKE_SOURCE_DIR}/src)
@@ -359,6 +360,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/modal/help_modal.cpp
         src/modal/outage_banner.cpp
         src/modal/leaderboard_view.cpp
+        src/modal/shop_view.cpp
         src/modal/auth_modals.cpp
     )
     target_include_directories(modal PUBLIC ${CMAKE_SOURCE_DIR}/src)
@@ -599,6 +601,7 @@ if(ENABLE_TESTS)
         tests/persistence/auth_test.cpp
         tests/persistence/auth0_backend_test.cpp
         tests/persistence/supabase_backend_test.cpp
+        tests/persistence/economy_test.cpp
         tests/persistence/credentials_test.cpp
     )
     target_include_directories(persistence_test PRIVATE
@@ -817,6 +820,7 @@ if(ENABLE_TESTS)
         tests/modal/outage_banner_test.cpp
         tests/modal/confirm_modal_test.cpp
         tests/modal/leaderboard_view_test.cpp
+        tests/modal/shop_view_test.cpp
         tests/modal/offline_indicator_test.cpp
     )
     target_include_directories(modal_test PRIVATE

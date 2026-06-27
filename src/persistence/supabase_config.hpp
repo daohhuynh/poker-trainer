@@ -50,4 +50,19 @@ inline constexpr std::string_view kSupabaseAccountUpsertQuery =
 inline constexpr std::string_view kSupabaseAccountSelectColumns =
     "?select=state_blob&auth0_sub=eq.";
 
+// PostgREST RPC for the global leaderboard. POST <kSupabaseUrl> + this returns the
+// top 100 accounts (rank, display_name, lifetime_tomatoes) ordered by Lifetime
+// Tomatoes. Any authenticated caller may read the public board (it filters to
+// opted-in accounts server-side — see the deployment report's SQL).
+inline constexpr std::string_view kSupabaseLeaderboardRpcPath =
+    "/rest/v1/rpc/leaderboard_top_100";
+
+// Supabase Edge Function that deletes the caller's Auth0 user record. It holds the
+// Auth0 Management API credentials a SPA must not embed. POST
+// <kSupabaseUrl> + kSupabaseFunctionsPrefix + kSupabaseDeleteAuth0UserFn with the
+// Auth0 id_token as the bearer; the function verifies the token and derives the `sub`
+// itself, so the client sends no privileged data (just the bearer + an empty body).
+inline constexpr std::string_view kSupabaseFunctionsPrefix = "/functions/v1/";
+inline constexpr std::string_view kSupabaseDeleteAuth0UserFn = "delete-auth0-user";
+
 }  // namespace poker_trainer::persistence

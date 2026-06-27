@@ -33,10 +33,20 @@ inline constexpr float kClusterModalHeightFrac = 0.7f;
 [[nodiscard]] bool modal_begin_centered(const char* imgui_id, float w_frac, float h_frac);
 void modal_end();
 
+// Screen-space anchor returned by modal_draw_pill_header so a caller can lay out
+// inline trailing content (e.g. the Leaderboard's "refreshes daily" annotation) just
+// to the RIGHT of the pill without re-deriving the pill geometry. Two plain floats so
+// this header stays free of an ImGui (ImVec2) dependency.
+struct PillHeaderAnchor {
+    float trailing_x{0.0f};  // screen x just right of the pill, with a small gap
+    float text_y{0.0f};      // screen y of the pill's text top (align trailing text here)
+};
+
 // Top-left icon-plus-name pill header (Settings / Help / Shop). The icon glyph
 // (text_primary) sits to the LEFT of a rounded pill (bg_button_default fill) holding
-// the name in text_primary. Advances the ImGui cursor below the header.
-void modal_draw_pill_header(assets::AssetId icon, const char* name);
+// the name in text_primary. Advances the ImGui cursor below the header. Returns the
+// anchor for inline trailing text to the right of the pill; most callers ignore it.
+PillHeaderAnchor modal_draw_pill_header(assets::AssetId icon, const char* name);
 
 // The modal's own X close button (top-right of the modal, distinct from the cluster
 // X). `close_focus` is the focusable id of the X for this modal (focus ring). True

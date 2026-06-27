@@ -5,6 +5,7 @@
 #include "modal/help_modal.hpp"
 #include "modal/modals.hpp"
 #include "modal/outage_banner.hpp"
+#include "modal/shop_view.hpp"
 
 #include "backbone/animation_clock.hpp"
 #include "backbone/event_router.hpp"
@@ -176,7 +177,38 @@ void close_modal() {
 
 void open_help_modal() { open_modal(kHelpModalId); }
 void open_settings_modal() { open_modal(kSettingsModalId); }
-void open_shop_modal() { open_modal(kShopModalId); }
+
+void open_shop_modal() {
+    if (g_runtime != nullptr) {
+        g_runtime->shop_armed_buy.reset();  // every fresh open starts disarmed
+    }
+    open_modal(kShopModalId);
+}
+
+void open_leaderboard_modal() {
+    if (g_runtime != nullptr) {
+        g_runtime->leaderboard_loaded = false;   // re-fetch on each open
+        g_runtime->leaderboard_search.clear();   // start unfiltered
+        g_runtime->leaderboard_highlight_rank = -1;
+    }
+    open_modal(kLeaderboardModalId);
+}
+
+void swap_to_leaderboard() {
+    if (g_runtime == nullptr) {
+        return;
+    }
+    close_modal();             // close the Shop (pops its focus context)
+    open_leaderboard_modal();  // open the Leaderboard fresh in the same frame
+}
+
+void swap_to_shop() {
+    if (g_runtime == nullptr) {
+        return;
+    }
+    close_modal();      // close the Leaderboard
+    open_shop_modal();  // back to the Shop (clears any armed Buy)
+}
 
 void open_confirm_modal(ConfirmSpec spec) {
     if (g_runtime == nullptr) {
@@ -224,7 +256,7 @@ bool modal_begin_centered(const char* imgui_id, float w_frac, float h_frac) {
 
 void modal_end() { ImGui::End(); }
 
-void modal_draw_pill_header(assets::AssetId icon, const char* name) {
+PillHeaderAnchor modal_draw_pill_header(assets::AssetId icon, const char* name) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 p = ImGui::GetCursorScreenPos();
     const float h = ImGui::GetTextLineHeight() * 1.4f;
@@ -239,11 +271,12 @@ void modal_draw_pill_header(assets::AssetId icon, const char* name) {
     const ImVec2 ts = ImGui::CalcTextSize(name);
     const ImVec2 pill_min{icon_max.x + pad * 0.5f, p.y};
     const ImVec2 pill_max{pill_min.x + ts.x + pad * 2.0f, p.y + h};
+    const float text_top = p.y + (h - ts.y) * 0.5f;
     dl->AddRectFilled(pill_min, pill_max, token_u32(theme::ColorToken::ButtonBg), h * 0.5f);
-    dl->AddText(ImVec2{pill_min.x + pad, p.y + (h - ts.y) * 0.5f},
-                token_u32(theme::ColorToken::TextPrimary), name);
+    dl->AddText(ImVec2{pill_min.x + pad, text_top}, token_u32(theme::ColorToken::TextPrimary), name);
 
     ImGui::Dummy(ImVec2{0.0f, h + ImGui::GetStyle().ItemSpacing.y});
+    return PillHeaderAnchor{pill_max.x + pad, text_top};
 }
 
 bool modal_draw_x_close(backbone::FocusableId close_focus) {
@@ -368,6 +401,12 @@ void render_settings_shell() {
 }
 
 void render_shop_shell() {
+    // Module 7 fills the body via the wired Shop controller; until boot wires one (or in
+    // a build without the Module 7 wiring) the placeholder seam shell renders.
+    if (g_runtime != nullptr && g_runtime->shop.wired()) {
+        render_shop_view(*g_runtime);
+        return;
+    }
     render_seam_shell("##shop_modal", assets::AssetId::IconShop, "Shop", kShopShellClose,
                       "Shop track-purchase content is Module 7 (unbuilt). This shell provides the "
                       "modal frame, header, and close behavior. The Leaderboard view also lives in "
@@ -433,6 +472,13 @@ bool on_modal_key(const backbone::KeyEvent& e) {
     // without a provider keep the legacy Space/Enter activation below, unchanged.
     if (const ModalContentProvider* p = modal_content_for(*id); p != nullptr) {
         return p->dispatch ? p->dispatch(e) : false;
+    }
+    // A non-provider modal with an active ImGui text field (the leaderboard search) lets
+    // Space / Enter (and typing) reach the field rather than activating the X / closing —
+    // Space is a literal space, Enter is the search's jump-to-match. Without an active
+    // text field this is false, so the shells keep their Space/Enter-closes behavior.
+    if (ImGui::GetIO().WantTextInput) {
+        return false;
     }
     if (e.code != backbone::KeyCode::Space && e.code != backbone::KeyCode::Enter) {
         return false;

@@ -80,13 +80,16 @@ std::expected<void, AuthError> AuthManager::delete_account() {
     }
     const std::string user_id = store_.state().account.auth0_user_id;
 
-    // Delete the server-side row FIRST, while the session token is still live —
-    // the Auth0 backend's delete clears the in-memory session, after which a
-    // Supabase request would carry no bearer and RLS would reject it. Best
-    // effort: a failed remote delete (offline) still proceeds to the terminal
-    // local wipe, leaving the row to be reaped server-side (see report). The
-    // privileged Auth0 user-record deletion remains stubbed.
+    // Delete the server-side row AND the Auth0 user record FIRST, while the session
+    // token is still live — the Auth0 backend's delete clears the in-memory session,
+    // after which a request would carry no bearer and RLS / the Edge Function would
+    // reject it. Both are best-effort: a failure (offline / function error) still
+    // proceeds to the terminal local wipe, leaving the orphaned record/row to be reaped
+    // server-side (see report). The Auth0 record is deleted by the delete-auth0-user
+    // Edge Function (it holds the Management credentials a SPA cannot); the client
+    // sends only the bearer and the function derives the `sub` from the verified token.
     static_cast<void>(server_.delete_account_state(user_id));
+    static_cast<void>(server_.delete_auth0_user());
 
     std::expected<void, AuthError> result = auth_.delete_account(user_id);
     if (!result.has_value()) {

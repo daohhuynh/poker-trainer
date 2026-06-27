@@ -88,16 +88,27 @@ TEST(SupabaseShaping, JsonEscapeHandlesQuotesBackslashControl) {
 
 TEST(SupabaseShaping, UpsertBodyCarriesEveryColumn) {
     const std::string body =
-        pt::build_account_upsert_body("auth0|u1", "QkxPQg==", 4242, "Alice");
+        pt::build_account_upsert_body("auth0|u1", "QkxPQg==", 4242, "Alice", true);
     EXPECT_NE(body.find("\"auth0_sub\":\"auth0|u1\""), std::string::npos);
     EXPECT_NE(body.find("\"state_blob\":\"QkxPQg==\""), std::string::npos);
     EXPECT_NE(body.find("\"lifetime_tomatoes\":4242"), std::string::npos);
     EXPECT_NE(body.find("\"display_name\":\"Alice\""), std::string::npos);
+    EXPECT_NE(body.find("\"opted_in\":true"), std::string::npos);
+}
+
+TEST(SupabaseShaping, UpsertBodyRendersOptInAsBareBoolean) {
+    // opted_in is a JSON boolean (not a quoted string), true or false per the flag.
+    EXPECT_NE(pt::build_account_upsert_body("auth0|u1", "Qg==", 1, "Z", true)
+                  .find("\"opted_in\":true"),
+              std::string::npos);
+    EXPECT_NE(pt::build_account_upsert_body("auth0|u1", "Qg==", 1, "Z", false)
+                  .find("\"opted_in\":false"),
+              std::string::npos);
 }
 
 TEST(SupabaseShaping, UpsertBodyEscapesDisplayName) {
     const std::string body =
-        pt::build_account_upsert_body("auth0|u1", "Qg==", 1, "A\"B");
+        pt::build_account_upsert_body("auth0|u1", "Qg==", 1, "A\"B", false);
     EXPECT_NE(body.find("\"display_name\":\"A\\\"B\""), std::string::npos);
 }
 
@@ -105,7 +116,7 @@ TEST(SupabaseShaping, PushBodyEmbedsTheFullSerializedState) {
     // The push body carries the whole AppState (base64 in state_blob); decoding it
     // back must reproduce the snapshot exactly — that is what crosses browsers.
     const pt::AppState state = pt::test::make_populated_state();
-    const std::string body = pt::build_push_body("auth0|u1", state);
+    const std::string body = pt::build_push_body("auth0|u1", state, true);
 
     const std::optional<std::string> blob =
         pt::extract_json_string_field(body, "state_blob");
@@ -125,7 +136,7 @@ TEST(SupabaseShaping, PushBodyEmbedsTheFullSerializedState) {
 TEST(SupabaseShaping, InitialBodyCarriesExactlyTheThreeMigrationFields) {
     const pt::AccountMigrationState initial{120, 500, {1, 3, 5}};
     const std::string body =
-        pt::build_initial_body("auth0|new", initial, "Bob");
+        pt::build_initial_body("auth0|new", initial, "Bob", false);
 
     const std::optional<std::string> blob =
         pt::extract_json_string_field(body, "state_blob");
@@ -210,4 +221,54 @@ TEST(SupabaseTranslate, ParseFetchResponseUndecodableBlobIsFailed) {
     const pt::FetchResult result =
         pt::parse_fetch_response(200, "[{\"state_blob\":\"@@@@\"}]");
     EXPECT_EQ(result.outcome, pt::FetchOutcome::Failed);
+}
+
+// --- Leaderboard RPC response parsing (the tested fetch boundary) ---
+
+TEST(SupabaseLeaderboard, ParsesRankedRows) {
+    const std::string body =
+        "[{\"rank\":1,\"display_name\":\"Alice\",\"lifetime_tomatoes\":900},"
+        "{\"rank\":2,\"display_name\":\"Bob\",\"lifetime_tomatoes\":450},"
+        "{\"rank\":3,\"display_name\":\"Cara\",\"lifetime_tomatoes\":120}]";
+    const pt::LeaderboardFetchResult r = pt::parse_leaderboard_response(200, body);
+    ASSERT_TRUE(r.ok);
+    ASSERT_EQ(r.entries.size(), 3u);
+    EXPECT_EQ(r.entries[0].rank, 1u);
+    EXPECT_EQ(r.entries[0].display_name, "Alice");
+    EXPECT_EQ(r.entries[0].lifetime_tomatoes, 900u);
+    EXPECT_EQ(r.entries[2].rank, 3u);
+    EXPECT_EQ(r.entries[2].display_name, "Cara");
+    EXPECT_EQ(r.entries[2].lifetime_tomatoes, 120u);
+}
+
+TEST(SupabaseLeaderboard, EmptyArrayIsOkWithNoRows) {
+    const pt::LeaderboardFetchResult r = pt::parse_leaderboard_response(200, "[]");
+    EXPECT_TRUE(r.ok);
+    EXPECT_TRUE(r.entries.empty());
+}
+
+TEST(SupabaseLeaderboard, Non2xxIsNotOk) {
+    EXPECT_FALSE(pt::parse_leaderboard_response(401, "[]").ok);
+    EXPECT_FALSE(pt::parse_leaderboard_response(0, "").ok);
+    EXPECT_FALSE(pt::parse_leaderboard_response(500, "boom").ok);
+}
+
+TEST(SupabaseLeaderboard, SkipsObjectsMissingAField) {
+    // A row missing lifetime_tomatoes is dropped; well-formed rows still parse.
+    const std::string body =
+        "[{\"rank\":1,\"display_name\":\"Alice\",\"lifetime_tomatoes\":900},"
+        "{\"rank\":2,\"display_name\":\"Bob\"}]";
+    const pt::LeaderboardFetchResult r = pt::parse_leaderboard_response(200, body);
+    ASSERT_TRUE(r.ok);
+    ASSERT_EQ(r.entries.size(), 1u);
+    EXPECT_EQ(r.entries[0].display_name, "Alice");
+}
+
+TEST(SupabaseLeaderboard, PreservesNamesWithSpacesAndPunctuation) {
+    const std::string body =
+        "[{\"rank\":1,\"display_name\":\"The Big Slick\",\"lifetime_tomatoes\":42}]";
+    const pt::LeaderboardFetchResult r = pt::parse_leaderboard_response(200, body);
+    ASSERT_TRUE(r.ok);
+    ASSERT_EQ(r.entries.size(), 1u);
+    EXPECT_EQ(r.entries[0].display_name, "The Big Slick");
 }

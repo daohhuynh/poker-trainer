@@ -25,11 +25,13 @@
 #include "temporal/delta_timer.hpp"
 
 #include "settings/account_modal.hpp"
+#include "settings/search.hpp"
 #include "settings/settings.hpp"
 #include "settings/settings_modal.hpp"
 
 #include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
+#include "backbone/scenario_events.hpp"
 #include "backbone/screen_state.hpp"
 
 #include "assets/tier_loader.hpp"
@@ -41,6 +43,7 @@
 #include "persistence/auth.hpp"
 #include "persistence/auth0_backend.hpp"
 #include "persistence/clock.hpp"
+#include "persistence/economy.hpp"
 #include "persistence/idbfs.hpp"
 #include "persistence/persistence_schema.hpp"
 #include "persistence/persistence_service.hpp"
@@ -49,6 +52,8 @@
 
 #include "theme/theme.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
@@ -165,6 +170,17 @@ void init_assets(BootRoute route) {
     start_tiered_loading(route);
 }
 
+// Stash the live leaderboard opt-in flag on globalThis so the Supabase push can
+// denormalize it into the queryable account_state.opted_in column. The flag lives in
+// the opaque settings blob (out of the backend's reach), so this globalThis handoff —
+// the same pattern the Auth0 id_token / session name already use — is how it reaches
+// the upsert body. Called whenever the live settings snapshot changes (boot, a settings
+// save, and the post-auth reload), so it is current at every push.
+void stash_leaderboard_opt_in() {
+    EM_ASM({ globalThis.ptLeaderboardOptIn = ($0 != 0); },
+           g_boot.live_settings.tomatoes.leaderboard_opt_in ? 1 : 0);
+}
+
 // Refresh the live settings snapshot (and the visible theme + audio) from the
 // current persisted state. Invoked after an interactive sign-in/up adopts the
 // server's authoritative state, so cross-browser settings/theme surface
@@ -176,6 +192,7 @@ void reload_live_settings_after_auth() {
     }
     g_boot.live_settings = read_persisted_settings(g_boot.service->state());
     theme::set_theme(g_boot.live_settings.display.active_theme_id);
+    stash_leaderboard_opt_in();  // the adopted server state may flip opt-in
     if (g_boot.settings.apply_audio) {
         g_boot.settings.apply_audio(g_boot.live_settings.audio);
     }
@@ -216,6 +233,10 @@ void finish_boot_after_persistence() {
     // restoring the saved one at launch is the boot path's job (it owns the persistence
     // read and runs before any frame).
     theme::set_theme(g_boot.live_settings.display.active_theme_id);
+
+    // Seed the leaderboard opt-in stash (read off globalThis by the Supabase push) from
+    // the persisted setting, before any sync push can fire.
+    stash_leaderboard_opt_in();
 
     // Persistence-backed Custom-weights store (Mode Selection popup Save/Reset),
     // reading/writing the custom_*_weight settings through the full settings codec. The
@@ -285,6 +306,9 @@ void finish_boot_after_persistence() {
     g_boot.settings.live = &g_boot.live_settings;
     g_boot.settings.persist = [] {
         if (g_boot.service.has_value()) {
+            // Refresh the opt-in stash from the just-changed setting so the push this
+            // save triggers carries the current opted_in column value.
+            stash_leaderboard_opt_in();
             g_boot.service->save_state(
                 with_settings(g_boot.service->state(), g_boot.live_settings));
         }
@@ -391,11 +415,139 @@ void finish_boot_after_persistence() {
     // the kAuthModalId content provider with Zone 11.
     settings::install_account_content(g_boot.account, g_boot.settings);
 
+    // ----- Module 7 (Retention Engine): award hook + Shop + Leaderboard wiring -----
+    //
+    // The award hook grants tomatoes on a fully-passing scenario (math AND time — the
+    // existing GradingCompleteEvent.passed conjunction). Dual-track: spendable + lifetime
+    // both rise, persisted via Z04 (IDBFS + background sync). Currency is never shown on
+    // the Game / Post-Round screens — this only feeds the three meta surfaces.
+    (void)backbone::subscribe_grading_complete(
+        [](const backbone::GradingCompleteEvent& ev) {
+            if (!ev.passed || !g_boot.service.has_value()) {
+                return;
+            }
+            persistence::AppState next = g_boot.service->state();
+            persistence::apply_pass_award(next);
+            g_boot.service->save_state(next);
+        },
+        "economy.tomato_award");
+
+    // Shop controller: the snapshot reads the live wallet + music library through the
+    // economy predicates; buy/add/remove mutate the persisted state (Z04) and the
+    // in-memory shuffle pool (Z03). Z11 holds none of these zones — only this seam.
+    g_boot.modals.shop.snapshot = [] {
+        modal::ShopSnapshot snap{};
+        if (!g_boot.service.has_value()) {
+            return snap;
+        }
+        const persistence::AppState& st = g_boot.service->state();
+        snap.spendable = st.tomatoes.spendable;
+        for (std::size_t i = 0; i < audio::kMusicTrackCount; ++i) {
+            const auto track = static_cast<audio::MusicTrackId>(i);
+            modal::ShopRowView& r = snap.rows[i];
+            r.track = track;
+            r.owned = persistence::is_track_owned(st.music_library, track);
+            r.in_pool = persistence::is_track_in_pool(st.music_library, track);
+            r.price = audio::music_track_info(track).price_tomatoes;
+            r.affordable = persistence::can_afford(st.tomatoes, r.price);
+        }
+        return snap;
+    };
+    g_boot.modals.shop.on_buy = [](audio::MusicTrackId track) {
+        if (!g_boot.service.has_value()) {
+            return;
+        }
+        persistence::AppState next = g_boot.service->state();
+        if (persistence::purchase_track(next, track)) {
+            g_boot.service->save_state(next);  // Owned-not-in-shuffle; rotation unchanged
+        }
+    };
+    g_boot.modals.shop.on_add = [](audio::MusicTrackId track) {
+        if (!g_boot.service.has_value()) {
+            return;
+        }
+        persistence::AppState next = g_boot.service->state();
+        persistence::add_track_to_pool(next.music_library, track);
+        g_boot.service->save_state(next);
+        audio::add_to_shuffle(audio::music_track_info(track).genre, track);
+    };
+    g_boot.modals.shop.on_remove = [](audio::MusicTrackId track) {
+        if (!g_boot.service.has_value()) {
+            return;
+        }
+        persistence::AppState next = g_boot.service->state();
+        persistence::remove_track_from_pool(next.music_library, track);
+        g_boot.service->save_state(next);
+        audio::remove_from_shuffle(audio::music_track_info(track).genre, track);
+    };
+
+    // Leaderboard controller: fetch the top-100 over Supabase (id_token bearer); the
+    // your-rank row reads the live account + wallet + opt-in; the guest / opt-out links
+    // close the board and open the auth modal (health-checked) / Settings -> Tomatoes.
+    g_boot.modals.leaderboard.fetch = [] {
+        modal::LeaderboardData out{};
+        const persistence::LeaderboardFetchResult r = g_boot.sync_backend.fetch_leaderboard();
+        out.ok = r.ok;
+        out.rows.reserve(r.entries.size());
+        for (const persistence::LeaderboardEntry& e : r.entries) {
+            out.rows.push_back(
+                modal::LeaderboardRow{e.rank, e.display_name, e.lifetime_tomatoes});
+        }
+        return out;
+    };
+    g_boot.modals.leaderboard.self = [] {
+        modal::LeaderboardSelf self{};
+        if (!g_boot.service.has_value()) {
+            return self;
+        }
+        const persistence::AppState& st = g_boot.service->state();
+        if (!st.account.is_authenticated) {
+            self.state = modal::LeaderboardSelfState::Guest;
+            return self;
+        }
+        self.name = st.account.display_name;
+        self.lifetime = st.tomatoes.lifetime;
+        self.state = g_boot.live_settings.tomatoes.leaderboard_opt_in
+                         ? modal::LeaderboardSelfState::OptedIn
+                         : modal::LeaderboardSelfState::OptedOut;
+        return self;
+    };
+    g_boot.modals.leaderboard.open_sign_in = [] {
+        modal::close_modal();  // dismiss the leaderboard, then open the (health-checked) auth modal
+        settings::account_open_sign_in(g_boot.account);
+    };
+    g_boot.modals.leaderboard.open_sign_up = [] {
+        modal::close_modal();
+        settings::account_open_sign_up(g_boot.account);
+    };
+    g_boot.modals.leaderboard.open_settings_tomatoes = [] {
+        modal::close_modal();
+        modal::open_settings_modal();
+        g_boot.settings.scroll_target = settings::SettingsSection::Tomatoes;
+        g_boot.settings.scroll_pending = true;
+    };
+
     // Install Zone 03: subscribe to scenario_spawned for the spawn audio
     // choreography (the per-frame audio_update + first-gesture autoplay gate are
     // wired in the main loop and platform input layer). No asset/persistence
     // dependency — Z03 loads audio by path and degrades gracefully when absent.
     audio::install_audio();
+
+    // Restore the persisted shuffle-pool composition (Module 7). install_audio seeded
+    // each genre's starter; replay the saved active_pool_track_ids on top so previously
+    // added/purchased tracks return to rotation across a reload. add_to_shuffle is
+    // idempotent, so re-adding a starter is a no-op. KNOWN V1 LIMITATION: a STARTER the
+    // user removed from rotation reappears after reload (the starter is always re-seeded);
+    // non-starter removals persist correctly. See report.
+    if (g_boot.service.has_value()) {
+        for (const std::uint8_t id :
+             g_boot.service->state().music_library.active_pool_track_ids) {
+            if (id < audio::kMusicTrackCount) {
+                const auto track = static_cast<audio::MusicTrackId>(id);
+                audio::add_to_shuffle(audio::music_track_info(track).genre, track);
+            }
+        }
+    }
 
     // Register the tier orchestrator's per-frame tick: the navigation-gated Tier-2
     // (after Root renders) and Tier-3 (Root -> Mode Selection) loads, plus the

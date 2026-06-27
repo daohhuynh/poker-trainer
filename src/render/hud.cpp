@@ -55,6 +55,22 @@ float draw_blinds(ImDrawList* dl, float x, float y, const engine::ScenarioState&
     return line;
 }
 
+float draw_to_call(ImDrawList* dl, float x, float y, const engine::ScenarioState& scenario,
+                   bool cash_mode, bool show_hud) {
+    const float line = ImGui::GetTextLineHeightWithSpacing();
+    // Caller scenarios only: faced_bet is the amount the user is calling (0 for the
+    // Aggressor, who faces no bet). HUD-gated exactly like the pot total and the
+    // floating call number, so toggling the HUD off hides this too and never leaves
+    // the call amount sitting in the corner during the chip-counting drill.
+    if (dl == nullptr || !show_hud || scenario.type != engine::ScenarioType::Caller) {
+        return line;
+    }
+    const std::string text =
+        std::format("To Call: {}", format_amount(scenario.faced_bet, cash_mode, scenario.big_blind));
+    dl->AddText(ImVec2{x, y}, token_u32(theme::ColorToken::TextPrimary), text.c_str());
+    return line;
+}
+
 void draw_floating_bet(ImDrawList* dl, float anchor_x, float anchor_y, int bet_dollars,
                        bool cash_mode, int big_blind, bool show_hud) {
     if (dl == nullptr || !show_hud) {

@@ -4,12 +4,14 @@
 #include <string>
 #include <string_view>
 
-// Zone 11 — Leaderboard view (ARCHITECTURE L575), rendered inside the Shop modal
-// frame. CONSUMER-LIGHT this wave: the leaderboard data is server-side (absent) and
-// the Shop track-purchase content is Module 7 (unbuilt), so this builds a thin
-// shell — search input (32-char cap, case-insensitive plain-substring filter, no
-// regex), list scaffold, and the loading / error / retry states — over stubbed/
-// empty data. The pure search filter is unit-tested; the render is a marked seam.
+// Zone 11 — Leaderboard view (ARCHITECTURE L575), rendered inside the Shop modal frame
+// (in-place content swap). The ranked top-100 list, the live case-insensitive substring
+// search (32-char cap, Enter-to-jump + highlight), the persistent "your rank" bottom row
+// (logged-in opted-in / opted-out / guest variants), and the loading / error / Retry
+// states render from a boot-wired LeaderboardController (fetch + your-rank + the guest /
+// opt-out links). The pure search filter + clamp are unit-tested; the render is a marked
+// seam (CLAUDE.md §9, browser-verified). render_leaderboard_view is declared in
+// modal_base.hpp alongside the other per-modal render entry points.
 
 namespace poker_trainer::modal {
 

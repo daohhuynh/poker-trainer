@@ -373,3 +373,34 @@ TEST_F(AuthFlowTest, DeleteAccountWipesLocallyEvenIfServerDeleteFails) {
     EXPECT_TRUE(storage_.cleared());
     EXPECT_FALSE(svc.state().account.is_authenticated);
 }
+
+TEST_F(AuthFlowTest, DeleteAccountInvokesAuth0EdgeFunction) {
+    // The delete-auth0-user Edge Function is invoked once, while the bearer is live
+    // (alongside the server row delete), to remove the Auth0 user record.
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Found, pt::AppState{}};
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+    ASSERT_TRUE(svc.sign_in(kCreds).has_value());
+
+    const std::expected<void, pt::AuthError> result = svc.delete_account();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(server_.delete_auth0_calls, 1);
+}
+
+TEST_F(AuthFlowTest, DeleteAccountWipesLocallyEvenIfEdgeFunctionFails) {
+    // A failed Auth0 record delete (offline / function error) is non-fatal: the local
+    // wipe still completes and the orphaned record is left for server-side reaping.
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Found, pt::AppState{}};
+    server_.delete_auth0_ok = false;
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+    ASSERT_TRUE(svc.sign_in(kCreds).has_value());
+
+    const std::expected<void, pt::AuthError> result = svc.delete_account();
+
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(server_.delete_auth0_calls, 1);
+    EXPECT_TRUE(storage_.cleared());
+    EXPECT_FALSE(svc.state().account.is_authenticated);
+}

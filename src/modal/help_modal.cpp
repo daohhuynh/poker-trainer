@@ -11,8 +11,11 @@
 #include "bridge/focus_registry.hpp"
 
 // Zone 11 — Equation Reference (Help) modal body. Read-only, scrollable, five
-// stacked sections + the "Open Tutorial" button. Formula text + grading margins are
-// quoted from ARCHITECTURE L521 / L563. Content text is fixed (not theme-controlled);
+// stacked sections + the "Open Tutorial" button. The Aggressor formula text +
+// grading margins are quoted from ARCHITECTURE L521 / L563; the Caller formulas
+// (Pot Odds, Rule of 2 & 4 equity, net-call EV) mirror the engine's Module-1 math
+// so Help matches the grader (engine/evaluator.hpp: pot_odds_fraction, net_call_ev;
+// equity_from_outs in the generator). Content text is fixed (not theme-controlled);
 // all colors come from tokens.
 
 namespace poker_trainer::modal {
@@ -48,6 +51,7 @@ void definition(const char* term, const char* body) {
 
 void draw_help_body() {
     section_header("Formulas");
+    section_header("Aggressor");
     formula_entry("1. Pure Bluff EV = P(fold) x pot - P(call) x bet",
                   "Bet to make a better hand fold; you win the pot when they fold and lose the bet "
                   "when they call.");
@@ -56,9 +60,21 @@ void draw_help_body() {
     formula_entry("3. Semi-Bluff EV = P(fold) x pot + P(call) x [equity x (pot + 2 x bet) - bet]",
                   "A draw with fold equity: win now when they fold, otherwise realize your equity "
                   "in the larger pot.");
+    section_header("Caller");
+    formula_entry("1. Pot Odds = bet / (pot + bet)",
+                  "The price you're getting on a call. Lower means cheaper to call.");
+    formula_entry("2. Equity (estimate) = outs x 4 on the flop, outs x 2 on the turn",
+                  "The rule of 2 and 4: your approximate chance to improve, from your number of "
+                  "outs.");
+    formula_entry("3. Outs",
+                  "The number of unseen cards that complete your hand.");
+    formula_entry("4. Caller EV = equity x (pot + bet) - (1 - equity) x bet",
+                  "The net value of calling: you win the pot plus the bet with your equity, and "
+                  "lose the bet otherwise.");
     ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-    ImGui::TextWrapped("Conventions: pot is the pot before your bet; bet is your wager; P(fold) and "
-                       "P(call) are the opponent's probabilities; equity is your share when called.");
+    ImGui::TextWrapped("Conventions: pot is the pot before your bet; bet is your wager (the Caller's "
+                       "bet is the call faced); P(fold) and P(call) are the opponent's probabilities; "
+                       "equity is your share when called; outs are the unseen cards that improve you.");
     ImGui::PopStyleColor();
 
     section_header("Math Inputs");

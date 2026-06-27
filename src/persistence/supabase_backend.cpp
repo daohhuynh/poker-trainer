@@ -158,7 +158,7 @@ std::string url_encode_component(std::string_view value) {
 std::string build_account_upsert_body(std::string_view auth0_sub,
                                       std::string_view state_blob_b64,
                                       std::uint64_t lifetime,
-                                      std::string_view display_name) {
+                                      std::string_view display_name, bool opted_in) {
     std::string body = "{\"auth0_sub\":\"";
     body += json_escape(auth0_sub);
     body += "\",\"state_blob\":\"";
@@ -167,20 +167,23 @@ std::string build_account_upsert_body(std::string_view auth0_sub,
     body += std::to_string(lifetime);
     body += ",\"display_name\":\"";
     body += json_escape(display_name);
-    body += "\"}";
+    body += "\",\"opted_in\":";
+    body += opted_in ? "true" : "false";
+    body += "}";
     return body;
 }
 
-std::string build_push_body(std::string_view auth0_sub, const AppState& state) {
+std::string build_push_body(std::string_view auth0_sub, const AppState& state,
+                            bool opted_in) {
     const std::vector<std::uint8_t> bytes = serialize_app_state(state);
     return build_account_upsert_body(auth0_sub, base64_encode(bytes),
                                      state.tomatoes.lifetime,
-                                     state.account.display_name);
+                                     state.account.display_name, opted_in);
 }
 
 std::string build_initial_body(std::string_view auth0_sub,
                                const AccountMigrationState& initial,
-                               std::string_view display_name) {
+                               std::string_view display_name, bool opted_in) {
     // Exactly the three migration fields become a minimal AppState; every other
     // field stays default so the never-seeded server row holds only what Module 7
     // permits to migrate.
@@ -190,7 +193,7 @@ std::string build_initial_body(std::string_view auth0_sub,
     seed.music_library.unlocked_track_ids = initial.unlocked_track_ids;
     const std::vector<std::uint8_t> bytes = serialize_app_state(seed);
     return build_account_upsert_body(auth0_sub, base64_encode(bytes),
-                                     initial.lifetime, display_name);
+                                     initial.lifetime, display_name, opted_in);
 }
 
 FetchOutcome supabase_fetch_outcome(int http_status, bool row_present) noexcept {
@@ -278,6 +281,97 @@ FetchResult parse_fetch_response(int http_status,
     return FetchResult{FetchOutcome::Found, parsed.state};
 }
 
+namespace {
+
+// Extract the first JSON non-negative integer value for `field` from `json` (a shallow
+// "field":<digits> scan). Sufficient for the rank / lifetime_tomatoes counts in the
+// leaderboard RPC rows (no negatives, no decimals). std::nullopt when absent.
+[[nodiscard]] std::optional<std::uint64_t> extract_json_uint_field(
+    std::string_view json, std::string_view field) {
+    std::string needle = "\"";
+    needle += field;
+    needle += "\"";
+    const std::size_t key = json.find(needle);
+    if (key == std::string_view::npos) {
+        return std::nullopt;
+    }
+    std::size_t p = key + needle.size();
+    while (p < json.size() && (json[p] == ' ' || json[p] == '\t' || json[p] == ':')) {
+        ++p;
+    }
+    std::uint64_t value = 0;
+    bool any = false;
+    while (p < json.size() && json[p] >= '0' && json[p] <= '9') {
+        value = value * 10u + static_cast<std::uint64_t>(json[p] - '0');
+        any = true;
+        ++p;
+    }
+    return any ? std::optional<std::uint64_t>{value} : std::nullopt;
+}
+
+// Index just past the JSON object that begins at `open` ('{'), tracking brace depth
+// and ignoring braces inside strings. Returns body.size() if unterminated.
+[[nodiscard]] std::size_t json_object_end(std::string_view body, std::size_t open) {
+    std::size_t depth = 0;
+    bool in_string = false;
+    bool escaped = false;
+    for (std::size_t i = open; i < body.size(); ++i) {
+        const char c = body[i];
+        if (in_string) {
+            if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                in_string = false;
+            }
+            continue;
+        }
+        if (c == '"') {
+            in_string = true;
+        } else if (c == '{') {
+            ++depth;
+        } else if (c == '}') {
+            --depth;
+            if (depth == 0) {
+                return i + 1;
+            }
+        }
+    }
+    return body.size();
+}
+
+}  // namespace
+
+LeaderboardFetchResult parse_leaderboard_response(int http_status,
+                                                  std::string_view response_body) {
+    LeaderboardFetchResult result{};
+    if (!supabase_write_ok(http_status)) {
+        return result;  // ok stays false: the UI shows the error + Retry state
+    }
+    result.ok = true;
+    std::size_t i = 0;
+    while (i < response_body.size()) {
+        if (response_body[i] != '{') {
+            ++i;
+            continue;
+        }
+        const std::size_t end = json_object_end(response_body, i);
+        const std::string_view obj = response_body.substr(i, end - i);
+        const std::optional<std::string> name =
+            extract_json_string_field(obj, "display_name");
+        const std::optional<std::uint64_t> rank = extract_json_uint_field(obj, "rank");
+        const std::optional<std::uint64_t> lifetime =
+            extract_json_uint_field(obj, "lifetime_tomatoes");
+        if (name.has_value() && rank.has_value() && lifetime.has_value()) {
+            result.entries.push_back(LeaderboardEntry{static_cast<std::uint32_t>(*rank),
+                                                      *name, *lifetime});
+        }
+        i = end;
+    }
+    return result;
+}
+
 }  // namespace poker_trainer::persistence
 
 // ============================================================================
@@ -352,6 +446,35 @@ EM_JS(int, pt_supabase_delete, (const char* url, const char* apikey), {
     } catch (e) { return 0; }
 });
 
+// Sync POST of a JSON body (PostgREST RPC or an Edge Function). Writes the response text
+// into the caller's buffer when out is non-null, and returns the HTTP status. Used for the
+// leaderboard RPC (reads the response) and the delete-auth0-user Edge Function (status
+// only — out is null). The bearer is the live Auth0 id_token, same as every call above.
+EM_JS(int, pt_supabase_post_json,
+      (const char* url, const char* apikey, const char* body, char* out, int maxlen), {
+    try {
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", UTF8ToString(url), false);
+        xhr.setRequestHeader("apikey", UTF8ToString(apikey));
+        var s = globalThis.ptAuth0Session || {};
+        var idt = (typeof s.id_token === "string") ? s.id_token : "";
+        if (idt) { xhr.setRequestHeader("Authorization", "Bearer " + idt); }
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.setRequestHeader("Accept", "application/json");
+        xhr.send(UTF8ToString(body));
+        if (out) { stringToUTF8(xhr.responseText || "", out, maxlen); }
+        return xhr.status;
+    } catch (e) { return 0; }
+});
+
+// Read the live leaderboard opt-in flag, stashed on globalThis by the bridge whenever the
+// setting changes (boot.cpp set_leaderboard_opt_in_stash). It is not a field on AppState
+// (it lives in the opaque settings blob), so the push denormalizes it out via this read —
+// the same globalThis-handoff the id_token and display name already use. Returns 1/0.
+EM_JS(int, pt_read_leaderboard_opt_in, (), {
+    return (globalThis.ptLeaderboardOptIn === true) ? 1 : 0;
+});
+
 // Copy the live session display name into a C++ buffer (the migration payload omits it, so
 // the initial seed reads it here).
 EM_JS(void, pt_supabase_session_name, (char* out, int maxlen), {
@@ -369,6 +492,10 @@ namespace {
 // The GET response is a one-row PostgREST array holding the base64 state blob; 256 KiB is
 // far above the worst case (a bounded 256-entry history + the small settings blob).
 constexpr int kFetchBufferBytes = 256 * 1024;
+
+// The leaderboard RPC returns up to 100 rows of {rank, display_name (<=32), lifetime};
+// 64 KiB is far above the worst case.
+constexpr int kLeaderboardBufferBytes = 64 * 1024;
 
 [[nodiscard]] std::string anon_key() { return std::string{kSupabaseAnonKey}; }
 
@@ -409,7 +536,8 @@ bool SupabaseSyncBackend::push(std::string_view auth0_user_id,
     const AppState& newest = ordered_writes.back();
     const std::string url =
         account_base() + std::string{kSupabaseAccountUpsertQuery};
-    const std::string body = build_push_body(auth0_user_id, newest);
+    const bool opted_in = pt_read_leaderboard_opt_in() != 0;
+    const std::string body = build_push_body(auth0_user_id, newest, opted_in);
     return supabase_write_ok(
         pt_supabase_upsert(url.c_str(), anon_key().c_str(), body.c_str()));
 }
@@ -418,8 +546,9 @@ bool SupabaseSyncBackend::upload_initial(std::string_view auth0_user_id,
                                          const AccountMigrationState& initial) {
     const std::string url =
         account_base() + std::string{kSupabaseAccountUpsertQuery};
+    const bool opted_in = pt_read_leaderboard_opt_in() != 0;
     const std::string body =
-        build_initial_body(auth0_user_id, initial, read_session_name());
+        build_initial_body(auth0_user_id, initial, read_session_name(), opted_in);
     return supabase_write_ok(
         pt_supabase_upsert(url.c_str(), anon_key().c_str(), body.c_str()));
 }
@@ -429,6 +558,29 @@ bool SupabaseSyncBackend::delete_account_state(std::string_view auth0_user_id) {
                             url_encode_component(auth0_user_id);
     return supabase_write_ok(
         pt_supabase_delete(url.c_str(), anon_key().c_str()));
+}
+
+LeaderboardFetchResult SupabaseSyncBackend::fetch_leaderboard() {
+    const std::string url =
+        std::string{kSupabaseUrl} + std::string{kSupabaseLeaderboardRpcPath};
+    std::string buf(static_cast<std::size_t>(kLeaderboardBufferBytes), '\0');
+    // The RPC takes no arguments; an empty JSON object is the PostgREST RPC body.
+    const int status = pt_supabase_post_json(url.c_str(), anon_key().c_str(), "{}",
+                                             buf.data(), kLeaderboardBufferBytes);
+    buf.resize(std::char_traits<char>::length(buf.c_str()));
+    return parse_leaderboard_response(status, buf);
+}
+
+bool SupabaseSyncBackend::delete_auth0_user() {
+    // The Edge Function derives the caller's `sub` from the verified bearer; the client
+    // sends only the bearer (attached inside pt_supabase_post_json) and an empty body,
+    // and ignores the response beyond its status.
+    const std::string url = std::string{kSupabaseUrl} +
+                            std::string{kSupabaseFunctionsPrefix} +
+                            std::string{kSupabaseDeleteAuth0UserFn};
+    const int status =
+        pt_supabase_post_json(url.c_str(), anon_key().c_str(), "{}", nullptr, 0);
+    return supabase_write_ok(status);
 }
 
 }  // namespace poker_trainer::persistence

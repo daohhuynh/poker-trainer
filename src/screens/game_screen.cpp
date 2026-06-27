@@ -25,6 +25,7 @@
 #include "audio/audio.hpp"
 #include "audio/audio_paths.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -242,7 +243,20 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
             const float by = lerp(seat.y, fwd_y, t);
             const std::vector<rnd::ChipColumn> bet_cols = rnd::decompose(scenario.faced_bet, set);
             rnd::draw_chip_cluster(dl, rnd::cluster_base_x(bx, bet_cols.size(), sc), by, bet_cols, sc);
-            rnd::draw_floating_bet(dl, bx, by - (rnd::kChipRadius * 2.0f + 14.0f) * sc,
+            // Float the call amount a full text-line ABOVE the real (perspective-
+            // scaled) TOP of the pushed stack, mirroring the opponent-stack amount
+            // placement (opponents.cpp). The stack's height recedes with the far seat
+            // but the readable number does not, so clearing it by a fixed, unscaled
+            // line keeps the full-size amount off the small chips — the prior gap was
+            // measured from the chip base and scaled by sc, so it overlapped them.
+            int bet_stack_chips = 0;
+            for (const rnd::ChipColumn& col : bet_cols) {
+                bet_stack_chips =
+                    std::max(bet_stack_chips, std::min(col.count, rnd::kMaxChipsPerColumn));
+            }
+            const float bet_stack_top =
+                by - (static_cast<float>(bet_stack_chips) * rnd::kChipStackStep + rnd::kChipRadius) * sc;
+            rnd::draw_floating_bet(dl, bx, bet_stack_top - ImGui::GetTextLineHeight() - 4.0f,
                                    scenario.faced_bet, ui.cash_mode, scenario.big_blind, ui.show_hud);
         }
     }
@@ -256,12 +270,14 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
                        scenario.hole.data(), static_cast<std::uint8_t>(scenario.hole.size()),
                        rnd::kHeroCardScale);
 
-    // 7) Top-left info stack: legend (always), then pot size + blinds (HUD on).
+    // 7) Top-left info stack: legend (always), then pot size + blinds, then (Caller
+    //    only) the To Call line (all HUD-gated).
     float info_y = layout.info_anchor.y;
     rnd::draw_denomination_legend(dl, layout.info_anchor.x, info_y, set);
     info_y += rnd::kChipRadius * 2.0f + ImGui::GetTextLineHeight() + 10.0f;
     info_y += rnd::draw_pot_size(dl, layout.info_anchor.x, info_y, scenario, ui.cash_mode, ui.show_hud);
-    rnd::draw_blinds(dl, layout.info_anchor.x, info_y, scenario, ui.cash_mode, ui.show_hud);
+    info_y += rnd::draw_blinds(dl, layout.info_anchor.x, info_y, scenario, ui.cash_mode, ui.show_hud);
+    rnd::draw_to_call(dl, layout.info_anchor.x, info_y, scenario, ui.cash_mode, ui.show_hud);
 
     // 8) Dealer (right side, profile Butler or front-facing Frog) + the cluster.
     rnd::draw_dealer(dl, layout, easter_egg::frog_active(runtime.frog));

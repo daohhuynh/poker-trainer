@@ -1,6 +1,7 @@
 #include "settings/username_denylist.hpp"
 
-#include <array>
+#include "settings/username_denylist_data.hpp"
+
 #include <cctype>
 #include <string>
 #include <string_view>
@@ -36,17 +37,11 @@ namespace {
     return '\0';  // drop separators / punctuation / control
 }
 
-// SEAM(denylist source): PLACEHOLDER terms only. These are innocuous, obviously-fake
-// tokens so the matching mechanism is exercisable and tested without committing real
-// slurs to the repository. Replace with the normalized LDNOOBW English list (or
-// equivalent) at launch — store the words already lowercased; normalize_for_denylist
-// folds them the same way as the candidate name. Keep them normalized (no spaces /
-// punctuation) so the substring test stays a straight comparison.
-constexpr std::array<std::string_view, 3> kDenylistTerms{
-    "badword",
-    "denyme",
-    "exampleslur",
-};
+// The denylist terms live in the generated header username_denylist_data.hpp
+// (detail::kDenylistTermsData), compiled from en.txt (the LDNOOBW English list) and
+// already normalize_for_denylist()-folded so the substring test below is a straight
+// comparison. The matching mechanism is unchanged from the placeholder era — only the
+// data source moved from an inline array to the generated header.
 
 }  // namespace
 
@@ -67,7 +62,7 @@ bool is_username_denylisted(std::string_view username) {
     if (normalized.empty()) {
         return false;
     }
-    for (const std::string_view term : kDenylistTerms) {
+    for (const std::string_view term : detail::kDenylistTermsData) {
         if (!term.empty() && normalized.find(term) != std::string::npos) {
             return true;
         }

@@ -41,6 +41,22 @@ struct FetchResult {
     AppState state{};
 };
 
+// One row of the global leaderboard (top-100 ranking by Lifetime Tomatoes, the
+// cumulative metric that Shop spending never decreases). Sourced from the Supabase
+// leaderboard_top_100() RPC: rank / display_name / lifetime_tomatoes.
+struct LeaderboardEntry {
+    std::uint32_t rank{0};
+    std::string display_name;
+    std::uint64_t lifetime_tomatoes{0};
+};
+
+// Result of a leaderboard fetch. ok is false on any HTTP / parse failure (the UI
+// shows the error + Retry state); entries holds up to 100 rows on success.
+struct LeaderboardFetchResult {
+    bool ok{false};
+    std::vector<LeaderboardEntry> entries;
+};
+
 // Sync seam — server-side account state.
 //
 // In deployment this talks to the leaderboard backend over authenticated
@@ -70,11 +86,29 @@ public:
 
     // Delete the user's server-side account state row (the delete-account flow,
     // per ARCHITECTURE: "Auth0 deletion + server-side cleanup + local IDBFS
-    // wipe"). Returns true on success. The Auth0 user-record deletion itself
-    // stays stubbed (no Management token in a SPA); this removes the row the
-    // trainer owns — wallet, unlocks, and leaderboard standing.
+    // wipe"). Returns true on success. This removes the row the trainer owns —
+    // wallet, unlocks, and leaderboard standing. The Auth0 user record is removed
+    // separately via delete_auth0_user() below.
     [[nodiscard]] virtual bool delete_account_state(
         std::string_view auth0_user_id) = 0;
+
+    // Fetch the global top-100 leaderboard (Lifetime Tomatoes ranking). Reads the
+    // public board over the same Auth0 id_token / RLS path as the rest; opt-in is
+    // enforced server-side (only opted-in accounts appear), and a signed-in account
+    // is not required to read it. Non-pure with a default so the local-only / mock
+    // backends need not serve a board: the default is an empty, not-ok result.
+    [[nodiscard]] virtual LeaderboardFetchResult fetch_leaderboard() {
+        return LeaderboardFetchResult{};
+    }
+
+    // Delete the caller's Auth0 user record via the server-side delete-auth0-user
+    // Edge Function (which holds the Management credentials a SPA cannot). The client
+    // sends only the bearer (Auth0 id_token); the function verifies it and derives the
+    // `sub` itself. Returns true on success; a failure is non-fatal to the delete flow
+    // (the local wipe + row delete still proceed, leaving the orphaned record for
+    // server-side reaping). Non-pure with a default of false so the mock / local-only
+    // backends compile unchanged.
+    [[nodiscard]] virtual bool delete_auth0_user() { return false; }
 };
 
 // Server-sync orchestrator.

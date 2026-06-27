@@ -188,6 +188,11 @@ public:
     bool delete_ok{true};
     std::vector<std::string> deletes;  // user ids whose server row was deleted
 
+    // delete-auth0-user Edge Function recorder. Programmable success; counts calls so
+    // the delete flow can be asserted to invoke it (and to proceed when it fails).
+    bool delete_auth0_ok{true};
+    int delete_auth0_calls{0};
+
     [[nodiscard]] FetchResult fetch(std::string_view auth0_user_id) override {
         ++fetch_calls;
         static_cast<void>(auth0_user_id);
@@ -215,6 +220,11 @@ public:
         std::string_view auth0_user_id) override {
         deletes.emplace_back(auth0_user_id);
         return delete_ok;
+    }
+
+    [[nodiscard]] bool delete_auth0_user() override {
+        ++delete_auth0_calls;
+        return delete_auth0_ok;
     }
 };
 

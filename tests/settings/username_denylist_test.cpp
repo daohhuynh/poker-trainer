@@ -30,27 +30,31 @@ TEST(NormalizeForDenylist, AllSymbolsNormalizesToEmpty) {
     EXPECT_TRUE(pt::normalize_for_denylist("___...---").empty());
 }
 
-// is_username_denylisted: substring match against the (placeholder) compiled list.
+// is_username_denylisted: substring match against the compiled LDNOOBW list
+// (detail::kDenylistTermsData, generated from en.txt). The assertions below use
+// mild but real entries from that list ("anus", "butt") so they survive the swap
+// from the old placeholder data; the matching mechanism itself is unchanged.
 
 TEST(IsUsernameDenylisted, PlainMatchRejected) {
-    EXPECT_TRUE(pt::is_username_denylisted("badword"));
-    EXPECT_TRUE(pt::is_username_denylisted("denyme"));
+    EXPECT_TRUE(pt::is_username_denylisted("anus"));
+    EXPECT_TRUE(pt::is_username_denylisted("butt"));
 }
 
 TEST(IsUsernameDenylisted, CaseInsensitiveMatchRejected) {
-    EXPECT_TRUE(pt::is_username_denylisted("BADWORD"));
-    EXPECT_TRUE(pt::is_username_denylisted("BadWord"));
+    EXPECT_TRUE(pt::is_username_denylisted("ANUS"));
+    EXPECT_TRUE(pt::is_username_denylisted("Butt"));
 }
 
 TEST(IsUsernameDenylisted, LeetspeakMatchRejected) {
-    EXPECT_TRUE(pt::is_username_denylisted("b4dw0rd"));
-    EXPECT_TRUE(pt::is_username_denylisted("B4D_W0RD"));
+    // 4->a, @->a, $->s, 7->t: "@nu$" -> "anus", "bu77" -> "butt".
+    EXPECT_TRUE(pt::is_username_denylisted("@nu$"));
+    EXPECT_TRUE(pt::is_username_denylisted("BU77"));
 }
 
 TEST(IsUsernameDenylisted, SubstringMatchRejected) {
     // The spec rejects names "containing matches".
-    EXPECT_TRUE(pt::is_username_denylisted("xXbadwordXx"));
-    EXPECT_TRUE(pt::is_username_denylisted("totally_denyme_please"));
+    EXPECT_TRUE(pt::is_username_denylisted("xXanusXx"));
+    EXPECT_TRUE(pt::is_username_denylisted("my_butt_hurts"));
 }
 
 TEST(IsUsernameDenylisted, CleanNameAllowed) {
