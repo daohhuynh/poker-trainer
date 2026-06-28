@@ -232,7 +232,12 @@ void draw_tomato_count(ImDrawList* dl, ImVec2 at, std::uint64_t value, theme::Co
 // highlight is -1 (nothing highlighted) only when the board is empty (loading / error),
 // where focus still lands on the list.
 void commit_search_to_list(ModalRuntime& rt, const LeaderboardData& data) {
-    const std::int64_t landing = leaderboard_handoff_rank(data.rows, rt.leaderboard_search);
+    // Empty search with a saved position = the user navigated away without typing; restore the
+    // remembered rank rather than jumping to rank-1. A non-empty search always uses the match.
+    const std::int64_t landing =
+        (rt.leaderboard_search.empty() && rt.leaderboard_saved_highlight_rank >= 0)
+            ? rt.leaderboard_saved_highlight_rank
+            : leaderboard_handoff_rank(data.rows, rt.leaderboard_search);
     rt.leaderboard_search.clear();  // restore the full list
     rt.leaderboard_highlight_rank = landing;
     rt.leaderboard_rank_buffer = RankJumpBuffer{};  // a fresh digit sequence continues from here
@@ -298,8 +303,12 @@ void render_list_rows(ModalRuntime& runtime, const LeaderboardData& data,
         const ImVec2 rmax = ImGui::GetItemRectMax();
 
         const bool is_self = self_named && row.name == self.name;
+        // The keyboard-nav highlight is a focus indicator: visible only while the list stop
+        // has keyboard focus. Invisible on search, your-row, X, Shop icon, etc.
+        const bool list_focused = backbone::is_keyboard_mode_active() &&
+                                  backbone::get_focused_element() == kLeaderboardList;
         const bool is_highlight =
-            runtime.leaderboard_highlight_rank == static_cast<std::int64_t>(row.rank);
+            list_focused && runtime.leaderboard_highlight_rank == static_cast<std::int64_t>(row.rank);
         if (is_highlight) {
             dl->AddRectFilled(rmin, rmax, token_u32(theme::ColorToken::AccentSecondary));
         } else if (is_self) {
@@ -470,6 +479,19 @@ bool list_stop_key(ModalRuntime& rt, const backbone::KeyEvent& e) {
         rt.leaderboard_scroll_to_highlight = true;
         return true;
     }
+    if (e.code == backbone::KeyCode::Tab) {
+        if (!backbone::has_mod(e.mods, backbone::ModMask::Shift)) {
+            // Forward Tab to your-rank row: remember the position, then visually clear so the
+            // board looks fresh. Shift-Tab back from your-rank restores via saved_highlight_rank.
+            rt.leaderboard_saved_highlight_rank = rt.leaderboard_highlight_rank;
+            rt.leaderboard_highlight_rank = -1;
+            rt.leaderboard_rank_buffer = RankJumpBuffer{};
+        } else {
+            // Shift-Tab back to search: save position so commit_search_to_list can restore it
+            // when the search buffer is empty (the user navigated away without typing).
+            rt.leaderboard_saved_highlight_rank = rt.leaderboard_highlight_rank;
+        }
+    }
     return false;  // Tab / Shift-Tab exit the stop via the backbone focus-nav handler
 }
 
@@ -551,6 +573,7 @@ void leaderboard_on_open(ModalRuntime& runtime) {
     runtime.leaderboard_rank_buffer = RankJumpBuffer{};
     runtime.leaderboard_last_synced = backbone::kNoFocus;
     runtime.leaderboard_scroll_to_highlight = false;
+    runtime.leaderboard_saved_highlight_rank = -1;
     runtime.guest_row_highlight = GuestRowHighlight::None;
     if (runtime.focus_registry == nullptr) {
         return;
@@ -594,6 +617,16 @@ bool leaderboard_dispatch_key(ModalRuntime& runtime, const backbone::KeyEvent& e
         return list_stop_key(runtime, e);
     }
     if (focused == kLeaderboardYourRow) {
+        // Shift-Tab back to the list stop: restore the position that was remembered on
+        // departure. The backbone advances focus; the restored rank is highlighted next frame.
+        if (e.code == backbone::KeyCode::Tab &&
+            backbone::has_mod(e.mods, backbone::ModMask::Shift)) {
+            if (runtime.leaderboard_saved_highlight_rank >= 0) {
+                runtime.leaderboard_highlight_rank = runtime.leaderboard_saved_highlight_rank;
+                runtime.leaderboard_scroll_to_highlight = true;
+            }
+            return false;  // let backbone advance focus backward to kLeaderboardList
+        }
         return your_row_key(runtime, e);
     }
     if (focused == kLeaderboardClose) {
@@ -660,8 +693,8 @@ void render_leaderboard_view(ModalRuntime& runtime) {
         render_list_rows(runtime, data, self);
     }
     ImGui::EndChild();
-    // The scrollable list is ONE focus stop; ring the whole child when it holds focus.
-    bridge::draw_focus_ring(kLeaderboardList, ring);
+    // Focus on the list stop is indicated only by the highlighted player's row tint
+    // (AccentSecondary fill in render_list_rows); no bounding ring around the whole child.
 
     const ImVec2 yr_top = ImGui::GetCursorScreenPos();
     render_your_rank_row(runtime, data, self);

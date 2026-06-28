@@ -252,6 +252,11 @@ struct ModalRuntime {
     // jump-by-name (Enter / click a result) and the list-stop jump-by-rank (digits /
     // arrows). -1 = none. The highlighted row is tinted and scrolled into view.
     std::int64_t leaderboard_highlight_rank{-1};
+    // Remembered position when focus leaves the list stop (Tab to your-row or Shift-Tab to
+    // search). Restored when focus returns: Shift-Tab from your-row restores directly;
+    // Tab from search restores when the search buffer is empty (no new query was typed).
+    // -1 = no position saved (first entry, or the board was empty on departure).
+    std::int64_t leaderboard_saved_highlight_rank{-1};
     // Rolling digit buffer for the list stop's jump-by-rank (reset on open, on an arrow,
     // and on a name jump).
     RankJumpBuffer leaderboard_rank_buffer{};

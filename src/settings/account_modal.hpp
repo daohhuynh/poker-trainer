@@ -65,11 +65,6 @@ struct AccountSeams {
     std::function<void(LegalDoc)> open_legal{};
 };
 
-// Which link in the ToS/Privacy consent row is arrow-highlighted (Category A positional
-// toggle). None = no highlight set; Enter/Space in this state toggles the checkbox.
-// Terms/Privacy = the respective doc link is highlighted; Enter/Space opens it.
-enum class TosHighlight : std::uint8_t { None, Terms, Privacy };
-
 // Per-open state for the auth (Sign In / Sign Up) modal. Owns its OWN focus registry,
 // never the app-root or the Settings one (the shared-registry-clobber rule).
 struct AccountModalState {
@@ -88,8 +83,6 @@ struct AccountModalState {
     bool consent_age{false};
     bool consent_tos{false};
 
-    // Arrow highlight for the ToS/Privacy consent grouped stop (Category A positional toggle).
-    TosHighlight tos_highlight{TosHighlight::None};
 
     // Inline state_fail error attached under one field, set on a failed submit / denylist.
     AuthField error_field{AuthField::None};
