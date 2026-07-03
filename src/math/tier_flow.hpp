@@ -7,10 +7,13 @@
 // Multi-tier Aggressor sequential flow (Module 5). When the Bet Sizing Engine is
 // on (default), an Aggressor scenario is presented as four FIXED bet sizes
 // (tier 1 = 1/3 pot, tier 2 = 1/2 pot, tier 3 = full pot, tier 4 = overbet), one
-// tier per screen: the user computes Fold Probability + EV for each tier's given
-// size, makes a single persistent Bet Size pick, and Enter advances tier-by-tier,
-// submitting on the last tier. Caller and single-tier Aggressor scenarios are NOT
-// sequential -- one screen, Enter submits all (unchanged).
+// tier per screen: the user computes the tier's per-tier inputs (EV always, plus
+// Breakeven Fold % for Pure/Semi-Bluff) for each given size, makes a single
+// persistent Bet Size pick, and Enter advances tier-by-tier, submitting on the last
+// tier. Every Aggressor sub-type is sequential now (each has a per-tier EV input). In
+// gameplay, Enter advances/submits regardless of the current tier's fill state
+// (blanks grade wrong; see keybinds.cpp). Caller and single-tier Aggressor scenarios
+// are NOT sequential -- one screen, Enter submits all (unchanged).
 //
 // This header carries the PURE decision logic (no ImGui, no backbone side
 // effects): the gate, the per-tier required-inputs check, and what Enter does. The
@@ -29,13 +32,17 @@ namespace poker_trainer::interrogator {
 // submits rather than advances.
 [[nodiscard]] bool is_last_tier(const InterrogatorState& state) noexcept;
 
-// True when every input REQUIRED to leave the current tier screen is filled: this
-// tier's Fold Probability and EV, plus the tier-1 Equity-if-Called (Semi-Bluff).
-// The Bet Size pick does NOT gate advancing -- an unpicked size simply grades wrong
-// (existing spec), so it is excluded here.
+// True when every input on the current tier screen is filled: this tier's per-tier
+// inputs (EV always; Breakeven Fold % for Pure/Semi-Bluff) plus the scenario-level
+// Equity-if-Called shown on every tier for Value/Semi-Bluff. The
+// Bet Size pick does NOT gate -- an unpicked size simply grades wrong -- so it is
+// excluded here. Only the TUTORIAL still consults this via enter_action; gameplay
+// Enter no longer gates on fill (keybinds.cpp).
 [[nodiscard]] bool current_tier_required_filled(const InterrogatorState& state) noexcept;
 
-// What Enter does from the math-input zone of a sequential scenario.
+// What Enter does from the math-input zone of a sequential scenario. GAMEPLAY no
+// longer uses this (it advances/submits unconditionally); it is retained for the
+// tutorial's fill-gated Enter, which is fixed separately against the redesign.
 enum class EnterAction : std::uint8_t {
     None,     // this tier's required inputs are not all filled -> no-op
     Advance,  // advance to the next tier

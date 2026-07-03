@@ -128,26 +128,59 @@ GradingResult evaluate(const ScenarioState& state, const UserAnswers& answers) {
                                            answers.caller_equity_pct, state.caller_equity_pct));
         grades.push_back(grade_ev(std::nullopt, answers.caller_ev, state.caller_ev));
     } else {
-        const auto grade_tier = [&](std::uint8_t t) {
+        // Aggressor inputs (all derivable now that the opponent fold % is shown):
+        //   Pure Bluff:  Breakeven Fold % (per tier), EV (per tier), Bet Size.
+        //   Value Bet:   Equity if Called, EV (per tier), Bet Size.
+        //   Semi-Bluff:  Breakeven Fold % (per tier), Equity if Called, EV (per tier), Bet Size.
+        // Breakeven Fold % = bet / (pot + bet) -- the aggressor's mirror of pot odds.
+        // EV is the locked V8.1 formula output at the tier's bet using the shown F
+        // (stored per tier in state.tiers[t].ev), so each tier's EV is derivable from
+        // the shown fold %, the pot, and the tier's size. Bet Size grades against the
+        // max-EV tier (correct_bet_tier).
+        const bool asks_breakeven = (state.type == ScenarioType::AggressorPureBluff ||
+                                     state.type == ScenarioType::AggressorSemiBluff);
+        const bool asks_equity_if_called = (state.type == ScenarioType::AggressorValueBet ||
+                                            state.type == ScenarioType::AggressorSemiBluff);
+        const double pot_d = static_cast<double>(state.pot);
+
+        const auto grade_breakeven = [&](std::uint8_t t) {
             const AggressorTier& tier = state.tiers[t];
+            const double breakeven_pct = 100.0 * pot_odds_fraction(pot_d, tier.bet_dollars);
             grades.push_back(grade_probability(InputId::FoldProbability, t,
-                                               answers.tier_fold_pct[t],
-                                               tier.fold_probability * 100.0));
-            grades.push_back(grade_ev(t, answers.tier_ev[t], tier.ev));
+                                               answers.tier_breakeven_pct[t], breakeven_pct));
         };
-
-        if (state.multi_tier) {
-            for (std::uint8_t t = 0; t < kBetTierCount; ++t) {
-                grade_tier(t);
-            }
-        } else {
-            grade_tier(static_cast<std::uint8_t>(state.presented_tier));
-        }
-
-        if (state.type == ScenarioType::AggressorSemiBluff) {
+        const auto grade_tier_ev = [&](std::uint8_t t) {
+            grades.push_back(grade_ev(t, answers.tier_ev[t], state.tiers[t].ev));
+        };
+        const auto grade_equity_if_called = [&] {
             grades.push_back(grade_probability(InputId::Equity, std::nullopt,
                                                answers.equity_if_called_pct,
                                                state.aggressor_equity_pct));
+        };
+
+        if (state.multi_tier) {
+            // Per tier: Breakeven Fold % then EV; the scenario-level Equity if Called
+            // and Bet Size close the list (they render in the recap's Overall section).
+            for (std::uint8_t t = 0; t < kBetTierCount; ++t) {
+                if (asks_breakeven) {
+                    grade_breakeven(t);
+                }
+                grade_tier_ev(t);
+            }
+            if (asks_equity_if_called) {
+                grade_equity_if_called();
+            }
+        } else {
+            // Single tier, one screen: grade in on-screen input order
+            // (Breakeven Fold %, Equity if Called, EV) then Bet Size.
+            const auto t = static_cast<std::uint8_t>(state.presented_tier);
+            if (asks_breakeven) {
+                grade_breakeven(t);
+            }
+            if (asks_equity_if_called) {
+                grade_equity_if_called();
+            }
+            grade_tier_ev(t);
         }
 
         grades.push_back(grade_bet_size(answers.selected_bet_tier, state.tiers, state.correct_bet_tier));

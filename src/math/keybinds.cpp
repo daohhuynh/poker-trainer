@@ -28,22 +28,18 @@
 namespace poker_trainer::interrogator {
 
 backbone::FocusableId focus_target_for_digit(const InterrogatorState& state, int digit) noexcept {
-    if (digit < 1 || digit > 6) {
+    // Positional: digit N focuses the Nth stop in the current screen's focus order
+    // (the visible numeric boxes top to bottom, then the bet-size group when
+    // present) -- state.focus_segment is exactly that order, rebuilt per scenario
+    // and per tier advance. Out-of-range (no stop at that position) is a no-op.
+    if (digit < 1) {
         return backbone::kNoFocus;
     }
-    const engine::InputId target = kDigitToInput[static_cast<std::size_t>(digit - 1)];
-    if (target == engine::InputId::BetSize) {
-        return state.bet_group.present ? state.bet_group.focus_id : backbone::kNoFocus;
+    const std::size_t index = static_cast<std::size_t>(digit - 1);
+    if (index >= state.focus_segment.size()) {
+        return backbone::kNoFocus;
     }
-    // The box of that kind on the CURRENT screen. In a sequential multi-tier
-    // Aggressor that is the current tier's Fold / EV (so "5"/"4" focus THIS tier's
-    // inputs, not tier 0); for Caller / single-tier it is the sole such box.
-    for (const NumericBox* box : current_view_boxes(state)) {
-        if (box->input == target) {
-            return box->focus_id;
-        }
-    }
-    return backbone::kNoFocus;
+    return state.focus_segment[index];
 }
 
 namespace {
@@ -176,8 +172,9 @@ void do_submit(InterrogatorRuntime& runtime) {
 
 // Advance a sequential multi-tier Aggressor to the next tier screen (forward-only).
 // Re-registers the new tier's focus list + registry, carries the persistent Bet
-// Size pick (NOT reset), and lands default focus on the new tier's first input
-// (Fold Probability). The per-tier typed answers stay in `state.boxes`, so the
+// Size pick (NOT reset), and lands default focus on the new tier's first stop (the
+// tier's Breakeven Fold % box for Pure/Semi-Bluff, or the Equity-if-Called box for a
+// Value Bet, then EV). The per-tier typed answers stay in `state.boxes`, so the
 // submitted set remains identical to the all-at-once shape Z01 grades.
 void advance_tier(InterrogatorRuntime& runtime) {
     InterrogatorState& state = runtime.state;
@@ -191,7 +188,7 @@ void advance_tier(InterrogatorRuntime& runtime) {
     populate_focus_registry(runtime);
     state.last_synced_focus = backbone::kNoFocus;
     if (!state.focus_segment.empty()) {
-        backbone::snap_focus_to(state.focus_segment.front());  // default focus = Fold Probability
+        backbone::snap_focus_to(state.focus_segment.front());  // default focus = the tier's first stop
     }
 }
 
@@ -218,28 +215,41 @@ bool on_enter_key(InterrogatorRuntime& runtime, const backbone::KeyEvent& e) {
     }
     InterrogatorState& state = runtime.state;
 
-    // Multi-tier Aggressor: SEQUENTIAL per-tier flow. Enter advances tier-by-tier
-    // and submits on the last tier, gated on the CURRENT tier's required inputs
-    // (Fold + EV, plus the tier-1 Equity-if-Called); the Bet Size pick never gates.
-    // Enter advances/submits only from the math-input zone -- on a cluster icon Enter
-    // activates that icon, so leave it unconsumed there. This also subsumes the
-    // tutorial "Enter does nothing until this tier's inputs are filled" rule, since
-    // an unfilled tier yields EnterAction::None for tutorial and gameplay alike.
+    // Multi-tier Aggressor: SEQUENTIAL per-tier flow. In GAMEPLAY, Enter advances the
+    // current tier regardless of that tier's fill state and submits on the last tier
+    // -- a partial answer set is allowed and any unfilled box grades wrong (matching
+    // how Caller already behaves). Enter advances/submits only from the math-input
+    // zone -- on a cluster icon Enter activates that icon, so leave it unconsumed
+    // there. The TUTORIAL keeps its own gate (Enter is a no-op until this tier's
+    // taught inputs are filled); the tutorial is fixed separately against the
+    // redesign, so its enter_action-gated path is preserved verbatim here.
     if (is_sequential(state)) {
         if (!focus_in_math_zone(state)) {
             return false;
         }
-        switch (enter_action(state)) {
-            case EnterAction::None:
-                return true;  // this tier's required inputs unfilled: consumed no-op
-            case EnterAction::Advance:
-                advance_tier(runtime);
-                return true;
-            case EnterAction::Submit:
-                do_submit(runtime);
-                return true;
+        const backbone::ScreenStateSnapshot seq_snap = backbone::read_screen_state();
+        const bool seq_tutorial_active =
+            seq_snap.tutorial_state.phase == backbone::TutorialPhase::Active;
+        if (seq_tutorial_active) {
+            switch (enter_action(state)) {
+                case EnterAction::None:
+                    return true;  // this tier's required inputs unfilled: consumed no-op
+                case EnterAction::Advance:
+                    advance_tier(runtime);
+                    return true;
+                case EnterAction::Submit:
+                    do_submit(runtime);
+                    return true;
+            }
+            return true;  // exhaustive switch above; keeps -Wreturn-type quiet
         }
-        return true;  // exhaustive switch above; keeps -Wreturn-type quiet
+        // Gameplay: advance (or submit on the last tier) regardless of fill state.
+        if (is_last_tier(state)) {
+            do_submit(runtime);
+        } else {
+            advance_tier(runtime);
+        }
+        return true;
     }
 
     // Caller / single-tier Aggressor: one screen, Enter submits ALL visible inputs

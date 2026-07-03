@@ -59,8 +59,6 @@ inline constexpr backbone::FocusableId kGpStreetSave = backbone::make_focusable_
 inline constexpr backbone::FocusableId kGpStreetReset = backbone::make_focusable_id("settings.gp.street_reset");
 inline constexpr backbone::FocusableId kGpChipDenom = backbone::make_focusable_id("settings.gp.chip_denom");
 inline constexpr backbone::FocusableId kGpBetSizing = backbone::make_focusable_id("settings.gp.bet_sizing");
-inline constexpr backbone::FocusableId kGpDifficultyLow = backbone::make_focusable_id("settings.gp.difficulty_low");
-inline constexpr backbone::FocusableId kGpDifficultyHigh = backbone::make_focusable_id("settings.gp.difficulty_high");
 inline constexpr backbone::FocusableId kGpTimeCustomToggle = backbone::make_focusable_id("settings.gp.time_toggle");
 inline constexpr backbone::FocusableId kGpTimeCustomInput = backbone::make_focusable_id("settings.gp.time_input");
 inline constexpr backbone::FocusableId kGpShowHud = backbone::make_focusable_id("settings.gp.show_hud");
@@ -113,16 +111,16 @@ inline constexpr backbone::FocusableId kLeTerms = backbone::make_focusable_id("s
 inline constexpr backbone::FocusableId kLePrivacy = backbone::make_focusable_id("settings.le.privacy");
 inline constexpr backbone::FocusableId kLeAbout = backbone::make_focusable_id("settings.le.about");
 
-// The full Tab order (54 stops). Stable storage; the content provider's focus_list
+// The full Tab order (52 stops). Stable storage; the content provider's focus_list
 // returns a span over this.
-inline constexpr std::array<backbone::FocusableId, 54> kSettingsFocusOrder{
+inline constexpr std::array<backbone::FocusableId, 52> kSettingsFocusOrder{
     kFocusSearch,
     kSidebarFocus[0], kSidebarFocus[1], kSidebarFocus[2], kSidebarFocus[3], kSidebarFocus[4],
     kSidebarFocus[5], kSidebarFocus[6], kSidebarFocus[7], kSidebarFocus[8],
     // Gameplay
     kGpStreetPreflopSlider, kGpStreetPreflopInput, kGpStreetFlopSlider, kGpStreetFlopInput,
     kGpStreetTurnSlider, kGpStreetTurnInput, kGpStreetRiverSlider, kGpStreetRiverInput,
-    kGpStreetSave, kGpStreetReset, kGpChipDenom, kGpBetSizing, kGpDifficultyLow, kGpDifficultyHigh,
+    kGpStreetSave, kGpStreetReset, kGpChipDenom, kGpBetSizing,
     kGpTimeCustomToggle, kGpTimeCustomInput, kGpShowHud, kGpShowCountdown,
     // Units
     kUnUnitToggle,
@@ -183,7 +181,7 @@ struct SettingsModalState {
     // provider's focus_list returns a span over [0, active_focus_count). For the logged-out
     // (guest) case it is byte-for-byte kSettingsFocusOrder, so Tab/search are unchanged.
     bool logged_in_focus{false};                          // cached auth state at on_open
-    std::array<backbone::FocusableId, 56> active_focus_order{};
+    std::array<backbone::FocusableId, 54> active_focus_order{};
     std::size_t active_focus_count{0};
 
     // View Profile inline panel toggle (logged-in Account section). Shows Spendable +

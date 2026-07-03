@@ -33,6 +33,12 @@ namespace poker_trainer::modal {
 
 namespace {
 
+// Screen-space rect of the Leaderboard-swap icon as last drawn, cached so the tutorial
+// overlay can spotlight it INSIDE the Shop modal (the overlay draws on a foreground draw
+// list above the modal window). Overwritten every frame the Shop header draws; read only
+// while the Shop modal is the current modal, so a stale value between opens is harmless.
+std::optional<animations::Rect> g_leaderboard_icon_rect{};
+
 [[nodiscard]] ImU32 token_u32(theme::ColorToken token) {
     return ImGui::ColorConvertFloat4ToU32(theme::get_color(token));
 }
@@ -101,6 +107,7 @@ void focus_on_click(backbone::FocusableId id) {
     const bool clicked = ImGui::InvisibleButton("##shop_to_leaderboard", ImVec2{btn, btn});
     const ImVec2 bmin = ImGui::GetItemRectMin();
     const ImVec2 bmax = ImGui::GetItemRectMax();
+    g_leaderboard_icon_rect = animations::Rect{bmin.x, bmin.y, bmax.x - bmin.x, bmax.y - bmin.y};
     if (ImGui::IsItemHovered()) {
         dl->AddRectFilled(bmin, bmax, token_u32(theme::ColorToken::ButtonBgHover), 4.0f);
     }
@@ -273,6 +280,8 @@ void render_genre_section(ModalRuntime& rt, const ShopSnapshot& snap, std::size_
 }
 
 }  // namespace
+
+std::optional<animations::Rect> shop_leaderboard_icon_rect() { return g_leaderboard_icon_rect; }
 
 ShopButtonKind shop_button_kind(const ShopRowView& row, bool armed) noexcept {
     if (row.owned) {

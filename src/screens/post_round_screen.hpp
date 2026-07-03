@@ -50,6 +50,7 @@ struct PostRoundRuntime {
     AgainButton again;
     ClipboardFallback clip;
     render::RecapTab active_tab{render::RecapTab::Tier1};
+    float recap_scroll{0.0f};  // stat-modal body scroll in px; reset on entry + tab change
 
     // The current screen's focus head (no cluster tail — the head+cluster
     // composition is the open Z11-wave decision; the cluster renders as inert
@@ -84,5 +85,15 @@ void install_post_round_screen(PostRoundRuntime& runtime,
 // The registered ScreenId::PostRound renderer body. Renders the whole screen from
 // the captured snapshot; clears to the background when no snapshot is valid.
 void render_post_round_screen(PostRoundRuntime& runtime);
+
+// ----- Zone 14 Again-commit override seam -----
+//
+// The Again button commits via the render-time mouse path (not the event router), so
+// the tutorial cannot intercept it there. Boot wires this override to
+// tutorial::on_again_commit: commit_again calls it first and, when it returns true,
+// the tutorial drove the navigation (the next teaching seed, or the Tutorial Complete
+// screen) and Z13 skips its normal replay launch. Unset (or returns false) → the
+// normal Again replay runs unchanged.
+void set_again_commit_override(std::function<bool()> override_fn);
 
 }  // namespace poker_trainer::screens

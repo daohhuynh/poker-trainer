@@ -57,24 +57,37 @@ struct RecapRow {
     bool correct{false};
 };
 
-// Whether this scenario's recap shows the tier-tab strip: only a multi-tier
-// Aggressor (Bet Sizing Engine on) has per-tier tabs. Caller and single-tier
-// Aggressor render the recap body directly with no strip.
+// Whether this scenario's recap shows the tier-tab strip: any multi-tier Aggressor
+// sub-type (each now has a per-tier input -- EV always, plus Breakeven Fold % for
+// Pure/Semi-Bluff) gets per-tier tabs. Caller and single-tier Aggressor render the
+// recap body directly with no strip.
 [[nodiscard]] bool has_tier_tabs(const engine::ScenarioState& scenario) noexcept;
 
-// Rows for one tier tab (tier 0..3) of a multi-tier Aggressor: that tier's
-// per-tier Fold Probability + EV, followed by the bet-size-independent inputs
-// echoed on every tab (Equity if Called when present, then the single Bet Size
-// pick) for visual symmetry.
+// The FULL input set for one tier tab (tier 0..3): that tier's per-tier grades
+// (Breakeven Fold % and/or EV) PLUS the scenario-level inputs (Equity if Called, Bet
+// Size). Each tier is self-contained -- the persistent Equity / Bet Size answers are
+// echoed into every tier and counted toward that tier's own accuracy, since a user may
+// change them while on any tier. Order: Breakeven Fold %, Equity if Called, EV, Bet
+// Size (absent inputs skipped for the sub-type).
 [[nodiscard]] std::vector<RecapRow> build_tier_rows(const engine::GradingResult& result,
                                                     std::uint8_t tier);
 
-// Rows for a non-tabbed recap (Caller, single-tier Aggressor): every graded input,
-// in grading order.
+// The SCENARIO-LEVEL rows (the grades with no tier index): Equity if Called (Value
+// Bet / Semi-Bluff) then the single Bet Size pick, in grading order.
+[[nodiscard]] std::vector<RecapRow> build_scenario_level_rows(const engine::GradingResult& result);
+
+// Rows for a non-tabbed recap (Caller, single-tier Aggressor): every graded input, in
+// grading order.
 [[nodiscard]] std::vector<RecapRow> build_flat_rows(const engine::GradingResult& result);
 
 // Accuracy across a set of rows, as a rounded 0..100 percentage. Empty -> 0.
 [[nodiscard]] int rows_accuracy_pct(std::span<const RecapRow> rows) noexcept;
+
+// One tier's self-contained accuracy (rounded 0..100): the accuracy across
+// build_tier_rows(result, tier) -- that tier's per-tier inputs plus the echoed
+// scenario-level inputs. Shown as the tier tab's bottom "Overall" row and as the
+// tier's row in the Summary tab.
+[[nodiscard]] int tier_accuracy_pct(const engine::GradingResult& result, std::uint8_t tier);
 
 // Per-tier correct/total tally (the Summary tab's per-tier breakdown row).
 struct TierTally {
@@ -84,8 +97,9 @@ struct TierTally {
 
 // Scenario-level aggregation for the Summary tab: total inputs correct out of
 // total across all tiers (the "9/12 correct (75%)" line), plus the per-tier
-// breakdown (each tier's graded Fold + EV). Bet-size-independent inputs and the
-// single Bet Size pick fold into total/total_correct but into no per-tier tally.
+// breakdown (each tier's graded per-tier inputs: Breakeven Fold % and/or EV).
+// Bet-size-independent inputs and the single Bet Size pick fold into
+// total/total_correct but into no per-tier tally.
 struct SummaryData {
     int total_correct{0};
     int total{0};
@@ -103,6 +117,11 @@ struct SummaryData {
 struct TimeGrade {
     int target_s{0};
     int actual_s{0};
+    // Tutorial scenarios disable the Delta Timer entirely: the row then renders the
+    // "Tutorial — timer disabled" placeholder instead of Target / Actual values
+    // (ARCHITECTURE §Forced Settings). The Post-Round path sets this from the live
+    // tutorial phase.
+    bool tutorial_disabled{false};
 };
 
 // True when the user went over their target time (Actual rendered state_fail);
@@ -151,13 +170,18 @@ struct StatModalRender {
     ImVec2* bottom_right;   // modal bottom-right
     float alpha;            // modal fade-in multiplier (1.0 once fully arrived)
     bool strip_focused;     // draw the 2px border_focus ring around the strip
+    float scroll_offset;    // body scroll in px (0 = top); the tab strip stays pinned
 };
 
-// Render the full stat modal: translucent panel, tier-tab strip (multi-tier
-// only), the active tab's body (three-column rows + Time-Grade row + Overall row,
-// or the Summary layout), and the side-pot icon next to "Overall" when applicable.
-void render_stat_modal(ImDrawList* dl, const engine::ScenarioState& scenario,
-                       const engine::GradingResult& result, RecapTab active_tab,
-                       const TimeGrade& time_grade, const StatModalRender& params);
+// Render the full stat modal: translucent panel, PINNED tier-tab strip (multi-tier
+// only), and the active tab's scrollable body (the tier's three-column input rows +
+// Time-Grade row + the tier's Overall row, or the Summary's per-tier Overall rows +
+// the whole-round Overall row). The body is clipped to the modal rect and offset by
+// `params.scroll_offset` so it stays contained. Returns the body's overflow in px
+// (content height beyond the visible body region, clamped >= 0) so the caller can
+// clamp scrolling and enable the mouse wheel.
+[[nodiscard]] float render_stat_modal(ImDrawList* dl, const engine::ScenarioState& scenario,
+                                      const engine::GradingResult& result, RecapTab active_tab,
+                                      const TimeGrade& time_grade, const StatModalRender& params);
 
 }  // namespace poker_trainer::render

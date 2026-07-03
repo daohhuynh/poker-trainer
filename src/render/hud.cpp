@@ -3,7 +3,9 @@
 #include "engine/scenario.hpp"
 #include "theme/theme_tokens.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <format>
 #include <string>
 
@@ -77,6 +79,46 @@ void draw_floating_bet(ImDrawList* dl, float anchor_x, float anchor_y, int bet_d
         return;
     }
     const std::string text = format_amount(bet_dollars, cash_mode, big_blind);
+    const ImVec2 sz = ImGui::CalcTextSize(text.c_str());
+    dl->AddText(ImVec2{anchor_x - sz.x * 0.5f, anchor_y}, token_u32(theme::ColorToken::TextPrimary),
+                text.c_str());
+}
+
+namespace {
+
+// The opponent fold % for the tier currently on screen, as a whole-number percent.
+// Clamps the tier index defensively; the value comes straight from the engine truth
+// (tiers[t].fold_probability), so the on-table and top-left readouts always agree.
+[[nodiscard]] int opp_fold_pct(const engine::ScenarioState& scenario,
+                               std::uint8_t viewed_tier) noexcept {
+    const auto idx =
+        std::min(static_cast<std::size_t>(viewed_tier), engine::kBetTierCount - 1);
+    return static_cast<int>(std::lround(scenario.tiers[idx].fold_probability * 100.0));
+}
+
+}  // namespace
+
+float draw_opp_fold(ImDrawList* dl, float x, float y, const engine::ScenarioState& scenario,
+                    std::uint8_t viewed_tier, bool show_hud) {
+    const float line = ImGui::GetTextLineHeightWithSpacing();
+    // Aggressor scenarios only: the opponent's situational fold frequency is given
+    // scenario data (the mirror of the Caller's To Call line). HUD-gated exactly like
+    // the pot total and the To Call line.
+    if (dl == nullptr || !show_hud || !engine::is_aggressor(scenario.type)) {
+        return line;
+    }
+    const std::string text = std::format("Opp Fold: {}%", opp_fold_pct(scenario, viewed_tier));
+    dl->AddText(ImVec2{x, y}, token_u32(theme::ColorToken::TextPrimary), text.c_str());
+    return line;
+}
+
+void draw_table_opp_fold(ImDrawList* dl, float anchor_x, float anchor_y,
+                         const engine::ScenarioState& scenario, std::uint8_t viewed_tier,
+                         bool show_hud) {
+    if (dl == nullptr || !show_hud || !engine::is_aggressor(scenario.type)) {
+        return;
+    }
+    const std::string text = std::format("Opp fold: {}%", opp_fold_pct(scenario, viewed_tier));
     const ImVec2 sz = ImGui::CalcTextSize(text.c_str());
     dl->AddText(ImVec2{anchor_x - sz.x * 0.5f, anchor_y}, token_u32(theme::ColorToken::TextPrimary),
                 text.c_str());

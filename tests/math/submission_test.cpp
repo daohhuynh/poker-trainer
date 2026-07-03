@@ -38,22 +38,47 @@ eng::ScenarioState caller_truth(double pot_odds, int outs, double equity, double
     return s;
 }
 
-// A multi-tier Semi-Bluff with known per-tier and bet-size-independent truth.
+// A multi-tier Semi-Bluff with known per-tier and bet-size-independent truth. pot=100
+// so the per-tier Breakeven Fold % (bet / (pot + bet)) is 25, 33.33, 50, 60 for the
+// 1/3, 1/2, Full, Overbet tiers respectively.
 eng::ScenarioState semibluff_multitier_truth() {
     eng::ScenarioState s{};
     s.id = eng::ScenarioId{7};
     s.type = eng::ScenarioType::AggressorSemiBluff;
+    s.pot = 100;
     s.multi_tier = true;
     s.aggressor_equity_pct = 45.0;
-    const double folds[eng::kBetTierCount] = {0.30, 0.40, 0.50, 0.60};
+    const double fracs[eng::kBetTierCount] = {1.0 / 3.0, 0.5, 1.0, 1.5};
     const double evs[eng::kBetTierCount] = {10.0, 12.0, 13.0, 8.0};
     for (std::size_t i = 0; i < eng::kBetTierCount; ++i) {
         s.tiers[i].tier = static_cast<eng::BetTier>(static_cast<std::uint8_t>(i));
-        s.tiers[i].fold_probability = folds[i];
+        s.tiers[i].bet_fraction = fracs[i];
+        s.tiers[i].bet_dollars = fracs[i] * 100.0;
         s.tiers[i].ev = evs[i];
     }
     s.correct_bet_tier = eng::BetTier::FullPot;  // max EV (13.0)
     return s;
+}
+
+// Correct Breakeven Fold % string per tier for the pot=100 helper above (rounded to
+// the integer the box would carry): 25, 33, 50, 60.
+const char* breakeven_str(std::uint8_t tier) {
+    switch (tier) {
+        case 0: return "25";
+        case 1: return "33";
+        case 2: return "50";
+        default: return "60";
+    }
+}
+
+// Correct per-tier dollar EV string for the semibluff_multitier_truth evs {10,12,13,8}.
+const char* ev_str(std::uint8_t tier) {
+    switch (tier) {
+        case 0: return "10";
+        case 1: return "12";
+        case 2: return "13";
+        default: return "8";
+    }
 }
 
 void set_box(it::InterrogatorState& state, eng::InputId id, std::optional<std::uint8_t> tier,
@@ -166,10 +191,7 @@ TEST(Grading, UnselectedBetSizeIsWrong) {
     // Fill every numeric box correctly but never select a bet tier.
     set_box(state, eng::InputId::Equity, std::nullopt, "45");
     for (std::uint8_t t = 0; t < eng::kBetTierCount; ++t) {
-        set_box(state, eng::InputId::FoldProbability, t,
-                t == 0 ? "30" : t == 1 ? "40" : t == 2 ? "50" : "60");
-        set_box(state, eng::InputId::Ev, t,
-                t == 0 ? "10" : t == 1 ? "12" : t == 2 ? "13" : "8");
+        set_box(state, eng::InputId::FoldProbability, t, breakeven_str(t));
     }
     ASSERT_FALSE(state.bet_group.selected.has_value());
     const eng::GradingResult r = it::grade(state);
@@ -184,10 +206,8 @@ TEST(Grading, EquityIfCalledGradedOnceAcrossAllTiers) {
     it::configure_for_scenario(state, semibluff_multitier_truth());
     set_box(state, eng::InputId::Equity, std::nullopt, "45");
     for (std::uint8_t t = 0; t < eng::kBetTierCount; ++t) {
-        set_box(state, eng::InputId::FoldProbability, t,
-                t == 0 ? "30" : t == 1 ? "40" : t == 2 ? "50" : "60");
-        set_box(state, eng::InputId::Ev, t,
-                t == 0 ? "10" : t == 1 ? "12" : t == 2 ? "13" : "8");
+        set_box(state, eng::InputId::FoldProbability, t, breakeven_str(t));
+        set_box(state, eng::InputId::Ev, t, ev_str(t));
     }
     state.bet_group.selected = eng::BetTier::FullPot;
 
@@ -198,9 +218,10 @@ TEST(Grading, EquityIfCalledGradedOnceAcrossAllTiers) {
     ASSERT_NE(equity, nullptr);
     EXPECT_TRUE(equity->correct);
     EXPECT_DOUBLE_EQ(equity->correct_value, 45.0);
-    // Per-tier inputs are graded for every tier.
+    // Per-tier Breakeven Fold % and per-tier EV are each graded for every tier.
     EXPECT_EQ(count_grade(r, eng::InputId::FoldProbability), eng::kBetTierCount);
     EXPECT_EQ(count_grade(r, eng::InputId::Ev), eng::kBetTierCount);
+    EXPECT_TRUE(r.all_correct);
 }
 
 // ----- Enter submits ALL visible inputs at once -----
@@ -220,10 +241,8 @@ TEST(Submission, OnSubmitAggregatesAllInputsAndFiresBusEvent) {
     it::configure_for_scenario(runtime.state, semibluff_multitier_truth());
     set_box(runtime.state, eng::InputId::Equity, std::nullopt, "45");
     for (std::uint8_t t = 0; t < eng::kBetTierCount; ++t) {
-        set_box(runtime.state, eng::InputId::FoldProbability, t,
-                t == 0 ? "30" : t == 1 ? "40" : t == 2 ? "50" : "60");
-        set_box(runtime.state, eng::InputId::Ev, t,
-                t == 0 ? "10" : t == 1 ? "12" : t == 2 ? "13" : "8");
+        set_box(runtime.state, eng::InputId::FoldProbability, t, breakeven_str(t));
+        set_box(runtime.state, eng::InputId::Ev, t, ev_str(t));
     }
     runtime.state.bet_group.selected = eng::BetTier::FullPot;
 
@@ -307,7 +326,7 @@ TEST(Submission, AllVisibleInputsFilledReflectsBetSelection) {
             return s;
         }());
     set_box(state, eng::InputId::FoldProbability, static_cast<std::uint8_t>(1), "40");
-    set_box(state, eng::InputId::Ev, static_cast<std::uint8_t>(1), "12");
+    set_box(state, eng::InputId::Ev, static_cast<std::uint8_t>(1), "5");  // per-tier EV box
     EXPECT_FALSE(it::all_visible_inputs_filled(state));  // bet size not yet selected
     state.bet_group.selected = eng::BetTier::HalfPot;
     EXPECT_TRUE(it::all_visible_inputs_filled(state));

@@ -54,6 +54,12 @@ inline constexpr int kMaxSelectAttempts = 4096;
 void request_game_launch(backbone::GameMode mode,
                          std::optional<backbone::CustomConfig> custom);
 
+// Launch an EXACT scenario id through the same path (the Zone 14 tutorial teaching
+// seeds). Mirrors request_game_launch but skips the mode-filtered draw: the engine
+// generates the given id deterministically, unaware it is in a tutorial. Honors the
+// Tier-2 asset readiness guard (defers / Error exactly like request_game_launch).
+void request_game_launch_with_id(engine::ScenarioId id);
+
 // ----- Persisted last-launch config (the Z13 Again / replay input) -----
 //
 // The configuration of a launch: the top-level mode plus the Custom split weights

@@ -67,6 +67,12 @@ void modal_draw_lock_banner();
 void modal_begin_locked_controls();
 void modal_end_locked_controls();
 
+// Invoke the Z14 tutorial-start seam (the Help modal's "Open Tutorial" button).
+// Boot wires the handler to tutorial::tutorial_start; a no-op until then. The
+// caller closes the Help modal first; tutorial_start re-clears has_seen_tutorial_
+// prompt and begins the overlay flow.
+void tutorial_start_seam();
+
 // ----- Per-modal render entry points (dispatched by render_modal_overlay) -----
 void render_help_modal();
 void render_settings_shell();

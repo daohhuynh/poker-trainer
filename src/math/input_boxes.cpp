@@ -16,6 +16,9 @@
 #include <system_error>
 
 #include <imgui.h>
+#ifdef __EMSCRIPTEN__
+#include <imgui_internal.h>  // ImGui::ClearActiveID -- release a captured InputText
+#endif
 
 #include "bridge/focus_registry.hpp"
 #include "theme/theme_tokens.hpp"
@@ -119,27 +122,47 @@ std::vector<NumericBox> build_boxes(const engine::ScenarioState& s) {
         return boxes;
     }
 
-    // Aggressor. Bet-size-dependent Fold% / EV spawn per presented tier; the
-    // bet-size-independent Equity-if-Called (Semi-Bluff) spawns exactly once.
-    const bool semi = (s.type == engine::ScenarioType::AggressorSemiBluff);
+    // Aggressor: the derivable inputs spawn, in on-screen order.
+    //   Pure Bluff:  Breakeven Fold % (per tier), EV (per tier), Bet Size.
+    //   Value Bet:   Equity if Called (once), EV (per tier), Bet Size.
+    //   Semi-Bluff:  Breakeven Fold % (per tier), Equity if Called (once), EV (per tier), Bet Size.
+    // Breakeven Fold % and EV are bet-size-dependent (one per tier: Breakeven on
+    // InputId::FoldProbability, dollar EV on InputId::Ev). EV is derivable now that the
+    // opponent fold % is shown on screen. Equity-if-Called is bet-size-independent
+    // (spawns exactly once). Bet Size is the focus group, not a numeric box.
+    const bool breakeven = (s.type == engine::ScenarioType::AggressorPureBluff ||
+                            s.type == engine::ScenarioType::AggressorSemiBluff);
+    const bool equity_if_called = (s.type == engine::ScenarioType::AggressorValueBet ||
+                                   s.type == engine::ScenarioType::AggressorSemiBluff);
     if (!s.multi_tier) {
         const auto t = static_cast<std::uint8_t>(s.presented_tier);
-        boxes.push_back(make_box(engine::InputId::FoldProbability, t));
-        if (semi) {
-            // Single-tier order matches the spec branch list: Fold, Equity, EV.
+        // Single-tier screen order: Breakeven Fold %, Equity if Called, EV.
+        if (breakeven) {
+            boxes.push_back(make_box(engine::InputId::FoldProbability, t));
+        }
+        if (equity_if_called) {
             boxes.push_back(make_box(engine::InputId::Equity, std::nullopt));
         }
         boxes.push_back(make_box(engine::InputId::Ev, t));
         return boxes;
     }
 
+    // Multi-tier storage: all per-tier Breakevens, then the once-only Equity if Called,
+    // then all per-tier EVs. Filtering to a tier (box_in_current_view) yields the screen
+    // order Breakeven Fold %(t) -> Equity if Called -> EV(t) on every tier, because all
+    // Breakeven indices precede the single Equity index, which precedes all EV indices.
     for (std::uint8_t t = 0; t < engine::kBetTierCount; ++t) {
-        boxes.push_back(make_box(engine::InputId::FoldProbability, t));
-        boxes.push_back(make_box(engine::InputId::Ev, t));
+        if (breakeven) {
+            boxes.push_back(make_box(engine::InputId::FoldProbability, t));
+        }
     }
-    if (semi) {
-        // Multi-tier: the single Equity-if-Called box follows the per-tier inputs.
+    if (equity_if_called) {
+        // A SCENARIO-LEVEL input (like Bet Size): entered once, carried across every
+        // tier screen, graded once.
         boxes.push_back(make_box(engine::InputId::Equity, std::nullopt));
+    }
+    for (std::uint8_t t = 0; t < engine::kBetTierCount; ++t) {
+        boxes.push_back(make_box(engine::InputId::Ev, t));
     }
     return boxes;
 }
@@ -154,11 +177,12 @@ bool box_in_current_view(const InterrogatorState& state, const NumericBox& box) 
         return true;  // Caller / single-tier Aggressor: every input on one screen.
     }
     if (box.tier.has_value()) {
-        return *box.tier == state.current_tier;  // per-tier Fold / EV: its own tier only
+        return *box.tier == state.current_tier;  // per-tier Breakeven Fold %: its own tier only
     }
-    // The only tier-less Aggressor box is Equity-if-Called (Semi-Bluff), a
-    // bet-size-independent input entered once on tier 1 (index 0).
-    return state.current_tier == 0;
+    // The only tier-less Aggressor box is Equity-if-Called: a SCENARIO-LEVEL input
+    // shown (and editable) on EVERY tier screen, exactly like the Bet Size group --
+    // entered once, carried across tiers, graded once.
+    return true;
 }
 
 std::vector<const NumericBox*> current_view_boxes(const InterrogatorState& state) {
@@ -170,6 +194,20 @@ std::vector<const NumericBox*> current_view_boxes(const InterrogatorState& state
         }
     }
     return view;
+}
+
+int positional_index_of(const engine::ScenarioState& s, std::uint8_t current_tier,
+                        backbone::FocusableId target) {
+    InterrogatorState tmp{};
+    configure_for_scenario(tmp, s);
+    tmp.current_tier = current_tier;
+    const std::vector<backbone::FocusableId> seg = build_focus_segment(tmp);
+    for (std::size_t i = 0; i < seg.size(); ++i) {
+        if (seg[i] == target) {
+            return static_cast<int>(i + 1);
+        }
+    }
+    return 0;
 }
 
 std::vector<backbone::FocusableId> build_focus_segment(const InterrogatorState& state) {
@@ -281,7 +319,7 @@ void draw_numeric_box(NumericBox& box, const char* label, float box_width,
         case engine::InputId::Ev:
             return "EV";
         case engine::InputId::FoldProbability:
-            return "Fold Probability";
+            return "Breakeven Fold %";  // repurposed identity (see scenario.hpp InputId)
         case engine::InputId::BetSize:
             return "Bet Size";
     }
@@ -298,17 +336,45 @@ void render_math_inputs(InterrogatorRuntime& runtime, const engine::ScenarioStat
 
     // Reconcile ImGui's keyboard focus to focus_manager (the single focused
     // element) on the frame focus changes, via the shared substrate. Nav (Tab /
-    // 1-6) moves focus_manager between frames; the substrate couples ImGui to it
+    // 1-N) moves focus_manager between frames; the substrate couples ImGui to it
     // from the registry's is_text_field -- a box that just gained focus grabs ImGui
     // text focus (grab_keyboard_if_target, in draw_numeric_box); the bet group (a
     // non-text stop) yields ImGui keyboard capture so digits 1-4 reach its select
     // handler. begin_focus_reconcile applies the once-per-frame ClearActiveID.
     // The registry is null only in tests that never render; an unwired registry
     // degrades to no reconcile (the rings below still draw from focus_manager).
-    const bridge::FocusReconcile rec =
-        runtime.focus_registry != nullptr
-            ? bridge::begin_focus_reconcile(*runtime.focus_registry, state.last_synced_focus)
-            : bridge::FocusReconcile{};
+    //
+    // Tutorial cooperation (Group A): while the gate suppresses text focus (a math
+    // stage-1 "Press N" callout), keep EVERY box inert -- skip the grab and release
+    // any active box -- so the digit key routes to the tutorial overlay instead of
+    // being typed. When suppression LIFTS (the user pressed N -> stage 2), reset
+    // last_synced so the now-focused box re-grabs (the once-per-change reconcile would
+    // otherwise skip it, since focus_manager already pointed at it under suppression).
+    const bool suppress_text =
+        runtime.tutorial_text_focus_gate && runtime.tutorial_text_focus_gate();
+    if (state.tutorial_text_focus_suppressed && !suppress_text) {
+        state.last_synced_focus = backbone::kNoFocus;
+    }
+    state.tutorial_text_focus_suppressed = suppress_text;
+    // Tutorial input gate (Group A): when the tutorial is teaching one box, disable
+    // EVERY OTHER box + the bet-size group so only the taught input is interactive.
+    // suppress_text (a stage-1 "Press N" callout) disables ALL boxes -- the user must
+    // press the positional key, not click. live_box is kNoFocus outside a per-box step.
+    const backbone::FocusableId tutorial_live_box =
+        runtime.tutorial_live_box ? runtime.tutorial_live_box() : backbone::kNoFocus;
+    const auto box_disabled = [&](backbone::FocusableId id) {
+        return suppress_text ||
+               (tutorial_live_box != backbone::kNoFocus && id != tutorial_live_box);
+    };
+
+    bridge::FocusReconcile rec{};
+    if (suppress_text) {
+#ifdef __EMSCRIPTEN__
+        ImGui::ClearActiveID();  // no box captures the keyboard this frame
+#endif
+    } else if (runtime.focus_registry != nullptr) {
+        rec = bridge::begin_focus_reconcile(*runtime.focus_registry, state.last_synced_focus);
+    }
     const std::uint32_t ring_color =
         ImGui::ColorConvertFloat4ToU32(theme::get_color(theme::ColorToken::BorderFocus));
 
@@ -337,14 +403,29 @@ void render_math_inputs(InterrogatorRuntime& runtime, const engine::ScenarioStat
         }
         for (NumericBox& box : state.boxes) {
             if (box_in_current_view(state, box)) {
+                const bool disabled = box_disabled(box.focus_id);
+                if (disabled) {
+                    ImGui::BeginDisabled();
+                }
                 draw_numeric_box(box, label_for(box), box_width, rec, ring_color);
+                if (disabled) {
+                    ImGui::EndDisabled();
+                }
             }
         }
         // The Bet Size pick is persistent and editable on EVERY tier screen (the
         // user's single "which size is optimal" answer, pre-highlighted from the
-        // carried selection); it is not gated by the current tier.
+        // carried selection); it is not gated by the current tier (but the tutorial
+        // gate disables it while a different box is being taught).
         if (state.bet_group.present) {
+            const bool disabled = box_disabled(state.bet_group.focus_id);
+            if (disabled) {
+                ImGui::BeginDisabled();
+            }
             render_bet_size_group(state.bet_group, ring_color);
+            if (disabled) {
+                ImGui::EndDisabled();
+            }
         }
     }
     ImGui::End();

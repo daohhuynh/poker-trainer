@@ -52,14 +52,33 @@ void definition(const char* term, const char* body) {
 void draw_help_body() {
     section_header("Formulas");
     section_header("Aggressor");
-    formula_entry("1. Pure Bluff EV = P(fold) x pot - P(call) x bet",
-                  "Bet to make a better hand fold; you win the pot when they fold and lose the bet "
-                  "when they call.");
-    formula_entry("2. Value Bet EV = P(call) x bet",
-                  "Bet hoping a worse hand calls; your profit is the called bet.");
-    formula_entry("3. Semi-Bluff EV = P(fold) x pot + P(call) x [equity x (pot + 2 x bet) - bet]",
-                  "A draw with fold equity: win now when they fold, otherwise realize your equity "
-                  "in the larger pot.");
+    formula_entry("1. Breakeven Fold % = bet / (pot + bet)",
+                  "How often the opponent must fold for a bluff to break even. It is the "
+                  "aggressor's mirror of pot odds. Your bet has to win the pot often enough to "
+                  "cover the times it gets called.");
+    formula_entry("2. Equity if Called = outs x 4 on the flop, outs x 2 on the turn",
+                  "Your share of the pot when a worse-or-drawing range calls you (the Rule of 2 and "
+                  "4). This is the value bet's and semi-bluff's derivable input.");
+    formula_entry("3. Pure Bluff EV = P(fold) x pot - P(call) x bet",
+                  "You win the pot when they fold and lose your bet when they call. The opponent's "
+                  "fold % (F) is shown on screen for the current bet size; P(call) = 1 - P(fold).");
+    formula_entry("4. Value Bet EV = P(call) x bet",
+                  "A value bet profits only when a worse hand calls, so its EV is the bet times how "
+                  "often you get called (P(call) = 1 - the shown fold %).");
+    formula_entry("5. Semi-Bluff EV = P(fold) x pot + P(call) x [equity x (pot + 2 x bet) - bet]",
+                  "Fold equity when they fold, plus your pot share when they call and you realize "
+                  "your draw. Uses the shown fold % and your Equity if Called.");
+    formula_entry("6. Bet Size = the size (1/3, 1/2, Full, or Overbet) with the highest EV",
+                  "In the multi-tier drill each size's fold % is shown, so you can work out every "
+                  "size's EV and pick the largest. The best size is fully derivable: it is just "
+                  "the max of the four EVs above.");
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
+    ImGui::TextWrapped("The opponent's fold %% (F) is GIVEN on screen for the current bet size (it "
+                       "rises with bet size and varies by board / street), so P(fold) and P(call) "
+                       "are known. EV is derivable, not guessed. On a multi-tier scenario the "
+                       "shown fold %% and EV are per bet size.");
+    ImGui::PopStyleColor();
+    ImGui::Dummy(ImVec2{0.0f, 6.0f});
     section_header("Caller");
     formula_entry("1. Pot Odds = bet / (pot + bet)",
                   "The price you're getting on a call. Lower means cheaper to call.");
@@ -73,8 +92,8 @@ void draw_help_body() {
                   "lose the bet otherwise.");
     ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
     ImGui::TextWrapped("Conventions: pot is the pot before your bet; bet is your wager (the Caller's "
-                       "bet is the call faced); P(fold) and P(call) are the opponent's probabilities; "
-                       "equity is your share when called; outs are the unseen cards that improve you.");
+                       "bet is the call faced); equity is your share when called; outs are the unseen "
+                       "cards that improve you.");
     ImGui::PopStyleColor();
 
     section_header("Math Inputs");
@@ -83,25 +102,36 @@ void draw_help_body() {
     definition("Outs", "The number of unseen cards that improve you to the best hand. The raw count "
                        "behind your equity.");
     definition("Equity", "Your percentage chance to win the hand if it goes to showdown.");
-    definition("EV", "Expected value: the average dollar result of a decision over the long run.");
-    definition("Fold Probability", "How often you expect the opponent to fold to your bet.");
+    definition("EV", "Expected value: the average dollar result of a decision over the long run. "
+                     "A Caller input (net call EV) and an Aggressor input (per bet size, from the "
+                     "shown fold %).");
+    definition("Breakeven Fold %", "How often the opponent must fold for a bluff to break even: "
+                                    "bet / (pot + bet). The aggressor's mirror of pot odds.");
+    definition("Equity if Called", "Your share of the pot when the opponent calls (Rule of 2 and 4); "
+                                    "the value bet's and semi-bluff's derivable input.");
     definition("Bet Size", "The sizing choice (relative to the pot) that maximizes your EV.");
 
     section_header("Scenario Types");
     definition("Caller", "You face a bet and decide whether the price is right to continue. Visual "
                         "cue: an opponent's chips pushed forward. Answer: Pot Odds, Outs, Equity.");
     definition("Aggressor", "You are betting; pick the line and size. Visual cue: the action is on "
-                           "you with no bet to face. Answer: Fold Probability, EV, and Bet Size.");
-    definition("  - Pure Bluff", "No showdown value; you need folds. Answer P(fold) and EV.");
-    definition("  - Value Bet", "You want a worse hand to call. Answer P(call) and EV.");
-    definition("  - Semi-Bluff", "A draw with fold equity. Answer P(fold), equity-if-called, EV.");
+                           "you with no bet to face. The opponent's fold %% is shown on the felt. "
+                           "Answer the derivable input(s), EV, and Bet Size.");
+    definition("  - Pure Bluff", "No showdown value; you need folds. Answer Breakeven Fold %, EV, "
+                                 "and Bet Size.");
+    definition("  - Value Bet", "You want a worse hand to call. Answer Equity if Called, EV, and "
+                                "Bet Size.");
+    definition("  - Semi-Bluff", "A draw with fold equity. Answer Breakeven Fold %, Equity if "
+                                 "Called, EV, and Bet Size.");
 
     section_header("Grading Rules");
     ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-    ImGui::TextWrapped("Dollar EV: within +/-5%% (relative), with a $0.50 absolute floor.\n"
-                       "Probabilities (Pot Odds, Equity, P(fold)): within +/-5 percentage points.\n"
+    ImGui::TextWrapped("Dollar EV (Caller and Aggressor): within +/-5%% (relative), with a $0.50 "
+                       "absolute floor.\n"
+                       "Probabilities (Pot Odds, Equity, Breakeven Fold %%): within +/-5 percentage "
+                       "points.\n"
                        "Outs: exact integer match.\n"
-                       "Bet Size: exact button selection match.");
+                       "Bet Size: any size whose EV ties the best size (within the EV tolerance).");
     ImGui::PopStyleColor();
 
     ImGui::Dummy(ImVec2{0.0f, 8.0f});
@@ -146,9 +176,10 @@ void render_help_modal() {
     if (dismiss) {
         close_modal();
     } else if (start_tutorial) {
-        close_modal();
-        // SEAM(Z14): tutorial_start() — initiate the tutorial overlay flow. Inert
-        // until Zone 14 lands.
+        close_modal();             // close Help first...
+        tutorial_start_seam();     // ...then start the tutorial overlay flow (Z14 seam:
+                                   // boot wires this to tutorial::tutorial_start, which
+                                   // re-clears has_seen_tutorial_prompt and begins it).
     }
 }
 

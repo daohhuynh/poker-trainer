@@ -1,7 +1,7 @@
 // Zone 12 — pure settings-logic unit tests: the coupled street-split redistribution,
-// the two-handle difficulty-range clamp + display<->internal round-trip, the integer
-// parse/clamp/step behind the volume and custom-time inputs, and the slider ghost
-// fraction. No ImGui (the section render TUs are browser-verified per CLAUDE.md §9).
+// the integer parse/clamp/step behind the volume and custom-time inputs, and the
+// slider ghost fraction. No ImGui (the section render TUs are browser-verified per
+// CLAUDE.md §9).
 
 #include "settings/settings_logic.hpp"
 
@@ -89,41 +89,10 @@ TEST(StreetSplit, RoundTripsThroughGameplaySettings) {
     EXPECT_EQ(static_cast<int>(back.river), 20);
 }
 
-// ----- difficulty range: two-handle clamp + display<->internal -----
-
-TEST(DifficultyRange, DisplayInternalRoundTrip) {
-    EXPECT_EQ(st::difficulty_display(0.2f), 20);
-    EXPECT_EQ(st::difficulty_display(0.8f), 80);
-    EXPECT_FLOAT_EQ(st::difficulty_internal(20), 0.2f);
-    EXPECT_FLOAT_EQ(st::difficulty_internal(80), 0.8f);
-    for (int d = 0; d <= 100; ++d) {
-        EXPECT_EQ(st::difficulty_display(st::difficulty_internal(d)), d) << "d=" << d;
-    }
-}
-
-TEST(DifficultyRange, LowHandleCannotCrossHigh) {
-    const st::DifficultyDisplay r{20, 80};
-    EXPECT_EQ(st::set_difficulty_low(r, 50), (st::DifficultyDisplay{50, 80}));
-    EXPECT_EQ(st::set_difficulty_low(r, 80), (st::DifficultyDisplay{80, 80}));  // equal allowed
-    EXPECT_EQ(st::set_difficulty_low(r, 81), r);                               // cross => no-op
-    EXPECT_EQ(st::set_difficulty_low(r, 200), r);                              // clamp then no-op
-}
-
-TEST(DifficultyRange, HighHandleCannotCrossLow) {
-    const st::DifficultyDisplay r{20, 80};
-    EXPECT_EQ(st::set_difficulty_high(r, 50), (st::DifficultyDisplay{20, 50}));
-    EXPECT_EQ(st::set_difficulty_high(r, 20), (st::DifficultyDisplay{20, 20}));  // equal allowed
-    EXPECT_EQ(st::set_difficulty_high(r, 19), r);                               // cross => no-op
-    EXPECT_EQ(st::set_difficulty_high(r, -5), r);                               // clamp then no-op
-}
-
-TEST(DifficultyRange, AppliesToGameplaySettings) {
-    st::GameplaySettings g{};
-    st::apply_difficulty(g, st::DifficultyDisplay{30, 70});
-    EXPECT_FLOAT_EQ(g.difficulty_min, 0.3f);
-    EXPECT_FLOAT_EQ(g.difficulty_max, 0.7f);
-    EXPECT_EQ(st::difficulty_display_range(g), (st::DifficultyDisplay{30, 70}));
-}
+// The difficulty range setting was removed from the UI (F is now situational). Its
+// display<->internal helpers and two-handle clamp are gone; the sealed settings field
+// remains only for persistence compatibility and is exercised by the validation test
+// below (SettingsValidation.RejectsInvertedDifficultyRange).
 
 // ----- volume / custom-time integer inputs -----
 

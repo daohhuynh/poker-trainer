@@ -2,6 +2,7 @@
 
 #include "engine/scenario.hpp"
 
+#include <cstdint>
 #include <string>
 
 struct ImDrawList;
@@ -44,5 +45,23 @@ float draw_to_call(ImDrawList* dl, float x, float y, const engine::ScenarioState
 // the chip layer and stay visible regardless.
 void draw_floating_bet(ImDrawList* dl, float anchor_x, float anchor_y, int bet_dollars,
                        bool cash_mode, int big_blind, bool show_hud);
+
+// Draw the "Opp Fold: X%" line left-aligned at (x, y) in the top-left info stack,
+// directly below the blinds. Aggressor scenarios only (the opponent's fold frequency
+// is the Aggressor's given datum, the mirror of the Caller's To Call line) and only
+// when show_hud. `viewed_tier` picks which bet tier's P(fold) is shown -- the tier
+// currently on screen, so a multi-tier walk updates it per screen. Returns the line
+// height advanced (even when nothing is drawn, for stable stacking).
+float draw_opp_fold(ImDrawList* dl, float x, float y, const engine::ScenarioState& scenario,
+                    std::uint8_t viewed_tier, bool show_hud);
+
+// Draw the "Opp fold: X%" readout centered on the felt at (anchor_x, anchor_y): a
+// general on-table HUD value NOT anchored to any opponent seat -- the Aggressor's
+// analog of the Caller's floating call amount. Aggressor only, HUD-gated. `viewed_tier`
+// selects the bet tier whose P(fold) is shown (same source as draw_opp_fold, so the
+// two never disagree).
+void draw_table_opp_fold(ImDrawList* dl, float anchor_x, float anchor_y,
+                         const engine::ScenarioState& scenario, std::uint8_t viewed_tier,
+                         bool show_hud);
 
 }  // namespace poker_trainer::render

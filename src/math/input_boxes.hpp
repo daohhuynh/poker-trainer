@@ -26,12 +26,14 @@ namespace poker_trainer::interrogator {
 // The visible numeric boxes for a scenario branch, in spawn order. Bet Size is
 // NOT a numeric box (it is the focus group; see bet_size_buttons.hpp), so it
 // never appears here.
-//   Caller:                      Pot Odds, Outs, Equity, EV
-//   Aggressor Pure Bluff/Value:  Fold% (per active tier), EV (per active tier)
-//   Aggressor Semi-Bluff:        Fold% / EV (per active tier), Equity-if-Called
-// Multi-tier (Bet Sizing Engine on) spawns Fold%/EV once per tier (0..3);
-// single-tier spawns them once for the presented tier. Equity-if-Called is
-// bet-size-independent: it spawns exactly once and is reused for every tier.
+//   Caller:               Pot Odds, Outs, Equity, EV
+//   Aggressor Pure Bluff: Breakeven Fold % (per tier), EV (per tier)
+//   Aggressor Value Bet:  Equity if Called (once), EV (per tier)
+//   Aggressor Semi-Bluff: Breakeven Fold % (per tier), Equity if Called (once), EV (per tier)
+// Multi-tier (Bet Sizing Engine on) spawns the per-tier boxes (Breakeven Fold %, EV)
+// once per tier (0..3); single-tier spawns them once for the presented tier.
+// Equity-if-Called is bet-size-independent: it spawns exactly once and is reused for
+// every tier.
 [[nodiscard]] std::vector<NumericBox> build_boxes(const engine::ScenarioState& s);
 
 // The Game-screen focus segment Z09 owns for the CURRENT screen: the numeric
@@ -51,8 +53,8 @@ namespace poker_trainer::interrogator {
 
 // True when `box` belongs on the CURRENT screen. Caller / single-tier Aggressor:
 // always true (all inputs on one screen). Multi-tier Aggressor: a per-tier box
-// (Fold / EV) only on its own tier; the bet-size-independent Equity-if-Called
-// (the tier-less Aggressor box) only on tier 1 (index 0).
+// (Breakeven Fold % / EV) only on its own tier; the bet-size-independent
+// Equity-if-Called (a tier-less, scenario-level box) on EVERY tier screen.
 [[nodiscard]] bool box_in_current_view(const InterrogatorState& state,
                                        const NumericBox& box) noexcept;
 
@@ -61,6 +63,15 @@ namespace poker_trainer::interrogator {
 // rebuilt (configure_for_scenario). Used by the focus-segment builder, the
 // per-tier advance gate, and number-key targeting.
 [[nodiscard]] std::vector<const NumericBox*> current_view_boxes(const InterrogatorState& state);
+
+// The 1-based position of `target` in the focus order of the screen showing
+// `current_tier` for scenario `s` (the visible numeric boxes top to bottom, then
+// the bet-size group when present), or 0 when `target` is not a focus stop on that
+// screen. Lets a caller name the positional digit that focuses a given input
+// ("Press N to focus this input") and validate that keypress without re-deriving
+// Z09's box ordering. Pure (builds a throwaway state from `s`).
+[[nodiscard]] int positional_index_of(const engine::ScenarioState& s, std::uint8_t current_tier,
+                                      backbone::FocusableId target);
 
 // (Re)spawn the boxes + bet group + focus segment for `s`, clearing all typed
 // buffers, the prior grade, and any bet selection. Called from the

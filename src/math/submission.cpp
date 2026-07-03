@@ -47,6 +47,8 @@ engine::UserAnswers gather_answers(const InterrogatorState& state) {
                 }
                 break;
             case engine::InputId::Ev:
+                // Tier-less EV is the Caller's net-call EV; a tier-bearing EV box is
+                // the Aggressor's per-tier dollar EV (restored input).
                 if (box.tier.has_value()) {
                     answers.tier_ev[tier_index(*box.tier)] = parse_box_double(box);
                 } else {
@@ -54,8 +56,9 @@ engine::UserAnswers gather_answers(const InterrogatorState& state) {
                 }
                 break;
             case engine::InputId::FoldProbability:
+                // Repurposed: the Aggressor's per-tier Breakeven Fold % answer.
                 if (box.tier.has_value()) {
-                    answers.tier_fold_pct[tier_index(*box.tier)] = parse_box_double(box);
+                    answers.tier_breakeven_pct[tier_index(*box.tier)] = parse_box_double(box);
                 }
                 break;
             case engine::InputId::BetSize:

@@ -54,10 +54,10 @@ ModalRuntime* g_runtime = nullptr;
 }
 
 // The Z14 tutorial-start seam: the Help modal's "Open Tutorial" button initiates the
-// tutorial overlay (Notes — Tutorial System). Z14 is unbuilt, so this is inert.
-void tutorial_start_seam() {
-    // SEAM(Z14): tutorial_start(). No-op until the tutorial system lands.
-}
+// tutorial overlay (Notes — Tutorial System). Boot wires the handler to
+// tutorial::tutorial_start via set_tutorial_start_handler; inert until then (and in
+// native tests / a build without Z14).
+std::function<void()> g_tutorial_start_handler{};
 
 // Push the focus trap for `id` (the modal's own focusables, armed at its default).
 void push_modal_focus(backbone::ModalId id) {
@@ -328,7 +328,7 @@ void modal_draw_lock_banner() {
         return;
     }
     ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-    ImGui::TextUnformatted("Locked during tutorial — close to continue");
+    ImGui::TextUnformatted("Locked during tutorial - close to continue");
     ImGui::PopStyleColor();
     ImGui::Separator();
 }
@@ -607,6 +607,16 @@ void install_modals(ModalRuntime& runtime) {
     (void)backbone::register_key_handler(game_no_modal, on_game_escape,
                                          backbone::HandlerPriority::ScreenContext,
                                          "modal.game_escape");
+}
+
+void set_tutorial_start_handler(std::function<void()> handler) {
+    g_tutorial_start_handler = std::move(handler);
+}
+
+void tutorial_start_seam() {
+    if (g_tutorial_start_handler) {
+        g_tutorial_start_handler();
+    }
 }
 
 }  // namespace poker_trainer::modal

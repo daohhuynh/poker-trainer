@@ -135,11 +135,11 @@ TEST(Generator, KnownSeedReproducesKnownScenario) {
         EXPECT_EQ(s.big_blind, 50);
         EXPECT_EQ(s.pot, 5150);
         EXPECT_EQ(s.faced_bet, 0);
-        EXPECT_NEAR(s.fold_baseline_f, 0.4591458622, 1e-9);
+        EXPECT_NEAR(s.fold_baseline_f, 0.4395159758879342, 1e-9);
         EXPECT_EQ(s.correct_bet_tier, pe::BetTier::Overbet);
-        EXPECT_NEAR(s.tiers[0].ev, 971.3829366092, 1e-6);
-        EXPECT_NEAR(s.tiers[3].ev, 3019.3482147413, 1e-6);
-        EXPECT_NEAR(s.tiers[1].fold_probability, 0.4591458622, 1e-9);  // half pot -> F
+        EXPECT_NEAR(s.tiers[0].ev, 1033.692019170157, 1e-6);
+        EXPECT_NEAR(s.tiers[3].ev, 2398.489086265708, 1e-6);
+        EXPECT_NEAR(s.tiers[1].fold_probability, 0.4395159758879342, 1e-9);  // half pot -> F
     }
     // id=4: a Semi-Bluff, flop, 8-out draw (32% equity), nosebleed 1000/2000,
     // max-EV tier is the overbet.
@@ -150,13 +150,14 @@ TEST(Generator, KnownSeedReproducesKnownScenario) {
         EXPECT_EQ(s.big_blind, 2000);
         EXPECT_EQ(s.pot, 202000);
         EXPECT_NEAR(s.aggressor_equity_pct, 32.0, 1e-9);
-        EXPECT_NEAR(s.fold_baseline_f, 0.6140491599, 1e-9);
+        EXPECT_NEAR(s.fold_baseline_f, 0.411708191785918, 1e-9);
         EXPECT_EQ(s.correct_bet_tier, pe::BetTier::Overbet);
-        EXPECT_NEAR(s.tiers[3].ev, 143852.2749572669, 1e-6);
+        EXPECT_NEAR(s.tiers[3].ev, 118631.3667837216, 1e-6);
     }
-    // id=7: a Pure Bluff, river, 25/50, max-EV tier is the small bet. (The shifted
-    // stream now resolves this seed as a non-side-pot scenario; the side-pot flag
-    // reproduction is locked on id=11 below.)
+    // id=7: a Pure Bluff, river, 25/50. Under the situational F model this dry river
+    // folds often enough that the overbet is the max-EV tier. (The shifted stream
+    // resolves this seed as a non-side-pot scenario; the side-pot flag reproduction is
+    // locked on id=11 below.)
     {
         const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{7}, st);
         EXPECT_EQ(s.type, pe::ScenarioType::AggressorPureBluff);
@@ -166,13 +167,13 @@ TEST(Generator, KnownSeedReproducesKnownScenario) {
         EXPECT_EQ(s.small_blind, 25);
         EXPECT_EQ(s.big_blind, 50);
         EXPECT_EQ(s.pot, 1300);
-        EXPECT_NEAR(s.fold_baseline_f, 0.2436063654, 1e-9);
-        EXPECT_EQ(s.correct_bet_tier, pe::BetTier::OneThirdPot);
-        EXPECT_NEAR(s.tiers[0].ev, -54.4156333089, 1e-6);
-        EXPECT_NEAR(s.tiers[3].ev, -670.7793124542, 1e-6);
+        EXPECT_NEAR(s.fold_baseline_f, 0.4856927269614459, 1e-9);
+        EXPECT_EQ(s.correct_bet_tier, pe::BetTier::Overbet);
+        EXPECT_NEAR(s.tiers[0].ev, 336.311837844284, 1e-6);
+        EXPECT_NEAR(s.tiers[3].ev, 441.0013626246993, 1e-6);
     }
     // id=11: a Value Bet, turn, micro 1/2, side-pot scenario (locks the side-pot
-    // flag's reproduction), max-EV tier is the full pot.
+    // flag's reproduction), max-EV tier is the overbet under the situational F model.
     {
         const pe::ScenarioState s = pe::generate_scenario(pe::ScenarioId{11}, st);
         EXPECT_EQ(s.type, pe::ScenarioType::AggressorValueBet);
@@ -182,33 +183,24 @@ TEST(Generator, KnownSeedReproducesKnownScenario) {
         EXPECT_EQ(s.small_blind, 1);
         EXPECT_EQ(s.big_blind, 2);
         EXPECT_EQ(s.pot, 106);
-        EXPECT_NEAR(s.fold_baseline_f, 0.7285716219, 1e-9);
-        EXPECT_EQ(s.correct_bet_tier, pe::BetTier::FullPot);
-        EXPECT_NEAR(s.tiers[2].ev, 20.8214080811, 1e-6);
+        EXPECT_NEAR(s.fold_baseline_f, 0.4431286018366, 1e-9);
+        EXPECT_EQ(s.correct_bet_tier, pe::BetTier::Overbet);
+        EXPECT_NEAR(s.tiers[2].ev, 45.7783682053204, 1e-6);
     }
 }
 
-TEST(Generator, StructureIsStableAcrossDifficultyRange) {
-    // The difficulty range only re-rolls F (drawn last); the locked structure
-    // must be byte-identical regardless of it.
+TEST(Generator, DifficultyRangeIsInert) {
+    // F is now situational (computed from the board + street), not drawn from the
+    // difficulty range, so the (dormant) difficulty setting no longer influences
+    // generation at all: the ENTIRE ScenarioState -- structure AND F/tiers -- is
+    // byte-identical regardless of the difficulty range.
     ps::Settings tight = default_settings();
     tight.gameplay.difficulty_min = 0.45f;
     tight.gameplay.difficulty_max = 0.55f;
     for (std::uint64_t id = 1; id <= 1500; ++id) {
         const pe::ScenarioState a = pe::generate_scenario(pe::ScenarioId{id}, default_settings());
         const pe::ScenarioState b = pe::generate_scenario(pe::ScenarioId{id}, tight);
-        EXPECT_EQ(a.type, b.type);
-        EXPECT_EQ(a.position, b.position);
-        EXPECT_EQ(a.street, b.street);
-        EXPECT_EQ(a.hole, b.hole);
-        EXPECT_EQ(a.board, b.board);
-        EXPECT_EQ(a.board_count, b.board_count);
-        EXPECT_EQ(a.small_blind, b.small_blind);
-        EXPECT_EQ(a.big_blind, b.big_blind);
-        EXPECT_EQ(a.pot, b.pot);
-        EXPECT_EQ(a.effective_stack, b.effective_stack);
-        EXPECT_EQ(a.side_pot, b.side_pot);
-        EXPECT_EQ(a.faced_bet, b.faced_bet);
+        EXPECT_EQ(a, b) << "id=" << id;
     }
 }
 
@@ -313,8 +305,8 @@ TEST(Generator, AggressorTierTruthAndMaxEvTier) {
         if (!pe::is_aggressor(s.type)) {
             continue;
         }
-        EXPECT_GE(s.fold_baseline_f, settings.gameplay.difficulty_min - kEps) << "id=" << id;
-        EXPECT_LE(s.fold_baseline_f, settings.gameplay.difficulty_max + kEps) << "id=" << id;
+        EXPECT_GE(s.fold_baseline_f, pe::kFoldProbabilityMin - kEps) << "id=" << id;
+        EXPECT_LE(s.fold_baseline_f, pe::kFoldProbabilityMax + kEps) << "id=" << id;
 
         std::uint8_t best = 0;
         for (std::uint8_t t = 0; t < pe::kBetTierCount; ++t) {
@@ -327,7 +319,10 @@ TEST(Generator, AggressorTierTruthAndMaxEvTier) {
         }
         EXPECT_EQ(static_cast<std::uint8_t>(s.correct_bet_tier), best) << "id=" << id;
 
-        if (s.type == pe::ScenarioType::AggressorSemiBluff) {
+        // Equity if Called is computed for both Semi-Bluff and Value Bet (redesign):
+        // both grade the Rule-of-2&4 equity over the already-drawn cards.
+        if (s.type == pe::ScenarioType::AggressorSemiBluff ||
+            s.type == pe::ScenarioType::AggressorValueBet) {
             EXPECT_NEAR(s.aggressor_equity_pct,
                         pe::equity_from_outs(pe::count_draw_outs(s.hole, s.board, s.board_count), s.street),
                         kEps) << "id=" << id;

@@ -363,22 +363,6 @@ void set_custom_time(SettingsModalState& s, int v) {
     s.live->gameplay.time_pressure_custom_seconds = static_cast<std::uint16_t>(clamp_int(v, 1, 300));
     on_setting_change(s, SettingId::TimePressure);
 }
-void set_diff_low(SettingsModalState& s, int d) {
-    if (s.live == nullptr) {
-        return;
-    }
-    const DifficultyDisplay r = set_difficulty_low(difficulty_display_range(s.live->gameplay), d);
-    apply_difficulty(s.live->gameplay, r);
-    on_setting_change(s, SettingId::DifficultyRange);
-}
-void set_diff_high(SettingsModalState& s, int d) {
-    if (s.live == nullptr) {
-        return;
-    }
-    const DifficultyDisplay r = set_difficulty_high(difficulty_display_range(s.live->gameplay), d);
-    apply_difficulty(s.live->gameplay, r);
-    on_setting_change(s, SettingId::DifficultyRange);
-}
 void set_theme_index(SettingsModalState& s, int idx) {
     if (s.live == nullptr) {
         return;
@@ -626,16 +610,6 @@ void populate_main_registry(SettingsModalState& s) {
                                  !s.live->gameplay.bet_sizing_engine_enabled;
                              on_setting_change(s, SettingId::BetSizingEngine);
                          }});
-    reg.register_element(kGpDifficultyLow, bridge::FocusableEntry{.adjust = [&s](int d) {
-                             if (s.live != nullptr) {
-                                 set_diff_low(s, difficulty_display_range(s.live->gameplay).low + d);
-                             }
-                         }});
-    reg.register_element(kGpDifficultyHigh, bridge::FocusableEntry{.adjust = [&s](int d) {
-                             if (s.live != nullptr) {
-                                 set_diff_high(s, difficulty_display_range(s.live->gameplay).high + d);
-                             }
-                         }});
     reg.register_element(kGpTimeCustomToggle, bridge::FocusableEntry{.activate = [&s] {
                              if (s.live == nullptr) return;
                              s.live->gameplay.time_pressure_custom_enabled =
@@ -872,7 +846,7 @@ void populate_doc_registry(SettingsModalState& s) {
 }
 
 // Body focus id -> owning SettingId, for the search-filtered Tab traversal (Bug D).
-// Catalog/body order; the 43 entries are exactly kSettingsFocusOrder minus the search,
+// Catalog/body order; the entries are exactly kSettingsFocusOrder minus the search,
 // the 9 sidebar stops, and the X close. A body control renders iff setting_visible(its
 // setting) (which implies its section matched, since every keyword blob carries the
 // section name), so this table + setting_visible reproduces "is this control on screen."
@@ -880,7 +854,7 @@ struct BodyFocusOwner {
     backbone::FocusableId focus;
     SettingId setting;
 };
-constexpr std::array<BodyFocusOwner, 47> kBodyFocusOwners{{
+constexpr std::array<BodyFocusOwner, 45> kBodyFocusOwners{{
     {kGpStreetPreflopSlider, SettingId::StreetWeights},
     {kGpStreetPreflopInput, SettingId::StreetWeights},
     {kGpStreetFlopSlider, SettingId::StreetWeights},
@@ -893,8 +867,6 @@ constexpr std::array<BodyFocusOwner, 47> kBodyFocusOwners{{
     {kGpStreetReset, SettingId::StreetWeights},
     {kGpChipDenom, SettingId::ChipDenomination},
     {kGpBetSizing, SettingId::BetSizingEngine},
-    {kGpDifficultyLow, SettingId::DifficultyRange},
-    {kGpDifficultyHigh, SettingId::DifficultyRange},
     {kGpTimeCustomToggle, SettingId::TimePressure},
     {kGpTimeCustomInput, SettingId::TimePressure},
     {kGpShowHud, SettingId::ShowHud},
@@ -1065,18 +1037,6 @@ void render_gameplay(SettingsModalState& s, const bridge::FocusReconcile& rec, I
         if (widget_checkbox(kGpBetSizing, "Bet sizing engine (Aggressor multi-tier)",
                             g.bet_sizing_engine_enabled, ring, s.scroll_follow_focus)) {
             on_setting_change(s, SettingId::BetSizingEngine);
-        }
-    }
-    if (setting_visible(SettingId::DifficultyRange, q)) {
-        const DifficultyDisplay dr = difficulty_display_range(g);
-        ImGui::TextUnformatted("Difficulty range (opponent fold tendency, %)");
-        int lo = dr.low;
-        if (widget_slider(kGpDifficultyLow, "##diff_lo", lo, 0, 100, 20, ring, s.scroll_follow_focus)) {
-            set_diff_low(s, lo);
-        }
-        int hi = dr.high;
-        if (widget_slider(kGpDifficultyHigh, "##diff_hi", hi, 0, 100, 80, ring, s.scroll_follow_focus)) {
-            set_diff_high(s, hi);
         }
     }
     if (setting_visible(SettingId::TimePressure, q)) {
@@ -1398,22 +1358,22 @@ void render_doc_body(SettingsModalState& s) {
             ImGui::Separator();
             ImGui::TextUnformatted("Library attributions:");
             for (const Credit& c : kCredits) {
-                ImGui::BulletText("%s — %s", c.name, c.note);
+                ImGui::BulletText("%s: %s", c.name, c.note);
             }
             ImGui::Spacing();
             ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-            ImGui::TextWrapped("Music: CC-BY tracks — credits pending from the audio pipeline.");
+            ImGui::TextWrapped("Music: CC-BY tracks. Credits pending from the audio pipeline.");
             ImGui::PopStyleColor();
             break;
         case SettingsModalState::DocKind::Terms:
             ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-            ImGui::TextWrapped("Terms of Service — placeholder. The final legal copy is pending "
+            ImGui::TextWrapped("Terms of Service: placeholder. The final legal copy is pending "
                                "(supplied separately).");
             ImGui::PopStyleColor();
             break;
         case SettingsModalState::DocKind::Privacy:
             ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-            ImGui::TextWrapped("Privacy Policy — placeholder. The final legal copy is pending "
+            ImGui::TextWrapped("Privacy Policy: placeholder. The final legal copy is pending "
                                "(supplied separately).");
             ImGui::PopStyleColor();
             break;

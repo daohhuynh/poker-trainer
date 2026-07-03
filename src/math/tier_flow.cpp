@@ -11,8 +11,13 @@
 namespace poker_trainer::interrogator {
 
 bool is_sequential(const InterrogatorState& state) noexcept {
+    // Only the sub-types with a genuine per-tier input (Breakeven Fold %: Pure Bluff,
+    // Semi-Bluff) are presented sequentially one tier per screen. Value Bet has no
+    // per-tier input, so even with the Bet Sizing Engine on it is a single decision
+    // (Equity if Called + Bet Size on one screen), never a sequential tier walk.
     return state.scenario.has_value() && engine::is_aggressor(state.scenario->type) &&
-           state.scenario->multi_tier;
+           state.scenario->multi_tier &&
+           engine::aggressor_has_per_tier_inputs(state.scenario->type);
 }
 
 bool is_last_tier(const InterrogatorState& state) noexcept {
@@ -20,7 +25,7 @@ bool is_last_tier(const InterrogatorState& state) noexcept {
 }
 
 bool current_tier_required_filled(const InterrogatorState& state) noexcept {
-    // The current screen's boxes are exactly this tier's required inputs (Fold, EV,
+    // The current screen's boxes are exactly this tier's inputs (Breakeven Fold %,
     // plus the tier-1 Equity-if-Called); the Bet Size group is not a box and never
     // gates. current_view_boxes already filters to the current tier.
     for (const NumericBox* box : current_view_boxes(state)) {

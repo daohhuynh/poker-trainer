@@ -116,8 +116,18 @@ void draw_cluster(ImDrawList* dl, const rnd::GameLayout& layout) {
 // Mouse click on a cluster icon (inline, like the dealer easter-egg): Zone 11
 // resolves the hit from its cached geometry and performs the action (open modal, or
 // X -> Leave-Drill confirm). Paused while a modal is open (the modal traps input).
+// True while the tutorial walkthrough is active — the Game cluster + dealer easter
+// egg are suppressed so the scripted flow isn't navigated away from and the dealer
+// click is blocked (ARCHITECTURE §Forced Settings: "Dealer easter egg: disabled
+// during tutorial"). Read straight off the backbone phase (no Zone 14 dependency).
+[[nodiscard]] bool tutorial_active() {
+    return backbone::read_screen_state().tutorial_state.phase ==
+           backbone::TutorialPhase::Active;
+}
+
 void handle_cluster_click() {
-    if (backbone::is_any_modal_open() || !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (backbone::is_any_modal_open() || tutorial_active() ||
+        !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         return;
     }
     const ImVec2 m = ImGui::GetIO().MousePos;
@@ -131,8 +141,9 @@ void handle_cluster_click() {
 // toggle SFX. Keyboard cannot reach this (the dealer is in no focus list); paused
 // while a modal is open.
 void handle_dealer_click(GameScreenRuntime& runtime, const rnd::GameLayout& layout) {
-    if (backbone::is_any_modal_open() || !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        return;
+    if (backbone::is_any_modal_open() || tutorial_active() ||
+        !ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        return;  // tutorial: the dealer easter egg is disabled (no click registration)
     }
     const ImVec2 m = ImGui::GetIO().MousePos;
     const bool in_dealer = m.x >= layout.dealer_tl.x &&
@@ -179,6 +190,15 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const rnd::GameLayout layout = rnd::compute_layout(vp->Size.x, vp->Size.y);
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
+
+    // The bet tier whose opponent fold % the HUD shows: the tier currently on screen
+    // for a sequential multi-tier Aggressor (Z09 owns current_tier), else the single
+    // presented tier. Guarded so a not-yet-synced interrogator state falls back safely.
+    std::uint8_t viewed_tier = static_cast<std::uint8_t>(scenario.presented_tier);
+    if (scenario.multi_tier && interrogator.state.scenario.has_value() &&
+        interrogator.state.scenario->id == scenario.id) {
+        viewed_tier = interrogator.state.current_tier;
+    }
 
     // 1) Room + table (behind everything). First-person: the authored art recedes
     //    from the camera; everything below is positioned into that frame.
@@ -261,6 +281,15 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
         }
     }
 
+    // 5a) On-table opponent fold %: a general on-felt HUD value (NOT anchored to a
+    //     seat), the Aggressor's analog of the Caller's floating call amount. Centered
+    //     ABOVE the community cards (like the Caller's pushed-in call amount reads above
+    //     the felt), HUD-gated and Aggressor-only (self-gated). Shows the currently-
+    //     viewed tier's P(fold), so a multi-tier walk updates it per screen.
+    rnd::draw_table_opp_fold(dl, layout.table_center.x,
+                             layout.table_center.y - layout.table_ry * 0.62f, scenario, viewed_tier,
+                             ui.show_hud);
+
     // 6) Hero hole cards: nearest the camera at the bottom-RIGHT (the hero seat),
     //    drawn larger than the board and on top of the pot (always two, face-up),
     //    above the hero's seat label.
@@ -277,7 +306,10 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
     info_y += rnd::kChipRadius * 2.0f + ImGui::GetTextLineHeight() + 10.0f;
     info_y += rnd::draw_pot_size(dl, layout.info_anchor.x, info_y, scenario, ui.cash_mode, ui.show_hud);
     info_y += rnd::draw_blinds(dl, layout.info_anchor.x, info_y, scenario, ui.cash_mode, ui.show_hud);
+    // To Call (Caller) and Opp Fold (Aggressor) share the line below the blinds; each
+    // self-gates on scenario type, so exactly one renders at this anchor.
     rnd::draw_to_call(dl, layout.info_anchor.x, info_y, scenario, ui.cash_mode, ui.show_hud);
+    rnd::draw_opp_fold(dl, layout.info_anchor.x, info_y, scenario, viewed_tier, ui.show_hud);
 
     // 8) Dealer (right side, profile Butler or front-facing Frog) + the cluster.
     rnd::draw_dealer(dl, layout, easter_egg::frog_active(runtime.frog));

@@ -28,13 +28,14 @@ eng::InputGrade make_grade(eng::InputId input, std::optional<std::uint8_t> tier,
     return g;
 }
 
-// A multi-tier Semi-Bluff grading result: Fold + EV per tier (0..3), then the
-// bet-size-independent Equity-if-Called, then the single Bet Size pick.
+// A multi-tier Semi-Bluff grading result: per tier (0..3) a Breakeven Fold % then a
+// dollar EV (restored), then the bet-size-independent Equity-if-Called, then the
+// single Bet Size pick. Mirrors the evaluator's grade order.
 eng::GradingResult multi_tier_semibluff() {
     eng::GradingResult r{};
     for (std::uint8_t t = 0; t < eng::kBetTierCount; ++t) {
         r.inputs.push_back(make_grade(eng::InputId::FoldProbability, t, 40.0 + t, 40.0, 5.0, true));
-        r.inputs.push_back(make_grade(eng::InputId::Ev, t, 100.0 + t, 100.0, 5.0, true));
+        r.inputs.push_back(make_grade(eng::InputId::Ev, t, 10.0 + t, 10.0 + t, 0.5, true));
     }
     r.inputs.push_back(make_grade(eng::InputId::Equity, std::nullopt, 35.0, 35.0, 5.0, true));
     r.inputs.push_back(make_grade(eng::InputId::BetSize, std::nullopt, 1.0, 1.0, 5.0, true));
@@ -58,7 +59,7 @@ eng::ScenarioState aggressor_scenario(bool multi) {
 
 TEST(StatModalModel, InputDisplayNames) {
     EXPECT_EQ(rnd::input_display_name(eng::InputId::PotOdds), "Pot Odds");
-    EXPECT_EQ(rnd::input_display_name(eng::InputId::FoldProbability), "Fold Probability");
+    EXPECT_EQ(rnd::input_display_name(eng::InputId::FoldProbability), "Breakeven Fold %");
     EXPECT_EQ(rnd::input_display_name(eng::InputId::BetSize), "Bet Size");
 }
 
@@ -71,37 +72,59 @@ TEST(StatModalModel, RecapColumnHeaders) {
     EXPECT_EQ(headers[2], "Your Answer");
 }
 
-TEST(StatModalModel, TierTabsOnlyForMultiTierAggressor) {
-    EXPECT_TRUE(rnd::has_tier_tabs(aggressor_scenario(true)));
-    EXPECT_FALSE(rnd::has_tier_tabs(aggressor_scenario(false)));
+TEST(StatModalModel, TierTabsForEveryMultiTierAggressor) {
+    EXPECT_TRUE(rnd::has_tier_tabs(aggressor_scenario(true)));    // Semi-Bluff multi-tier
+    EXPECT_FALSE(rnd::has_tier_tabs(aggressor_scenario(false)));  // Semi-Bluff single-tier
     EXPECT_FALSE(rnd::has_tier_tabs(caller_scenario()));
+    // Value Bet now has a per-tier input (EV) -> tier tabs when multi-tier.
+    eng::ScenarioState vb{};
+    vb.type = eng::ScenarioType::AggressorValueBet;
+    vb.multi_tier = true;
+    EXPECT_TRUE(rnd::has_tier_tabs(vb));
 }
 
-// A tier tab shows that tier's Fold + EV, then the echoed scenario-level inputs
-// (Equity if Called, Bet Size).
-TEST(StatModalModel, TierRowsAreThatTierPlusEchoedScenarioInputs) {
+// A tier tab shows that tier's FULL input set, in on-screen order: Breakeven Fold %
+// (this tier), Equity if Called (echoed), EV (this tier), Bet Size (echoed).
+TEST(StatModalModel, TierRowsAreThatTiersFullInputSet) {
     const eng::GradingResult r = multi_tier_semibluff();
     const std::vector<rnd::RecapRow> rows = rnd::build_tier_rows(r, 2);
     ASSERT_EQ(rows.size(), 4u);
-    EXPECT_EQ(rows[0].input, eng::InputId::FoldProbability);
+    EXPECT_EQ(rows[0].input, eng::InputId::FoldProbability);  // Breakeven Fold % (tier 2)
     EXPECT_EQ(rows[0].tier_index, std::optional<std::uint8_t>{2});
-    EXPECT_EQ(rows[1].input, eng::InputId::Ev);
-    EXPECT_EQ(rows[1].tier_index, std::optional<std::uint8_t>{2});
-    EXPECT_EQ(rows[2].input, eng::InputId::Equity);
-    EXPECT_FALSE(rows[2].tier_index.has_value());
-    EXPECT_EQ(rows[3].input, eng::InputId::BetSize);
+    EXPECT_EQ(rows[1].input, eng::InputId::Equity);           // echoed scenario-level
+    EXPECT_FALSE(rows[1].tier_index.has_value());
+    EXPECT_EQ(rows[2].input, eng::InputId::Ev);               // EV (tier 2)
+    EXPECT_EQ(rows[2].tier_index, std::optional<std::uint8_t>{2});
+    EXPECT_EQ(rows[3].input, eng::InputId::BetSize);          // echoed scenario-level
     EXPECT_FALSE(rows[3].tier_index.has_value());
 }
 
-// Each tier tab echoes the SAME bet-size-independent inputs (Equity / Bet Size).
-TEST(StatModalModel, EveryTierTabEchoesScenarioInputs) {
+// The Overall section is the scenario-level inputs: Equity if Called then Bet Size.
+TEST(StatModalModel, ScenarioLevelRowsAreEquityThenBetSize) {
     const eng::GradingResult r = multi_tier_semibluff();
-    for (std::uint8_t t = 0; t < eng::kBetTierCount; ++t) {
-        const std::vector<rnd::RecapRow> rows = rnd::build_tier_rows(r, t);
-        ASSERT_EQ(rows.size(), 4u);
-        EXPECT_EQ(rows[2].input, eng::InputId::Equity);
-        EXPECT_EQ(rows[3].input, eng::InputId::BetSize);
-    }
+    const std::vector<rnd::RecapRow> rows = rnd::build_scenario_level_rows(r);
+    ASSERT_EQ(rows.size(), 2u);
+    EXPECT_EQ(rows[0].input, eng::InputId::Equity);
+    EXPECT_FALSE(rows[0].tier_index.has_value());
+    EXPECT_EQ(rows[1].input, eng::InputId::BetSize);
+    EXPECT_FALSE(rows[1].tier_index.has_value());
+}
+
+// A tier's Overall % scores its own self-contained input set (per-tier + echoed
+// scenario-level), so a wrong per-tier input drops only that tier -- not the others.
+TEST(StatModalModel, TierAccuracyIsScopedToThatTier) {
+    eng::GradingResult r{};
+    // Tier 0: breakeven right, EV wrong. Tier 1: both right. Shared Equity + BetSize right.
+    r.inputs.push_back(make_grade(eng::InputId::FoldProbability, 0, 25, 25, 5, true));
+    r.inputs.push_back(make_grade(eng::InputId::Ev, 0, 10, 99, 0.5, false));
+    r.inputs.push_back(make_grade(eng::InputId::FoldProbability, 1, 33, 33, 5, true));
+    r.inputs.push_back(make_grade(eng::InputId::Ev, 1, 12, 12, 0.5, true));
+    r.inputs.push_back(make_grade(eng::InputId::Equity, std::nullopt, 40, 40, 5, true));
+    r.inputs.push_back(make_grade(eng::InputId::BetSize, std::nullopt, 2, 2, 5, true));
+    // Tier 0: breakeven + Equity + BetSize correct, EV wrong -> 3/4 = 75%.
+    EXPECT_EQ(rnd::tier_accuracy_pct(r, 0), 75);
+    // Tier 1: all four correct -> 100%.
+    EXPECT_EQ(rnd::tier_accuracy_pct(r, 1), 100);
 }
 
 TEST(StatModalModel, FlatRowsAreEveryGradedInput) {
@@ -128,22 +151,21 @@ TEST(StatModalModel, RowsAccuracyPercent) {
 
 TEST(StatModalModel, SummaryAggregatesTotalsAndPerTier) {
     eng::GradingResult r{};
-    // Tier 0: both correct; Tier 1: one of two; scenario-level Bet Size correct.
-    r.inputs.push_back(make_grade(eng::InputId::FoldProbability, 0, 40, 40, 5, true));
-    r.inputs.push_back(make_grade(eng::InputId::Ev, 0, 100, 100, 5, true));
-    r.inputs.push_back(make_grade(eng::InputId::FoldProbability, 1, 50, 99, 5, false));
-    r.inputs.push_back(make_grade(eng::InputId::Ev, 1, 110, 110, 5, true));
-    r.inputs.push_back(make_grade(eng::InputId::BetSize, std::nullopt, 1, 1, 5, true));
+    // Tier 0 breakeven correct; Tier 1 breakeven wrong; Equity + Bet Size correct.
+    r.inputs.push_back(make_grade(eng::InputId::FoldProbability, 0, 25, 25, 5, true));
+    r.inputs.push_back(make_grade(eng::InputId::FoldProbability, 1, 33, 99, 5, false));
+    r.inputs.push_back(make_grade(eng::InputId::Equity, std::nullopt, 40, 40, 5, true));
+    r.inputs.push_back(make_grade(eng::InputId::BetSize, std::nullopt, 2, 2, 5, true));
 
     const rnd::SummaryData s = rnd::build_summary(r);
-    EXPECT_EQ(s.total, 5);
-    EXPECT_EQ(s.total_correct, 4);
-    EXPECT_EQ(s.per_tier[0].correct, 2);
-    EXPECT_EQ(s.per_tier[0].total, 2);
-    EXPECT_EQ(s.per_tier[1].correct, 1);
-    EXPECT_EQ(s.per_tier[1].total, 2);
-    EXPECT_EQ(s.per_tier[2].total, 0);  // bet size is scenario-level, not per-tier
-    EXPECT_EQ(rnd::summary_pct(s), 80);
+    EXPECT_EQ(s.total, 4);
+    EXPECT_EQ(s.total_correct, 3);
+    EXPECT_EQ(s.per_tier[0].correct, 1);
+    EXPECT_EQ(s.per_tier[0].total, 1);
+    EXPECT_EQ(s.per_tier[1].correct, 0);
+    EXPECT_EQ(s.per_tier[1].total, 1);
+    EXPECT_EQ(s.per_tier[2].total, 0);  // Equity / Bet Size are scenario-level, not per-tier
+    EXPECT_EQ(rnd::summary_pct(s), 75);
 }
 
 TEST(StatModalModel, TimeGradeOvertimeDecision) {

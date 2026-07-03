@@ -105,26 +105,30 @@ TEST(InputSpawn, CallerSpawnsPotOddsOutsEquityEv) {
     }
 }
 
-TEST(InputSpawn, AggressorPureBluffSingleTierSpawnsFoldEv) {
+TEST(InputSpawn, AggressorPureBluffSingleTierSpawnsBreakevenThenEv) {
     const eng::ScenarioState s =
         aggressor_state(eng::ScenarioType::AggressorPureBluff, /*multi_tier=*/false);
     const std::vector<it::NumericBox> boxes = it::build_boxes(s);
+    // Pure Bluff single-tier: Breakeven Fold %, EV, then Bet Size (the group).
     EXPECT_EQ(input_ids(boxes),
               (std::vector<eng::InputId>{eng::InputId::FoldProbability, eng::InputId::Ev}));
     EXPECT_TRUE(it::bet_group_present(s));
-    // Fold/EV carry the presented tier.
-    EXPECT_EQ(boxes[0].tier, std::optional<std::uint8_t>{1});
-    EXPECT_EQ(boxes[1].tier, std::optional<std::uint8_t>{1});
+    EXPECT_EQ(boxes[0].tier, std::optional<std::uint8_t>{1});  // Breakeven carries the presented tier
+    EXPECT_EQ(boxes[1].tier, std::optional<std::uint8_t>{1});  // EV is per-tier too
 }
 
-TEST(InputSpawn, AggressorValueBetSingleTierSpawnsFoldEv) {
+TEST(InputSpawn, AggressorValueBetSingleTierSpawnsEquityThenEv) {
     const eng::ScenarioState s =
         aggressor_state(eng::ScenarioType::AggressorValueBet, /*multi_tier=*/false);
-    EXPECT_EQ(input_ids(it::build_boxes(s)),
-              (std::vector<eng::InputId>{eng::InputId::FoldProbability, eng::InputId::Ev}));
+    const std::vector<it::NumericBox> boxes = it::build_boxes(s);
+    // Value Bet single-tier: Equity if Called, EV, then Bet Size.
+    EXPECT_EQ(input_ids(boxes),
+              (std::vector<eng::InputId>{eng::InputId::Equity, eng::InputId::Ev}));
+    EXPECT_FALSE(boxes[0].tier.has_value());                   // Equity is bet-size-independent
+    EXPECT_EQ(boxes[1].tier, std::optional<std::uint8_t>{1});  // EV is per-tier
 }
 
-TEST(InputSpawn, AggressorSemiBluffSingleTierSpawnsFoldEquityEv) {
+TEST(InputSpawn, AggressorSemiBluffSingleTierSpawnsBreakevenEquityEv) {
     const eng::ScenarioState s =
         aggressor_state(eng::ScenarioType::AggressorSemiBluff, /*multi_tier=*/false);
     EXPECT_EQ(input_ids(it::build_boxes(s)),
@@ -132,19 +136,21 @@ TEST(InputSpawn, AggressorSemiBluffSingleTierSpawnsFoldEquityEv) {
                                          eng::InputId::Ev}));
 }
 
-TEST(InputSpawn, AggressorMultiTierRepeatsFoldEvPerTier) {
+TEST(InputSpawn, AggressorMultiTierRepeatsBreakevenAndEvPerTier) {
     const eng::ScenarioState s =
         aggressor_state(eng::ScenarioType::AggressorPureBluff, /*multi_tier=*/true);
     const std::vector<it::NumericBox> boxes = it::build_boxes(s);
-    EXPECT_EQ(boxes.size(), 2u * eng::kBetTierCount);  // Fold+EV per tier
+    // One Breakeven Fold % + one EV per tier = 8 boxes; stored as all breakevens then
+    // all EVs (no Equity for Pure Bluff).
+    EXPECT_EQ(boxes.size(), eng::kBetTierCount * 2);
     EXPECT_EQ(count_input(boxes, eng::InputId::FoldProbability), eng::kBetTierCount);
     EXPECT_EQ(count_input(boxes, eng::InputId::Ev), eng::kBetTierCount);
-    // Each per-tier box is tagged with its tier 0..3 in order.
     for (std::uint8_t t = 0; t < eng::kBetTierCount; ++t) {
-        EXPECT_EQ(boxes[2u * t].input, eng::InputId::FoldProbability);
-        EXPECT_EQ(boxes[2u * t].tier, std::optional<std::uint8_t>{t});
-        EXPECT_EQ(boxes[2u * t + 1u].input, eng::InputId::Ev);
-        EXPECT_EQ(boxes[2u * t + 1u].tier, std::optional<std::uint8_t>{t});
+        EXPECT_EQ(boxes[t].input, eng::InputId::FoldProbability);
+        EXPECT_EQ(boxes[t].tier, std::optional<std::uint8_t>{t});
+        const it::NumericBox& ev = boxes[eng::kBetTierCount + t];
+        EXPECT_EQ(ev.input, eng::InputId::Ev);
+        EXPECT_EQ(ev.tier, std::optional<std::uint8_t>{t});
     }
 }
 
@@ -152,17 +158,29 @@ TEST(InputSpawn, MultiTierSemiBluffSpawnsEquityIfCalledExactlyOnce) {
     const eng::ScenarioState s =
         aggressor_state(eng::ScenarioType::AggressorSemiBluff, /*multi_tier=*/true);
     const std::vector<it::NumericBox> boxes = it::build_boxes(s);
-    // The bet-size-independent Equity-if-Called locks after tier 1: it appears
-    // once, not per tier.
+    // The bet-size-independent Equity-if-Called appears once, not per tier. Breakeven
+    // Fold % and EV each repeat per tier. Storage: 4 breakevens, 1 Equity, 4 EVs = 9.
+    EXPECT_EQ(boxes.size(), eng::kBetTierCount * 2 + 1);
     EXPECT_EQ(count_input(boxes, eng::InputId::Equity), 1u);
     EXPECT_EQ(count_input(boxes, eng::InputId::FoldProbability), eng::kBetTierCount);
     EXPECT_EQ(count_input(boxes, eng::InputId::Ev), eng::kBetTierCount);
-    // The single Equity box carries no tier index.
     for (const it::NumericBox& b : boxes) {
         if (b.input == eng::InputId::Equity) {
             EXPECT_FALSE(b.tier.has_value());
         }
     }
+}
+
+TEST(InputSpawn, MultiTierValueBetSpawnsEquityOnceAndEvPerTier) {
+    const eng::ScenarioState s =
+        aggressor_state(eng::ScenarioType::AggressorValueBet, /*multi_tier=*/true);
+    const std::vector<it::NumericBox> boxes = it::build_boxes(s);
+    // Value Bet now has a per-tier input (EV): one Equity if Called + one EV per tier.
+    EXPECT_EQ(boxes.size(), eng::kBetTierCount + 1);
+    EXPECT_EQ(count_input(boxes, eng::InputId::Equity), 1u);
+    EXPECT_EQ(count_input(boxes, eng::InputId::Ev), eng::kBetTierCount);
+    EXPECT_EQ(count_input(boxes, eng::InputId::FoldProbability), 0u);
+    EXPECT_TRUE(it::bet_group_present(s));
 }
 
 // ----- Focus segment ordering -----
@@ -237,7 +255,7 @@ it::InterrogatorState aggressor_interrogator_state() {
     it::InterrogatorState state{};
     it::configure_for_scenario(
         state, aggressor_state(eng::ScenarioType::AggressorPureBluff, /*multi_tier=*/false));
-    return state;  // boxes: Fold(t1), EV(t1); bet group present
+    return state;  // box: Breakeven Fold %(t1); bet group present
 }
 
 }  // namespace

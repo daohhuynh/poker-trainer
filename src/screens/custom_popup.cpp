@@ -2,6 +2,7 @@
 
 #include "backbone/event_router.hpp"
 #include "backbone/focus_manager.hpp"
+#include "backbone/modal_state.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -205,6 +206,22 @@ void render_custom_popup(CustomPopupState& state, CustomWeightsStore& store) {
         }
         bridge::draw_focus_ring(kFocusClose, ring_color);
 
+        // Tutorial lock (matches the Settings/Shop/Help modal treatment): the interactive
+        // controls below render at ~40% opacity with clicks suppressed so Play cannot
+        // bypass the scripted STANDARD flow; only the X close (above) and click-outside
+        // dismiss stay live. Derived from the backbone tutorial phase (is_modal_locked),
+        // so this TU needs no Zone 14 dependency.
+        const bool locked = backbone::is_modal_locked();
+        if (locked) {
+            ImGui::PushStyleColor(ImGuiCol_Text,
+                                  theme::get_color(theme::ColorToken::TextSecondary));
+            ImGui::TextUnformatted("Locked during tutorial - close to continue");
+            ImGui::PopStyleColor();
+            ImGui::Separator();
+            ImGui::PushStyleVar(ImGuiStyleVar_Alpha, ImGui::GetStyle().Alpha * 0.4f);
+            ImGui::BeginDisabled();  // silently suppresses clicks on the wrapped controls
+        }
+
         // --- Aggressor row: label + integer input (0-100) + % ---
         format_weight(state.aggressor_buf, state.weights.aggressor_weight);
         ImGui::TextUnformatted("Aggressor");
@@ -299,6 +316,11 @@ void render_custom_popup(CustomPopupState& state, CustomWeightsStore& store) {
             dismissed = true;
         }
         bridge::draw_focus_ring(kFocusPlay, ring_color);
+
+        if (locked) {
+            ImGui::EndDisabled();
+            ImGui::PopStyleVar();
+        }
 
         // Click-outside dismissal — but never the click that opened the popup.
         // While the opening-frame guard is raised, keep it raised until the opening

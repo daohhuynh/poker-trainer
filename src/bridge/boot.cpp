@@ -17,6 +17,8 @@
 
 #include "math/interrogator.hpp"
 
+#include "tutorial/tutorial.hpp"
+
 #include "modal/modals.hpp"
 
 #include "audio/audio.hpp"
@@ -119,6 +121,9 @@ struct BootState {
     // (sign in/up/out, delete, reset) are a Zone 04 / Zone 05 integration SEAM — see the
     // wiring block in finish_boot_after_persistence.
     settings::AccountModalState account;
+    // Zone 14 tutorial runtime (seams + live cursor). install_tutorial stores a pointer
+    // to it; the overlay + Tutorial Complete screen read its seams.
+    tutorial::TutorialRuntime tutorial;
 };
 BootState g_boot;
 
@@ -423,7 +428,8 @@ void finish_boot_after_persistence() {
     // the Game / Post-Round screens — this only feeds the three meta surfaces.
     (void)backbone::subscribe_grading_complete(
         [](const backbone::GradingCompleteEvent& ev) {
-            if (!ev.passed || !g_boot.service.has_value()) {
+            // No tomato awards during tutorial scenarios (Module 7 rule).
+            if (!ev.passed || tutorial::is_tutorial_active() || !g_boot.service.has_value()) {
                 return;
             }
             persistence::AppState next = g_boot.service->state();
@@ -558,6 +564,66 @@ void finish_boot_after_persistence() {
     // deferred-launch poll. Uses the register_frame_tick seam, so the main loop is
     // not edited as triggers land.
     install_tier_orchestrator();
+
+    // ----- Zone 14 (Tutorial System) -----
+    //
+    // Wire the seams (all the cross-zone effects the tutorial needs that aren't a
+    // backbone primitive) and install the overlay handlers + the Tutorial Complete
+    // screen. The forced-settings overrides mutate g_boot.live_settings IN MEMORY only
+    // (never persisted), so the user's durable IDBFS settings survive a skip / abandon.
+    g_boot.tutorial.seams.live_settings = &g_boot.live_settings;
+    g_boot.tutorial.seams.has_seen_prompt = [] {
+        return g_boot.service.has_value() && g_boot.service->has_seen_tutorial_prompt();
+    };
+    g_boot.tutorial.seams.mark_prompt_seen = [] {
+        if (g_boot.service.has_value()) {
+            g_boot.service->mark_tutorial_prompt_seen();
+        }
+    };
+    g_boot.tutorial.seams.clear_prompt_seen = [] {
+        // Manual re-launch from Help: clear the flag so an abandoned run re-prompts next
+        // session. No Z04 "unset" method exists; flip the field and persist via save_state
+        // (tutorial flags are local-only — migration/sync exclude them).
+        if (g_boot.service.has_value()) {
+            persistence::AppState next = g_boot.service->state();
+            next.tutorial.has_seen_tutorial_prompt = false;
+            g_boot.service->save_state(next);
+        }
+    };
+    g_boot.tutorial.seams.mark_completed = [] {
+        if (g_boot.service.has_value()) {
+            g_boot.service->mark_tutorial_completed();
+        }
+    };
+    g_boot.tutorial.seams.is_authenticated = [] {
+        return g_boot.service.has_value() && g_boot.service->state().account.is_authenticated;
+    };
+    g_boot.tutorial.seams.launch_scenario = [](engine::ScenarioId id) {
+        request_game_launch_with_id(id);  // same launch path as a STANDARD / Again click
+    };
+    g_boot.tutorial.seams.custom_popup_open = [] { return g_boot.screens.popup.open; };
+    g_boot.tutorial.seams.auth_health_check = [] {
+        return g_boot.service.has_value() && g_boot.service->auth0_health_check();
+    };
+    g_boot.tutorial.seams.open_sign_up_modal = [] {
+        settings::account_open_sign_up(g_boot.account);
+    };
+    tutorial::install_tutorial(g_boot.tutorial);
+    // SEAM(Z14 -> Z09): the tutorial's text-focus gate. During a math stage-1 "Press N"
+    // callout the taught box must NOT capture the keyboard, so the positional digit key
+    // reaches the tutorial overlay (which focuses the box and advances) instead of being
+    // typed. Z09's render hook reads this each frame; false whenever no tutorial runs.
+    g_boot.interrogator.tutorial_text_focus_gate = [] {
+        return tutorial::tutorial_suppresses_text_focus();
+    };
+    // SEAM(Z14 -> Z09): the per-box input gate. While the tutorial teaches one box, Z09
+    // disables every OTHER box + the bet-size group so only the taught input is live.
+    g_boot.interrogator.tutorial_live_box = [] { return tutorial::tutorial_live_math_box(); };
+    // Wire the Help modal's "Open Tutorial" button to start the tutorial (Z11 seam).
+    modal::set_tutorial_start_handler([] { tutorial::tutorial_start(); });
+    // Redirect the Post-Round Again commit during the tutorial (Z13 seam): Caller recap
+    // → Aggressor teaching seed; Aggressor recap → Tutorial Complete.
+    screens::set_again_commit_override([] { return tutorial::on_again_commit(); });
 
     start_main_loop();
 }

@@ -5,35 +5,33 @@
 #include "backbone/focus_manager.hpp"
 #include "engine/scenario.hpp"
 
-#include <array>
-
 // Keyboard routing for the math interrogator (Module 5). The number-key focus
 // mapping and the focus-resolution logic live here as pure helpers; the event-
 // router handler registration is in keybinds.cpp (install_interrogator).
 //
-// SEAM(Z12): the 1-6 mapping is the documented default from ARCHITECTURE's
-// "Keyboard Shortcuts" (settings.hpp carries no keybind fields yet). When the
-// Keyboard Shortcuts settings section lands (Z12, W4), the handler reads the
-// user-configured mapping; until then this default is authoritative.
+// POSITIONAL keybinds (ARCHITECTURE "Keyboard Shortcuts"): the number key maps to
+// the input's POSITION in the on-screen focus order for the current scenario,
+// 1..N top to bottom -- NOT a fixed input type. So the same number means different
+// inputs in different scenarios (intended):
+//   Caller:                          1=Pot Odds, 2=Outs, 3=Equity, 4=EV
+//   Aggressor Pure Bluff:            1=Breakeven Fold %, 2=EV, 3=Bet Size
+//   Aggressor Value Bet:             1=Equity if Called, 2=EV, 3=Bet Size
+//   Aggressor Semi-Bluff:            1=Breakeven Fold %, 2=Equity if Called, 3=EV, 4=Bet Size
+// Every Aggressor sub-type has a per-tier input (EV; Pure/Semi also Breakeven Fold %),
+// so all three are sequential multi-tier when the Bet Sizing Engine is on: the order
+// above is the CURRENT tier's view, with Equity-if-Called shown on every tier screen.
+//
+// SEAM(Z12): a user-configurable keybind Settings section (settings.hpp carries no
+// keybind fields yet) is separate future work; until then this positional default
+// is authoritative.
 
 namespace poker_trainer::interrogator {
 
-// Default number-key -> input mapping, indexed by (digit - 1):
-// 1->Pot Odds, 2->Outs, 3->Equity, 4->EV, 5->Fold Probability, 6->Bet Size.
-inline constexpr std::array<engine::InputId, 6> kDigitToInput = {
-    engine::InputId::PotOdds,        // 1
-    engine::InputId::Outs,           // 2
-    engine::InputId::Equity,         // 3
-    engine::InputId::Ev,             // 4
-    engine::InputId::FoldProbability,// 5
-    engine::InputId::BetSize,        // 6
-};
-
-// Resolve the focus target for number key `digit` (1..6) in the current
-// scenario: the focus id of the first box (or the bet group) that digit maps
-// to, or kNoFocus when no such input is present (e.g. "2"=Outs in an Aggressor
-// scenario, or "6"=Bet Size in a Caller scenario). Multi-tier per-tier inputs
-// resolve to the tier-0 box -- see the SEAM note in keybinds.cpp.
+// Resolve the focus target for number key `digit` in the current scenario: the
+// focus id of the input at POSITION `digit` (1-based) in the current screen's focus
+// order (the visible numeric boxes top to bottom, then the bet-size group when
+// present), or kNoFocus when no input sits at that position (e.g. "4" in a Caller's
+// 4-stop view is EV, "5" is kNoFocus; "3" in a Pure Bluff is the Bet Size group).
 [[nodiscard]] backbone::FocusableId focus_target_for_digit(const InterrogatorState& state,
                                                            int digit) noexcept;
 

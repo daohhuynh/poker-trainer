@@ -32,9 +32,11 @@
 #include <array>
 #include <cstdint>
 #include <format>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 
 #include <imgui.h>
 
@@ -125,11 +127,20 @@ constexpr std::uint64_t kCopyFlashMs = 1000;  // "Copied" flash window
 
 // ----- Navigation (bus event + the existing navigation entry points) -----
 
+// Zone 14 Again-commit override (boot wires it to tutorial::on_again_commit). When it
+// returns true, the tutorial drove the navigation and the normal replay is skipped.
+std::function<bool()> g_again_commit_override{};
+
 void commit_again(PostRoundRuntime& runtime) {
     const engine::ScenarioId prev = runtime.snap.scenario.id;
     backbone::fire_again_pressed(backbone::AgainPressedEvent{prev});
     runtime.snap.valid = false;
     runtime.focus_registered = false;
+    // Tutorial cooperation: an active tutorial redirects the commit (to the next
+    // teaching seed, or the Tutorial Complete screen) instead of replaying.
+    if (g_again_commit_override && g_again_commit_override()) {
+        return;
+    }
     // Replay with the SAME launch config the user started the session with: a
     // STANDARD launch stays a STANDARD mix, an Aggressor stays Aggressor, a Custom
     // keeps its split weights. The launch mode is unrecoverable from the finished
@@ -212,6 +223,7 @@ void capture_and_enter(PostRoundRuntime& runtime, interrogator::InterrogatorRunt
     const settings::Settings s = settings_or_default(runtime);
     runtime.active_tab =
         render::has_tier_tabs(snap.scenario) ? default_tab(s) : render::RecapTab::Tier1;
+    runtime.recap_scroll = 0.0f;
 
     // SEAM(Z14): the Game -> Post-Round 350ms slide-in. Zone 09 left the screen
     // transition unwired (its do_submit only fires the bus events), so Z13 drives
@@ -345,27 +357,36 @@ void handle_mouse(PostRoundRuntime& runtime, const PostRoundLayout& l, bool tabb
     }
     const ImVec2 m = ImGui::GetIO().MousePos;
 
+    // During the tutorial the recap allows only the directed interactions — the tier
+    // tabs (Step 7 "compare") and the Again button (advance). Exit and the cluster
+    // modals are suppressed so the scripted flow can't be navigated away from.
+    const bool tut =
+        backbone::read_screen_state().tutorial_state.phase == backbone::TutorialPhase::Active;
+
     if (tabbed) {
         const render::StripGeom g = render::tab_strip_geom(
             l.modal_tl.x, l.modal_tl.y, l.modal_br.x - l.modal_tl.x, ImGui::GetTextLineHeight());
         const int tab = render::tab_index_at(g, m.x, m.y);
         if (tab >= 0) {
             runtime.active_tab = static_cast<render::RecapTab>(tab);
+            runtime.recap_scroll = 0.0f;  // each tab starts scrolled to the top
             backbone::snap_focus_to(kFocusTierStrip);
             return;
         }
     }
     // Persistent cluster (Shop / Help / Settings / Home): Zone 11 resolves the hit
     // (from the geometry it cached in render_persistent_cluster) and performs the
-    // action (open modal, or Home -> Root).
-    if (const std::optional<modal::ClusterIcon> icon = modal::cluster_hit_test(m.x, m.y)) {
-        modal::activate_cluster_icon(*icon);
-        return;
+    // action (open modal, or Home -> Root). Suppressed during the tutorial.
+    if (!tut) {
+        if (const std::optional<modal::ClusterIcon> icon = modal::cluster_hit_test(m.x, m.y)) {
+            modal::activate_cluster_icon(*icon);
+            return;
+        }
     }
     if (point_in(m, l.again)) {
         backbone::snap_focus_to(kFocusAgain);
         apply_again_press(runtime);
-    } else if (point_in(m, l.exit)) {
+    } else if (!tut && point_in(m, l.exit)) {
         backbone::snap_focus_to(kFocusExit);
         do_exit(runtime);
     }
@@ -460,15 +481,33 @@ void render_post_round_screen(PostRoundRuntime& runtime) {
     modal.bottom_right = &modal_br;
     modal.alpha = modal_alpha;
     modal.strip_focused = tabbed && focused_is(kFocusTierStrip);
+    modal.scroll_offset = runtime.recap_scroll;
     // Z10 (Temporal): real Target from the live (frozen-at-submit) timer; Actual from
     // the GradingComplete snapshot (elapsed at submit). Both floored ms->s for display
     // to match the existing Actual read; the pass/overtime verdict stays ms-exact in
     // Z10's time_within_target(), so the row's coloring may read equal at a sub-second
     // boundary while the dealer still grades it correctly.
+    const bool tutorial_timer_disabled =
+        backbone::read_screen_state().tutorial_state.phase == backbone::TutorialPhase::Active;
     const render::TimeGrade tg{static_cast<int>(temporal::target_time_ms() / 1000u),
-                               static_cast<int>(runtime.snap.elapsed_ms / 1000u)};
-    render::render_stat_modal(dl, runtime.snap.scenario, runtime.snap.result, runtime.active_tab,
-                              tg, modal);
+                               static_cast<int>(runtime.snap.elapsed_ms / 1000u),
+                               tutorial_timer_disabled};
+    const float scroll_overflow = render::render_stat_modal(
+        dl, runtime.snap.scenario, runtime.snap.result, runtime.active_tab, tg, modal);
+
+    // Scroll containment: when the recap body overflows the modal, the mouse wheel over
+    // the modal scrolls it (the tier strip stays pinned). Clamp to [0, overflow] so it
+    // can never scroll past the content or above the top; a non-overflowing body pins to 0.
+    const ImVec2 mp = ImGui::GetIO().MousePos;
+    const bool over_modal = mp.x >= modal_tl.x && mp.x <= modal_br.x && mp.y >= modal_tl.y &&
+                            mp.y <= modal_br.y;
+    if (over_modal && scroll_overflow > 0.0f && !backbone::is_any_modal_open()) {
+        const float wheel = ImGui::GetIO().MouseWheel;
+        if (wheel != 0.0f) {
+            runtime.recap_scroll -= wheel * ImGui::GetTextLineHeight() * 2.0f;
+        }
+    }
+    runtime.recap_scroll = std::clamp(runtime.recap_scroll, 0.0f, scroll_overflow);
 
     // Foreground UI chrome.
     draw_id_block(dl, runtime, l);
@@ -563,6 +602,7 @@ bool on_tab_nav_key(PostRoundRuntime& runtime, const backbone::KeyEvent& e) {
         idx = digit;
     }
     runtime.active_tab = static_cast<render::RecapTab>(idx);
+    runtime.recap_scroll = 0.0f;  // each tab starts scrolled to the top
     return true;
 }
 
@@ -609,6 +649,10 @@ void install_post_round_screen(PostRoundRuntime& runtime,
         post_round_input_active,
         [&runtime](const backbone::MouseEvent& e) { return on_copy_share_mouse_up(runtime, e); },
         backbone::HandlerPriority::ScreenContext, "post_round.copy_share_mouse");
+}
+
+void set_again_commit_override(std::function<bool()> override_fn) {
+    g_again_commit_override = std::move(override_fn);
 }
 
 }  // namespace poker_trainer::screens

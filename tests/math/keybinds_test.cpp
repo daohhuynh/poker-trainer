@@ -82,25 +82,38 @@ TEST(BetSize, SelectByDigitConsumesOneToFourOnly) {
     EXPECT_EQ(group.selected, eng::BetTier::FullPot);      // unchanged
 }
 
-// ----- Number-key -> focus mapping -----
+// ----- Number-key -> focus mapping (POSITIONAL: digit N = Nth on-screen stop) -----
 
 TEST(NumberKeys, CallerMapping) {
     it::InterrogatorState state{};
     it::configure_for_scenario(state, caller_state());
+    // Caller view order: Pot Odds, Outs, Equity, EV (no bet group).
     EXPECT_EQ(it::focus_target_for_digit(state, 1), it::kFocusPotOdds);
     EXPECT_EQ(it::focus_target_for_digit(state, 2), it::kFocusOuts);
     EXPECT_EQ(it::focus_target_for_digit(state, 3), it::kFocusEquity);
     EXPECT_EQ(it::focus_target_for_digit(state, 4), it::kFocusEvCaller);
-    EXPECT_EQ(it::focus_target_for_digit(state, 5), bb::kNoFocus);  // no Fold box
-    EXPECT_EQ(it::focus_target_for_digit(state, 6), bb::kNoFocus);  // no Bet Size group
+    EXPECT_EQ(it::focus_target_for_digit(state, 5), bb::kNoFocus);  // only four stops
+    EXPECT_EQ(it::focus_target_for_digit(state, 0), bb::kNoFocus);  // no zeroth stop
 }
 
 TEST(NumberKeys, AggressorMapping) {
     it::InterrogatorState state{};
     it::configure_for_scenario(state, pure_bluff_state());
-    EXPECT_EQ(it::focus_target_for_digit(state, 5), it::kFocusFoldTier[1]);  // presented tier
-    EXPECT_EQ(it::focus_target_for_digit(state, 6), it::kFocusBetSizeGroup);
-    EXPECT_EQ(it::focus_target_for_digit(state, 1), bb::kNoFocus);  // no Pot Odds box
+    // Pure Bluff view order: Breakeven Fold % (presented tier), EV (presented tier), Bet Size.
+    EXPECT_EQ(it::focus_target_for_digit(state, 1), it::kFocusFoldTier[1]);  // presented tier
+    EXPECT_EQ(it::focus_target_for_digit(state, 2), it::kFocusEvTier[1]);    // per-tier EV
+    EXPECT_EQ(it::focus_target_for_digit(state, 3), it::kFocusBetSizeGroup);
+    EXPECT_EQ(it::focus_target_for_digit(state, 4), bb::kNoFocus);  // only three stops
+}
+
+TEST(NumberKeys, PositionalIndexOfMatchesDigitMapping) {
+    // positional_index_of is the inverse the tutorial uses to name "Press N".
+    EXPECT_EQ(it::positional_index_of(caller_state(), 0, it::kFocusPotOdds), 1);
+    EXPECT_EQ(it::positional_index_of(caller_state(), 0, it::kFocusEvCaller), 4);
+    EXPECT_EQ(it::positional_index_of(pure_bluff_state(), 1, it::kFocusFoldTier[1]), 1);
+    EXPECT_EQ(it::positional_index_of(pure_bluff_state(), 1, it::kFocusEvTier[1]), 2);
+    EXPECT_EQ(it::positional_index_of(pure_bluff_state(), 1, it::kFocusBetSizeGroup), 3);
+    EXPECT_EQ(it::positional_index_of(caller_state(), 0, it::kFocusBetSizeGroup), 0);  // absent
 }
 
 // ----- Installed handlers, driven through the event router -----
@@ -138,8 +151,8 @@ protected:
 
 TEST_F(InstalledHandlerTest, NumberKeyFocusesMappedBox) {
     enter_game(pure_bluff_state());
-    bb::snap_focus_to(it::kFocusEvTier[1]);  // start on a non-bet input
-    bb::dispatch_key_event(key(bb::KeyCode::Digit5));
+    // Positional: digit 1 = the first stop = Breakeven Fold % (presented tier).
+    bb::dispatch_key_event(key(bb::KeyCode::Digit1));
     EXPECT_EQ(bb::get_focused_element(), it::kFocusFoldTier[1]);
 }
 
@@ -231,6 +244,40 @@ TEST_F(InstalledHandlerTest, ScenarioSpawnedFallsBackToRegenerationWhenStoreEmpt
     ASSERT_TRUE(runtime_.state.scenario.has_value());
     EXPECT_EQ(runtime_.state.scenario->id, eng::ScenarioId{54321});
     EXPECT_FALSE(runtime_.state.boxes.empty());
+}
+
+TEST_F(InstalledHandlerTest, MultiTierEnterAdvancesAndSubmitsOnBlanksInGameplay) {
+    // Redesign fix: in gameplay (no tutorial), Enter advances the current tier
+    // regardless of fill state and submits on the last tier -- a partial answer set
+    // is allowed and blanks grade wrong (matching Caller). Bet Sizing Engine on.
+    eng::ScenarioState s{};
+    s.id = eng::ScenarioId{55};
+    s.type = eng::ScenarioType::AggressorPureBluff;
+    s.multi_tier = true;
+    enter_game(s);
+    bb::snap_focus_to(runtime_.state.focus_segment.front());  // focus in the math zone
+
+    bool submitted = false;
+    const bb::SubscriberHandle h = bb::subscribe_answers_submitted(
+        [&](const bb::AnswersSubmittedEvent&) { submitted = true; }, "test");
+
+    // Nothing is filled, yet Enter walks tier-by-tier (0 -> 1 -> 2 -> 3).
+    bb::dispatch_key_event(key(bb::KeyCode::Enter));
+    EXPECT_EQ(runtime_.state.current_tier, 1);
+    EXPECT_FALSE(submitted);
+    bb::dispatch_key_event(key(bb::KeyCode::Enter));
+    EXPECT_EQ(runtime_.state.current_tier, 2);
+    bb::dispatch_key_event(key(bb::KeyCode::Enter));
+    EXPECT_EQ(runtime_.state.current_tier, 3);
+    EXPECT_FALSE(submitted);
+
+    // Last tier: Enter submits even with every box blank; blanks grade wrong.
+    bb::dispatch_key_event(key(bb::KeyCode::Enter));
+    EXPECT_TRUE(submitted);
+    ASSERT_TRUE(runtime_.state.last_result.has_value());
+    EXPECT_FALSE(runtime_.state.last_result->all_correct);
+
+    bb::unsubscribe(h);
 }
 
 TEST_F(InstalledHandlerTest, TutorialSuppressesEnterUntilAllInputsFilled) {

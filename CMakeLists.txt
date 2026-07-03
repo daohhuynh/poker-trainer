@@ -408,6 +408,26 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     target_include_directories(settings PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(settings PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
     target_link_libraries(settings PUBLIC backbone theme bridge modal)  # theme brings imgui
+
+    # ---------------------------------------------------------------------
+    # Zone 14 (Tutorial System) — the final zone. A coordination layer driving the
+    # existing zones through the scripted 8-step sequence: the pure step table +
+    # forced-settings save/restore are native-unit-tested; the lens/spotlight/callout
+    # render, the Tutorial Complete screen, and the click-through are browser-verified
+    # (CLAUDE.md §9). It reaches Z07 layout helpers (animations rects), Z09 focus ids,
+    # Z11 modals (skip-confirm + outage banner), and Z05 game_launch (the teaching-seed
+    # launch). None of those depend on tutorial, so this is a one-way edge (no cycle).
+    add_library(tutorial STATIC
+        src/tutorial/step_sequencer.cpp
+        src/tutorial/forced_settings.cpp
+        src/tutorial/callout.cpp
+        src/tutorial/overlay.cpp
+        src/screens/tutorial_complete_screen.cpp
+    )
+    target_include_directories(tutorial PUBLIC ${CMAKE_SOURCE_DIR}/src)
+    target_compile_options(tutorial PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
+    target_link_libraries(tutorial PUBLIC
+        backbone engine theme bridge modal interrogator screens)  # theme brings imgui
 endif()
 
 # =========================================================================
@@ -452,7 +472,7 @@ if(EMSCRIPTEN)
     # call. It registers ScreenId::PostRound's renderer slot (no conflict with Z08's
     # Game slot) and the GradingComplete capture that drives the transition.
     target_link_libraries(bridge_platform PUBLIC
-        bridge screens interrogator game post_round audio modal settings temporal backbone engine assets persistence theme imgui)
+        bridge screens interrogator game post_round audio modal settings temporal tutorial backbone engine assets persistence theme imgui)
 
     target_link_libraries(poker_trainer PRIVATE bridge_platform)
     target_link_options(poker_trainer PRIVATE
@@ -689,6 +709,26 @@ if(ENABLE_TESTS)
     target_link_libraries(screens_test PRIVATE screens GTest::gtest_main)
 
     add_test(NAME screens_test COMMAND screens_test)
+
+    # -------------------------------------------------------------------------
+    # Zone 14 (Tutorial System) — native unit tests. The `tutorial` library is
+    # defined in the shared section above (held to -Werror there). These tests cover
+    # the pure surface: the step-sequence table + its invariants, forced-settings
+    # save/apply/restore symmetry, and the locked teaching seeds (re-derived against
+    # the real generator, so a generator change is caught). The overlay render, the
+    # Tutorial Complete screen, and the click-through are browser-verified.
+    add_executable(tutorial_test
+        tests/tutorial/step_sequencer_test.cpp
+        tests/tutorial/forced_settings_test.cpp
+        tests/tutorial/seed_selection_test.cpp
+    )
+    target_include_directories(tutorial_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/tests
+    )
+    target_link_libraries(tutorial_test PRIVATE tutorial GTest::gtest_main)
+
+    add_test(NAME tutorial_test COMMAND tutorial_test)
 
     # -------------------------------------------------------------------------
     # Pass-1 integration wiring tests (Z05 <-> Z07 <-> Z04 finalization).

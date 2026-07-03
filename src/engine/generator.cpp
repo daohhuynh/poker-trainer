@@ -274,20 +274,32 @@ TierTable build_tiers(ScenarioType type, double f, double equity_frac, double po
 // margin; best-effort fallback by largest margin.
 void resolve_aggressor(RngEngine& eng, ScenarioState& s, const settings::GameplaySettings& g) noexcept {
     double equity_frac = 0.0;
-    if (s.type == ScenarioType::AggressorSemiBluff) {
+    // Equity if Called is graded for both Semi-Bluff and Value Bet (redesign): a
+    // Value Bet's decision is "am I ahead of the calling range," so equity-when-
+    // called is its derivable input. Reuse the existing Rule-of-2&4 outs machinery.
+    // This adds NO RNG draw (pure over the already-drawn cards), so the seed-locked
+    // identity and stream are unchanged; only the derived equity value is populated.
+    if (s.type == ScenarioType::AggressorSemiBluff || s.type == ScenarioType::AggressorValueBet) {
         const int outs = count_draw_outs(s.hole, s.board, s.board_count);
         s.aggressor_equity_pct = equity_from_outs(outs, s.street);
+    }
+    // Only the Semi-Bluff EV formula consumes equity; Value Bet EV = P(call) * bet
+    // ignores it, so leaving equity_frac at 0 for Value Bet keeps every tier EV and
+    // the max-EV tier bit-identical to before this change.
+    if (s.type == ScenarioType::AggressorSemiBluff) {
         equity_frac = s.aggressor_equity_pct / 100.0;
     }
     const double pot_d = static_cast<double>(s.pot);
 
-    // One F draw from the difficulty range — varied per scenario so the correct
-    // tier and P(fold) are not memorizable. No separation-based rejection: tolerant
-    // bet-size grading accepts any tier statistically tied with the max-EV tier,
-    // so a near-tie simply yields more than one accepted tier (correct behavior),
-    // not something to exclude. The correct (reference) tier is the max-EV tier.
-    const double f = sample_fold_baseline(eng, static_cast<double>(g.difficulty_min),
-                                          static_cast<double>(g.difficulty_max));
+    // Situational F: computed from street + board texture + overcard danger, with a
+    // narrow residual jitter (fold_function.hpp). The bet-size dependence stays in
+    // fold_probability(), applied per tier below, and is the primary driver. This
+    // makes the shown per-tier P(fold), EV, and the correct tier all situation-
+    // determined rather than drawn from a user difficulty range. No separation-based
+    // rejection: tolerant bet-size grading accepts any tier statistically tied with
+    // the max-EV tier, so a near-tie yields more than one accepted tier (correct
+    // behavior). The correct (reference) tier is the max-EV tier.
+    const double f = sample_situational_f(eng, s.street, s.board, s.board_count);
     const TierTable table = build_tiers(s.type, f, equity_frac, pot_d);
 
     s.fold_baseline_f = f;

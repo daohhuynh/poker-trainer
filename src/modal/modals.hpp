@@ -298,6 +298,11 @@ void open_leave_drill_confirm();
 // Enter-jump highlight so each open re-fetches and starts unfiltered).
 void open_leaderboard_modal();
 
+// The screen-space rect of the Shop's Leaderboard-swap (trophy) icon as last drawn, cached
+// by render_shop_view. Valid only while the Shop modal is open (a stale value from a prior
+// open is harmless). The tutorial reads it to spotlight the in-Shop Leaderboard button.
+[[nodiscard]] std::optional<animations::Rect> shop_leaderboard_icon_rect();
+
 // In-place content swap between the Shop and Leaderboard views (same modal frame, per
 // the Module 7 modal-swap): close the current cluster modal then open the target. The
 // modal-depth pollers (Z03 swoosh / Z10 pause) sample once per frame, so the
@@ -319,6 +324,11 @@ void register_modal_content(backbone::ModalId id, ModalContentProvider provider)
 
 // ----- Outage banner (callable from any zone) -----
 void trigger_outage_banner(std::string_view message);
+
+// ----- Tutorial start seam (Zone 14) -----
+// Wire the handler the Help modal's "Open Tutorial" button invokes. Boot points it at
+// tutorial::tutorial_start; unset (native tests / no-Z14 build) leaves the button inert.
+void set_tutorial_start_handler(std::function<void()> handler);
 
 // ----- Cluster (ZONES.md export render_persistent_cluster) -----
 void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx);

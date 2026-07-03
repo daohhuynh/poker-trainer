@@ -14,6 +14,8 @@
 #include "assets/tier_config.hpp"
 #include "theme/theme_tokens.hpp"
 
+#include "tutorial/tutorial.hpp"
+
 #include "imgui.h"
 
 #include <cstdint>
@@ -105,6 +107,11 @@ void app_frame() {
             // registered, the frame is just the background clear below.
             render_screen(screen);
         }
+        // Zone 14's tutorial overlay (grey lens + spotlight + callout + skip button,
+        // or the first-launch prompt) renders ABOVE the active screen and BELOW the
+        // Z11 modal overlay (so a locked modal / the skip-confirm modal composite on
+        // top). A no-op unless the tutorial phase is Prompt or Active.
+        tutorial::render_tutorial_overlay();
         // Zone 11's modal + outage-banner overlay renders ABOVE the active screen
         // (a no-op when no modal is open and no banner is showing).
         render_overlay();

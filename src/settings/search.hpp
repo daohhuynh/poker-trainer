@@ -43,7 +43,6 @@ enum class SettingId : std::uint16_t {
     StreetWeights = 0,
     ChipDenomination,
     BetSizingEngine,
-    DifficultyRange,
     TimePressure,
     ShowHud,
     ShowCountdown,
@@ -91,15 +90,13 @@ struct SettingEntry {
 // The full searchable catalog, in body order. Every blob is authored lowercase and
 // begins with the section name so a section query ("gameplay", "account") resolves to
 // every control in that section (kills the "account hits / gameplay misses" asymmetry).
-inline constexpr std::array<SettingEntry, 30> kSettingCatalog{{
+inline constexpr std::array<SettingEntry, 29> kSettingCatalog{{
     {SettingId::StreetWeights, "Street split weights", SettingsSection::Gameplay,
      "gameplay street split weights pre-flop preflop flop turn river save reset sum applies next game"},
     {SettingId::ChipDenomination, "Chip denomination mode", SettingsSection::Gameplay,
      "gameplay chip denomination mode fixed chip denominations off stake-scaled stake scaled"},
     {SettingId::BetSizingEngine, "Bet sizing engine", SettingsSection::Gameplay,
      "gameplay bet sizing engine aggressor multi-tier tier"},
-    {SettingId::DifficultyRange, "Difficulty range", SettingsSection::Gameplay,
-     "gameplay difficulty range opponent fold tendency low high"},
     {SettingId::TimePressure, "Time pressure", SettingsSection::Gameplay,
      "gameplay time pressure custom flat seconds clock timer"},
     {SettingId::ShowHud, "Show HUD", SettingsSection::Gameplay,

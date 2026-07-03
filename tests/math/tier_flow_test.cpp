@@ -74,11 +74,15 @@ void set_box(it::InterrogatorState& state, eng::InputId id, std::optional<std::u
     ADD_FAILURE() << "no box for the requested input/tier";
 }
 
-// Fill THIS tier's Fold + EV (and the tier-1 Equity-if-Called for Semi-Bluff).
+// Fill THIS tier's per-tier inputs (Breakeven Fold % and EV), plus the scenario-level
+// Equity-if-Called for a Semi-Bluff. Equity is visible (and thus required-to-advance)
+// on every tier screen, so it is filled from whatever tier the caller is on; the
+// single box makes repeated fills idempotent. Values need only be non-empty here --
+// these tests exercise the fill-gate, not grading correctness.
 void fill_tier(it::InterrogatorState& state, std::uint8_t tier, bool semi) {
     set_box(state, eng::InputId::FoldProbability, tier, "40");
-    set_box(state, eng::InputId::Ev, tier, "12");
-    if (semi && tier == 0) {
+    set_box(state, eng::InputId::Ev, tier, "5");
+    if (semi) {
         set_box(state, eng::InputId::Equity, std::nullopt, "45");
     }
 }
@@ -125,37 +129,62 @@ TEST(TierFlow, CurrentViewIsOneTierForMultiTier) {
     it::InterrogatorState state{};
     it::configure_for_scenario(state, multi_tier_semi_bluff());
 
-    // Tier 1 (index 0): Fold0, EV0, and the once-only Equity-if-Called.
+    // Tier 1 (index 0): Breakeven Fold %(0), the once-only Equity-if-Called, EV(0). The
+    // Semi-Bluff view reads Breakeven Fold % -> Equity if Called -> EV -> Bet Size (the
+    // positional keybind order). EV is restored as a per-tier input.
     {
         const std::vector<const it::NumericBox*> view = it::current_view_boxes(state);
         ASSERT_EQ(view.size(), 3u);
         EXPECT_EQ(view[0]->input, eng::InputId::FoldProbability);
         EXPECT_EQ(view[0]->tier, std::optional<std::uint8_t>{0});
-        EXPECT_EQ(view[1]->input, eng::InputId::Ev);
-        EXPECT_EQ(view[1]->tier, std::optional<std::uint8_t>{0});
-        EXPECT_EQ(view[2]->input, eng::InputId::Equity);
-        EXPECT_FALSE(view[2]->tier.has_value());  // bet-size-independent
+        EXPECT_EQ(view[1]->input, eng::InputId::Equity);
+        EXPECT_FALSE(view[1]->tier.has_value());  // bet-size-independent
+        EXPECT_EQ(view[2]->input, eng::InputId::Ev);
+        EXPECT_EQ(view[2]->tier, std::optional<std::uint8_t>{0});
     }
 
-    // Tier 2 (index 1): just Fold1, EV1 -- Equity does NOT reappear.
+    // Tier 2 (index 1): Breakeven Fold %(1) AND the persistent scenario-level Equity AND
+    // EV(1). Equity if Called is shown (and editable) on EVERY tier screen, like Bet
+    // Size -- entered once, carried across tiers.
     state.current_tier = 1;
     {
         const std::vector<const it::NumericBox*> view = it::current_view_boxes(state);
-        ASSERT_EQ(view.size(), 2u);
+        ASSERT_EQ(view.size(), 3u);
         EXPECT_EQ(view[0]->input, eng::InputId::FoldProbability);
         EXPECT_EQ(view[0]->tier, std::optional<std::uint8_t>{1});
-        EXPECT_EQ(view[1]->input, eng::InputId::Ev);
-        EXPECT_EQ(view[1]->tier, std::optional<std::uint8_t>{1});
+        EXPECT_EQ(view[1]->input, eng::InputId::Equity);
+        EXPECT_FALSE(view[1]->tier.has_value());
+        EXPECT_EQ(view[2]->input, eng::InputId::Ev);
+        EXPECT_EQ(view[2]->tier, std::optional<std::uint8_t>{1});
     }
 }
 
-TEST(TierFlow, MultiTierPureBluffTierOneHasNoEquity) {
+TEST(TierFlow, ValueBetMultiTierIsSequentialWithPerTierEv) {
+    // Value Bet now has a per-tier input (EV), so it IS sequential: one tier per screen
+    // showing the once-only Equity if Called and this tier's EV.
+    eng::ScenarioState s{};
+    s.id = eng::ScenarioId{9};
+    s.type = eng::ScenarioType::AggressorValueBet;
+    s.multi_tier = true;
+    it::InterrogatorState state{};
+    it::configure_for_scenario(state, s);
+    EXPECT_TRUE(it::is_sequential(state));
+    const std::vector<const it::NumericBox*> view = it::current_view_boxes(state);
+    ASSERT_EQ(view.size(), 2u);  // Equity if Called then EV(0) (Bet Size is the group)
+    EXPECT_EQ(view[0]->input, eng::InputId::Equity);
+    EXPECT_EQ(view[1]->input, eng::InputId::Ev);
+    EXPECT_EQ(view[1]->tier, std::optional<std::uint8_t>{0});
+    EXPECT_TRUE(state.bet_group.present);
+}
+
+TEST(TierFlow, MultiTierPureBluffTierOneHasBreakevenAndEvNoEquity) {
     it::InterrogatorState state{};
     it::configure_for_scenario(state, multi_tier_pure_bluff());
     const std::vector<const it::NumericBox*> view = it::current_view_boxes(state);
-    ASSERT_EQ(view.size(), 2u);  // Fold0, EV0 -- Pure Bluff has no Equity-if-Called
+    ASSERT_EQ(view.size(), 2u);  // Breakeven Fold %(0) then EV(0); no Equity
     EXPECT_EQ(view[0]->input, eng::InputId::FoldProbability);
     EXPECT_EQ(view[1]->input, eng::InputId::Ev);
+    EXPECT_EQ(view[1]->tier, std::optional<std::uint8_t>{0});
 }
 
 TEST(TierFlow, CurrentViewIsEveryBoxForNonSequential) {
@@ -167,24 +196,24 @@ TEST(TierFlow, CurrentViewIsEveryBoxForNonSequential) {
 
 // ----- Advance only when THIS tier's required inputs are filled -----
 
-TEST(TierFlow, RequiredFilledNeedsThisTiersFoldEvAndTierOneEquity) {
+TEST(TierFlow, RequiredFilledNeedsThisTiersBreakevenEvAndEquity) {
     it::InterrogatorState state{};
     it::configure_for_scenario(state, multi_tier_semi_bluff());
 
     EXPECT_FALSE(it::current_tier_required_filled(state));  // nothing filled
     set_box(state, eng::InputId::FoldProbability, static_cast<std::uint8_t>(0), "40");
-    set_box(state, eng::InputId::Ev, static_cast<std::uint8_t>(0), "12");
-    EXPECT_FALSE(it::current_tier_required_filled(state));  // Equity still missing on tier 1
+    EXPECT_FALSE(it::current_tier_required_filled(state));  // Equity + EV still missing
     set_box(state, eng::InputId::Equity, std::nullopt, "45");
+    EXPECT_FALSE(it::current_tier_required_filled(state));  // EV still missing on tier 1
+    set_box(state, eng::InputId::Ev, static_cast<std::uint8_t>(0), "5");
     EXPECT_TRUE(it::current_tier_required_filled(state));
 }
 
 TEST(TierFlow, RequiredFilledIgnoresOtherTiers) {
     it::InterrogatorState state{};
     it::configure_for_scenario(state, multi_tier_pure_bluff());
-    // Fill ONLY tier 2's boxes; tier 1 (the current screen) is still empty.
+    // Fill ONLY tier 2's box; tier 1 (the current screen) is still empty.
     set_box(state, eng::InputId::FoldProbability, static_cast<std::uint8_t>(1), "40");
-    set_box(state, eng::InputId::Ev, static_cast<std::uint8_t>(1), "12");
     EXPECT_FALSE(it::current_tier_required_filled(state));
 
     fill_tier(state, 0, /*semi=*/false);
@@ -231,19 +260,20 @@ TEST(TierFlow, EnterActionSubmitOnLastTierWhenFilled) {
 
 TEST(TierFlow, BoxesHoldEveryTierImmediately) {
     // The sequential flow never rebuilds boxes on advance: configure_for_scenario
-    // spawns every tier's Fold + EV (+ one Equity) up front, so the submitted set
-    // is identical to the all-at-once shape -- only the per-screen VIEW differs.
+    // spawns every tier's Breakeven Fold % and EV (+ one Equity) up front, so the
+    // submitted set is identical to the all-at-once shape -- only the per-screen VIEW
+    // differs.
     it::InterrogatorState state{};
     it::configure_for_scenario(state, multi_tier_semi_bluff());
-    std::size_t fold = 0, ev = 0, equity = 0;
+    std::size_t breakeven = 0, ev = 0, equity = 0;
     for (const it::NumericBox& b : state.boxes) {
-        if (b.input == eng::InputId::FoldProbability) ++fold;
+        if (b.input == eng::InputId::FoldProbability) ++breakeven;
         if (b.input == eng::InputId::Ev) ++ev;
         if (b.input == eng::InputId::Equity) ++equity;
     }
-    EXPECT_EQ(fold, eng::kBetTierCount);
-    EXPECT_EQ(ev, eng::kBetTierCount);
-    EXPECT_EQ(equity, 1u);  // bet-size-independent: spawned once
+    EXPECT_EQ(breakeven, eng::kBetTierCount);
+    EXPECT_EQ(ev, eng::kBetTierCount);  // per-tier dollar EV restored
+    EXPECT_EQ(equity, 1u);              // bet-size-independent: spawned once
 }
 
 TEST(TierFlow, PickPersistsAcrossTiersAndIsSubmitted) {
@@ -266,7 +296,7 @@ TEST(TierFlow, PickPersistsAcrossTiersAndIsSubmitted) {
     EXPECT_EQ(a.selected_bet_tier, eng::BetTier::FullPot);
     EXPECT_TRUE(a.equity_if_called_pct.has_value());
     for (std::size_t t = 0; t < eng::kBetTierCount; ++t) {
-        EXPECT_TRUE(a.tier_fold_pct[t].has_value()) << "tier " << t << " fold";
+        EXPECT_TRUE(a.tier_breakeven_pct[t].has_value()) << "tier " << t << " breakeven";
         EXPECT_TRUE(a.tier_ev[t].has_value()) << "tier " << t << " ev";
     }
 }

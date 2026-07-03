@@ -9,6 +9,7 @@ node_modules/
 .idea/
 *.swp
 .env
+.env.*
 CLAUDE.md
 
 # Additional build directories
@@ -30,4 +31,19 @@ compile_commands.json
 # Editor / LSP caches
 .cache/
 .ccls-cache/
+
+# OS junk
+Thumbs.db
+ehthumbs.db
+
+# Local Emscripten SDK, if vendored into the tree
+emsdk/
+
+# Native debug bundles (macOS)
+*.dSYM/
+
+# Profanity source list (LDNOOBW English word list). Kept locally only; the
+# build consumes the committed, pre-folded src/settings/username_denylist_data.hpp,
+# never this raw file. Do NOT ignore that generated header — it is a committed
+# build input with no build-time regenerator.
 en.txt

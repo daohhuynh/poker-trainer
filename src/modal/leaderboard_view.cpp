@@ -408,7 +408,7 @@ void render_your_rank_row(ModalRuntime& runtime, const LeaderboardData& data,
             break;
         }
     }
-    const std::string rank_s = rank >= 0 ? std::to_string(rank) : "—";
+    const std::string rank_s = rank >= 0 ? std::to_string(rank) : "-";
     ImGui::TextUnformatted(rank_s.c_str());
     ImGui::SameLine();
     ImGui::TextUnformatted(self.name.empty() ? "(you)" : self.name.c_str());
@@ -422,7 +422,7 @@ void render_your_rank_row(ModalRuntime& runtime, const LeaderboardData& data,
     if (self.state == LeaderboardSelfState::OptedOut) {
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-        ImGui::TextUnformatted("(opted out —");
+        ImGui::TextUnformatted("(opted out -");
         ImGui::PopStyleColor();
         ImGui::SameLine();
         // Directly enable the opt-in (same action as the Settings -> Tomatoes checkbox).

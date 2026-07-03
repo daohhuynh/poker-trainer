@@ -150,56 +150,6 @@ constexpr void apply_street_weights(GameplaySettings& g, StreetWeights w) noexce
     g.street_weight_river = w.river;
 }
 
-// ----- difficulty range (Gameplay) -----
-//
-// Stored internally as two floats in [0.0, 1.0] (difficulty_min/max); shown to the
-// user as integer percentages [0, 100]. Two independent handles (low, high) that
-// cannot cross: an attempt to move a handle past the other is a no-op (no swap).
-
-[[nodiscard]] constexpr int difficulty_display(float internal) noexcept {
-    const int d = static_cast<int>(internal * 100.0f + 0.5f);
-    return clamp_int(d, 0, 100);
-}
-
-[[nodiscard]] constexpr float difficulty_internal(int display) noexcept {
-    return static_cast<float>(clamp_int(display, 0, 100)) / 100.0f;
-}
-
-struct DifficultyDisplay {
-    int low{20};
-    int high{80};
-    constexpr bool operator==(const DifficultyDisplay&) const noexcept = default;
-};
-
-[[nodiscard]] constexpr DifficultyDisplay difficulty_display_range(const GameplaySettings& g) noexcept {
-    return DifficultyDisplay{difficulty_display(g.difficulty_min), difficulty_display(g.difficulty_max)};
-}
-
-// Set the low handle to display value `d` (clamped 0-100). No-op if it would exceed
-// the current high handle (handles cannot cross or swap).
-[[nodiscard]] constexpr DifficultyDisplay set_difficulty_low(DifficultyDisplay r, int d) noexcept {
-    const int v = clamp_int(d, 0, 100);
-    if (v > r.high) {
-        return r;
-    }
-    return DifficultyDisplay{v, r.high};
-}
-
-// Set the high handle to display value `d` (clamped 0-100). No-op if it would fall
-// below the current low handle.
-[[nodiscard]] constexpr DifficultyDisplay set_difficulty_high(DifficultyDisplay r, int d) noexcept {
-    const int v = clamp_int(d, 0, 100);
-    if (v < r.low) {
-        return r;
-    }
-    return DifficultyDisplay{r.low, v};
-}
-
-constexpr void apply_difficulty(GameplaySettings& g, DifficultyDisplay r) noexcept {
-    g.difficulty_min = difficulty_internal(r.low);
-    g.difficulty_max = difficulty_internal(r.high);
-}
-
 // ----- slider ghost-default marker -----
 
 // Normalized [0, 1] position of `value` along a [lo, hi] track. Used to place both

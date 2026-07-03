@@ -35,7 +35,7 @@ namespace poker_trainer::engine {
 
 // ----- Grading margins (Module 5) -----
 
-// Probabilities (Pot Odds, Equity, Fold Probability): +/- 5 percentage points.
+// Probabilities (Pot Odds, Equity, Breakeven Fold %): +/- 5 percentage points.
 inline constexpr double kProbabilityMarginPp = 5.0;
 // Dollar EV: +/- 5% relative, with a $0.50 absolute floor.
 inline constexpr double kEvRelativeMargin = 0.05;

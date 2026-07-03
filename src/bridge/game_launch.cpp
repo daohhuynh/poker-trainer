@@ -89,6 +89,9 @@ std::function<LaunchAssetReadiness()> g_launch_asset_guard;
 struct PendingLaunch {
     backbone::GameMode mode;
     std::optional<backbone::CustomConfig> custom;
+    // A forced exact id (the Zone 14 tutorial teaching seeds). When set, the launch
+    // uses it directly instead of drawing one under the mode filter.
+    std::optional<engine::ScenarioId> forced_id;
 };
 std::optional<PendingLaunch> g_pending_launch;
 
@@ -107,12 +110,16 @@ std::optional<PendingLaunch> g_pending_launch;
 // ScenarioSpawned, and transition to Game. Reached only once the required Tier-2
 // assets are Ready (directly, or deferred via poll_pending_launch).
 void do_launch(backbone::GameMode mode,
-               std::optional<backbone::CustomConfig> custom) {
+               std::optional<backbone::CustomConfig> custom,
+               std::optional<engine::ScenarioId> forced_id = std::nullopt) {
     // Record what we are about to launch so a later replay (Z13 Again) re-launches
     // in the same mode rather than deriving it from the finished scenario.
     g_last_launch_config = LaunchConfig{mode, custom};
 
-    const engine::ScenarioId id = select_scenario_id(mode, custom, master_rng());
+    // A forced id (Zone 14 tutorial seeds) launches that exact scenario; otherwise
+    // draw one under the mode filter from the master stream.
+    const engine::ScenarioId id =
+        forced_id.value_or(select_scenario_id(mode, custom, master_rng()));
 
     set_active_scenario(engine::generate_scenario(id, launch_settings()));
 
@@ -156,12 +163,30 @@ void request_game_launch(backbone::GameMode mode,
             backbone::set_screen(backbone::ScreenId::Error, std::nullopt);
             return;
         case LaunchAssetReadiness::Pending:
-            g_pending_launch = PendingLaunch{mode, std::move(custom)};
+            g_pending_launch = PendingLaunch{mode, std::move(custom), std::nullopt};
             return;
         case LaunchAssetReadiness::Ready:
             break;
     }
     do_launch(mode, std::move(custom));
+}
+
+void request_game_launch_with_id(engine::ScenarioId id) {
+    // Same launch path as request_game_launch, but with an exact id (the Zone 14
+    // tutorial teaching seeds). The engine generates from the seed unaware it is in
+    // a tutorial. Honors the same Tier-2 readiness guard.
+    switch (launch_asset_readiness()) {
+        case LaunchAssetReadiness::Failed:
+            g_pending_launch.reset();
+            backbone::set_screen(backbone::ScreenId::Error, std::nullopt);
+            return;
+        case LaunchAssetReadiness::Pending:
+            g_pending_launch = PendingLaunch{backbone::GameMode::Standard, std::nullopt, id};
+            return;
+        case LaunchAssetReadiness::Ready:
+            break;
+    }
+    do_launch(backbone::GameMode::Standard, std::nullopt, id);
 }
 
 void poll_pending_launch() {
@@ -181,7 +206,7 @@ void poll_pending_launch() {
     }
     const PendingLaunch pending = std::move(*g_pending_launch);
     g_pending_launch.reset();
-    do_launch(pending.mode, pending.custom);
+    do_launch(pending.mode, pending.custom, pending.forced_id);
 }
 
 void set_launch_settings_source(std::function<settings::Settings()> source) {

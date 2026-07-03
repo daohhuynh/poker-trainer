@@ -116,6 +116,16 @@ inline constexpr std::size_t kBetTierCount = 4;
     return t == ScenarioType::Caller || t == ScenarioType::AggressorSemiBluff;
 }
 
+// True for every Aggressor sub-type: each now carries a per-tier input. Dollar EV
+// (restored) depends on the tier's bet size and its P(fold), so it differs per tier
+// for Pure Bluff, Value Bet, and Semi-Bluff alike; Pure Bluff / Semi-Bluff also ask a
+// per-tier Breakeven Fold % (= bet / (pot + bet)). All three are therefore presented
+// one tier per screen (sequential) and get tier tabs in the recap when the Bet Sizing
+// Engine is on.
+[[nodiscard]] constexpr bool aggressor_has_per_tier_inputs(ScenarioType t) noexcept {
+    return is_aggressor(t);
+}
+
 // ----- Resolved per-tier Aggressor truth -----
 
 // One bet-sizing tier's resolved math. Computed at generation; consumed by Z09
@@ -159,8 +169,11 @@ struct ScenarioState {
     int effective_stack{0};
     int faced_bet{0};
 
-    // Opponent baseline fold tendency F (Aggressor only; 0 for Caller). Variable:
-    // re-rolled within the current difficulty range at generation, NOT seed-locked.
+    // Opponent baseline fold tendency F (Aggressor only; 0 for Caller). Computed
+    // situationally at generation (street + board texture + overcard danger + a
+    // narrow jitter; see fold_function.hpp), bet-size-independent. The per-tier
+    // P(fold) shown on the HUD and used for EV is fold_probability(F, bet_fraction),
+    // stored per tier in `tiers`. Same seed -> same board -> same F.
     double fold_baseline_f{0.0};
 
     // --- Computed truth: Caller (valid when type == Caller) ---
@@ -201,14 +214,17 @@ struct UserAnswers {
     std::optional<double> caller_equity_pct;
     std::optional<double> caller_ev;
 
-    // Aggressor inputs. `equity_if_called_pct` is Semi-Bluff only and answered
-    // once (bet-size-independent). `selected_bet_tier` is the user's single pick
-    // of the optimal size. `tier_fold_pct` / `tier_ev` hold the per-tier
-    // Fold Probability and EV answers, indexed by BetTier; only the first
-    // `active_tier_count` entries are graded.
+    // Aggressor inputs. `equity_if_called_pct` is answered once (bet-size-independent)
+    // for Value Bet and Semi-Bluff. `selected_bet_tier` is the user's single pick of
+    // the optimal size. `tier_breakeven_pct` holds the per-tier Breakeven Fold %
+    // answers (bet / (pot + bet), the aggressor's mirror of pot odds), indexed by
+    // BetTier; asked for Pure Bluff and Semi-Bluff. `tier_ev` holds the per-tier
+    // dollar-EV answers (restored now that the opponent fold % is shown on screen,
+    // making EV derivable), indexed by BetTier; asked for all three sub-types. Only
+    // the presented tier's entry is filled for a single-tier scenario.
     std::optional<double> equity_if_called_pct;
     std::optional<BetTier> selected_bet_tier;
-    std::array<std::optional<double>, kBetTierCount> tier_fold_pct{};
+    std::array<std::optional<double>, kBetTierCount> tier_breakeven_pct{};
     std::array<std::optional<double>, kBetTierCount> tier_ev{};
 };
 
@@ -218,8 +234,12 @@ struct UserAnswers {
 enum class InputId : std::uint8_t {
     PotOdds = 0,
     Outs = 1,
-    Equity = 2,        // Caller Equity or Aggressor Equity-if-Called
-    Ev = 3,
+    Equity = 2,        // Caller Equity, or Aggressor Equity-if-Called (Value/Semi-Bluff)
+    Ev = 3,            // Caller net-call EV (tier-less), or Aggressor per-tier dollar EV
+    // This identity carries the Aggressor's Breakeven Fold % (bet / (pot + bet)), NOT
+    // a graded fold probability -- the opponent fold % itself is given on screen, not
+    // typed. The identifier name is retained (not renamed) so existing InputId
+    // references keep compiling; display + grading treat it as Breakeven Fold %.
     FoldProbability = 4,
     BetSize = 5,
 };

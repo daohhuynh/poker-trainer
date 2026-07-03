@@ -1,14 +1,15 @@
 #include "render/stat_modal.hpp"
 
-#include "render/front_dealer.hpp"
-
-#include "assets/asset_paths.hpp"
 #include "theme/theme_tokens.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <format>
+#include <span>
 #include <string>
+#include <vector>
 
 #include <imgui.h>
 
@@ -16,10 +17,9 @@ namespace poker_trainer::render {
 
 namespace {
 
-// Append the rows that are echoed on every tier tab (and that close out a flat
-// recap): the bet-size-independent inputs answered once (Equity if Called, Outs)
-// and the single Bet Size pick. In the grading result these are the inputs with no
-// tier index, in grading order (Equity then Bet Size for an Aggressor).
+// Append the scenario-level rows -- the grades with no tier index (Equity if Called
+// answered once, then the single Bet Size pick), in grading order. These make up the
+// recap's "Overall" section for a multi-tier Aggressor and close out a flat recap.
 void append_scenario_level_rows(const engine::GradingResult& result,
                                 std::vector<RecapRow>& out) {
     for (const engine::InputGrade& g : result.inputs) {
@@ -47,11 +47,11 @@ void append_scenario_level_rows(const engine::GradingResult& result,
         case engine::InputId::PotOdds:
         case engine::InputId::Equity:
         case engine::InputId::FoldProbability:
-            return std::format("{:.0f}% ± {:.0f}%", row.correct_value, row.margin);
+            return std::format("{:.0f}% +/- {:.0f}%", row.correct_value, row.margin);
         case engine::InputId::Outs:
             return std::format("{:.0f} (exact)", row.correct_value);
         case engine::InputId::Ev:
-            return std::format("${:.0f} ± ${:.2f}", row.correct_value, row.margin);
+            return std::format("${:.0f} +/- ${:.2f}", row.correct_value, row.margin);
         case engine::InputId::BetSize:
             return bet_tier_label(row.correct_value);
     }
@@ -108,7 +108,7 @@ std::string_view input_display_name(engine::InputId input) noexcept {
         case engine::InputId::Outs: return "Outs";
         case engine::InputId::Equity: return "Equity";
         case engine::InputId::Ev: return "EV";
-        case engine::InputId::FoldProbability: return "Fold Probability";
+        case engine::InputId::FoldProbability: return "Breakeven Fold %";
         case engine::InputId::BetSize: return "Bet Size";
     }
     return {};
@@ -120,17 +120,36 @@ std::array<std::string_view, 3> recap_column_headers() noexcept {
 }
 
 bool has_tier_tabs(const engine::ScenarioState& scenario) noexcept {
-    return engine::is_aggressor(scenario.type) && scenario.multi_tier;
+    return engine::is_aggressor(scenario.type) && scenario.multi_tier &&
+           engine::aggressor_has_per_tier_inputs(scenario.type);
 }
 
+// The FULL input set for one tier tab, in on-screen order: Breakeven Fold % (this
+// tier), Equity if Called (scenario-level, echoed), EV (this tier), Bet Size
+// (scenario-level, echoed). Absent inputs for the sub-type are skipped. Each tier is
+// self-contained so its Overall row scores exactly what the tier shows.
 std::vector<RecapRow> build_tier_rows(const engine::GradingResult& result, std::uint8_t tier) {
     std::vector<RecapRow> rows;
-    for (const engine::InputGrade& g : result.inputs) {
-        if (g.tier_index.has_value() && *g.tier_index == tier) {
-            rows.push_back(RecapRow{g.input, g.tier_index, g.correct_value, g.margin,
-                                    g.submitted, g.correct});
+    const auto push_first = [&](engine::InputId id, bool per_tier) {
+        for (const engine::InputGrade& g : result.inputs) {
+            const bool tier_ok = per_tier ? (g.tier_index.has_value() && *g.tier_index == tier)
+                                          : !g.tier_index.has_value();
+            if (g.input == id && tier_ok) {
+                rows.push_back(RecapRow{g.input, g.tier_index, g.correct_value, g.margin,
+                                        g.submitted, g.correct});
+                return;
+            }
         }
-    }
+    };
+    push_first(engine::InputId::FoldProbability, /*per_tier=*/true);  // Breakeven Fold %
+    push_first(engine::InputId::Equity, /*per_tier=*/false);          // Equity if Called
+    push_first(engine::InputId::Ev, /*per_tier=*/true);               // EV
+    push_first(engine::InputId::BetSize, /*per_tier=*/false);         // Bet Size
+    return rows;
+}
+
+std::vector<RecapRow> build_scenario_level_rows(const engine::GradingResult& result) {
+    std::vector<RecapRow> rows;
     append_scenario_level_rows(result, rows);
     return rows;
 }
@@ -178,6 +197,11 @@ SummaryData build_summary(const engine::GradingResult& result) noexcept {
 
 int summary_pct(const SummaryData& summary) noexcept {
     return pct_of(summary.total_correct, summary.total);
+}
+
+int tier_accuracy_pct(const engine::GradingResult& result, std::uint8_t tier) {
+    const std::vector<RecapRow> rows = build_tier_rows(result, tier);
+    return rows_accuracy_pct(std::span<const RecapRow>{rows});
 }
 
 bool time_grade_overtime(const TimeGrade& grade) noexcept {
@@ -269,12 +293,13 @@ float draw_header_row(ImDrawList* dl, const ImVec2& tl, float width, float y, fl
     return next_y;
 }
 
-// Draw one three-column row and its bottom separator. Returns the next row's y.
+// Draw one three-column row and its bottom separator. `label` heads column 0 (the
+// input name, or a "Tier N" tag in the per-tier grid). Returns the next row's y.
 float draw_recap_row(ImDrawList* dl, const ImVec2& tl, float width, float y, float row_h,
-                     const std::array<float, 3>& col_x, const RecapRow& row, float alpha) {
+                     const std::array<float, 3>& col_x, std::string_view label,
+                     const RecapRow& row, float alpha) {
     const float text_y = y + (row_h - ImGui::GetTextLineHeight()) * 0.5f;
-    text_at(dl, col_x[0], text_y, theme::ColorToken::TextPrimary, alpha,
-            std::string{input_display_name(row.input)});
+    text_at(dl, col_x[0], text_y, theme::ColorToken::TextPrimary, alpha, std::string{label});
     text_at(dl, col_x[1], text_y, theme::ColorToken::TextSecondary, alpha, format_correct(row));
     const theme::ColorToken c3 =
         row.correct ? theme::ColorToken::StatePass : theme::ColorToken::StateFail;
@@ -291,6 +316,17 @@ float draw_recap_row(ImDrawList* dl, const ImVec2& tl, float width, float y, flo
 float draw_time_grade_row(ImDrawList* dl, const ImVec2& tl, float width, float y, float row_h,
                           const std::array<float, 3>& col_x, const TimeGrade& tg, float alpha) {
     const float text_y = y + (row_h - ImGui::GetTextLineHeight()) * 0.5f;
+    // Tutorial scenarios disable the timer: show the placeholder in place of the
+    // Target / Actual values (text_secondary), no overtime/undertime coloring.
+    if (tg.tutorial_disabled) {
+        text_at(dl, col_x[0], text_y, theme::ColorToken::TextSecondary, alpha, "Time Grade:");
+        text_at(dl, col_x[1], text_y, theme::ColorToken::TextSecondary, alpha,
+                "Tutorial - timer disabled");
+        const float disabled_next_y = y + row_h;
+        dl->AddLine(ImVec2{tl.x, disabled_next_y}, ImVec2{tl.x + width, disabled_next_y},
+                    token_alpha_u32(theme::ColorToken::SeparatorLine, alpha * 0.6f), 1.0f);
+        return disabled_next_y;
+    }
     text_at(dl, col_x[0], text_y, theme::ColorToken::TextSecondary, alpha,
             std::format("Target Time: {}s", tg.target_s));
     const bool over = time_grade_overtime(tg);
@@ -307,74 +343,103 @@ float draw_time_grade_row(ImDrawList* dl, const ImVec2& tl, float width, float y
     return next_y;
 }
 
-// The bottom "Overall" row, rendered as the dominant grade row (A3): larger font,
-// the accuracy percent in accent_primary (the focal point). Column 0 holds the
-// "Overall" label (+ side-pot icon when applicable), column 2 the percent across
-// this tab's rows. `row_h` is the (taller) overall row height the caller passes.
-void draw_overall_row(ImDrawList* dl, const ImVec2& tl, float y, float row_h,
-                      const std::array<float, 3>& col_x, bool side_pot, int accuracy_pct,
-                      float alpha) {
+// A "label ............ N%" row (no Correct/Your columns): the Summary tab's per-tier
+// Overall lines. Column 0 holds the label, column 2 the tier's accuracy. Returns the
+// next row's y.
+float draw_pct_row(ImDrawList* dl, const ImVec2& tl, float width, float y, float row_h,
+                   const std::array<float, 3>& col_x, std::string_view label, int pct,
+                   float alpha) {
+    const float text_y = y + (row_h - ImGui::GetTextLineHeight()) * 0.5f;
+    text_at(dl, col_x[0], text_y, theme::ColorToken::TextPrimary, alpha, std::string{label});
+    text_at(dl, col_x[2], text_y, theme::ColorToken::TextSecondary, alpha,
+            std::format("{}%", pct));
+    const float next_y = y + row_h;
+    dl->AddLine(ImVec2{tl.x, next_y}, ImVec2{tl.x + width, next_y},
+                token_alpha_u32(theme::ColorToken::SeparatorLine, alpha * 0.6f), 1.0f);
+    return next_y;
+}
+
+// The dominant "Overall" grade row (A3): larger font, the accuracy percent in
+// accent_primary (the focal point). Column 0 holds the "Overall" label, column 2 the
+// percent. `row_h` is the (taller) overall row height the caller passes.
+void draw_overall_row(ImDrawList* dl, float y, float row_h, const std::array<float, 3>& col_x,
+                      int accuracy_pct, float alpha) {
     ImFont* font = ImGui::GetFont();
     const float font_size = ImGui::GetFontSize() * kOverallFontScale;
     const float text_y = y + (row_h - font_size) * 0.5f;
-    float label_x = col_x[0];
-    if (side_pot) {
-        const float icon = font_size;
-        draw_image_alpha(dl, ImVec2{label_x, text_y}, ImVec2{label_x + icon, text_y + icon},
-                         assets::AssetId::IconSidePotChip, alpha);
-        label_x += icon + 6.0f;
-    }
-    dl->AddText(font, font_size, ImVec2{label_x, text_y},
+    dl->AddText(font, font_size, ImVec2{col_x[0], text_y},
                 token_alpha_u32(theme::ColorToken::TextPrimary, alpha), "Overall");
     const std::string pct = std::format("{}%", accuracy_pct);
     dl->AddText(font, font_size, ImVec2{col_x[2], text_y},
                 token_alpha_u32(theme::ColorToken::AccentPrimary, alpha), pct.c_str());
-    (void)tl;
 }
 
-// The Summary tab: scenario-level overview (no three-column structure). Overall
-// fraction + percent, a per-tier breakdown row, the scenario Time-Grade, and the
-// side-pot icon when applicable.
-void draw_summary_body(ImDrawList* dl, const ImVec2& body_tl, float width,
-                       const engine::GradingResult& result, const engine::ScenarioState& scenario,
-                       const TimeGrade& tg, float alpha) {
-    const SummaryData s = build_summary(result);
-    const float line = ImGui::GetTextLineHeight() * 1.8f;
-    float y = body_tl.y;
-    const float x = body_tl.x;
+// The gap + heavy rule + dominant "Overall" grade row (A3) that closes a recap body.
+// Shared by the tier tab, the Summary tab, and the flat recap so they never drift.
+// Returns the content's ending y (for scroll-height measurement).
+float draw_bottom_overall_row(ImDrawList* dl, const ImVec2& tl, float width, float pad, float y,
+                              float row_h, const std::array<float, 3>& col_x, int accuracy_pct,
+                              float alpha) {
+    y += row_h * 0.5f;
+    dl->AddLine(ImVec2{tl.x + pad, y}, ImVec2{tl.x + width - pad, y},
+                token_alpha_u32(theme::ColorToken::SeparatorLine, alpha), 2.0f);
+    y += row_h * 0.25f;
+    const float overall_h = row_h * kOverallRowScale;
+    draw_overall_row(dl, y, overall_h, col_x, accuracy_pct, alpha);
+    return y + overall_h;
+}
 
-    float label_x = x;
-    if (scenario.side_pot) {
-        const float icon = ImGui::GetTextLineHeight();
-        draw_image_alpha(dl, ImVec2{label_x, y}, ImVec2{label_x + icon, y + icon},
-                         assets::AssetId::IconSidePotChip, alpha);
-        label_x += icon + 6.0f;
+// One tier tab's body: the labeled header, the tier's FULL input set (Breakeven Fold
+// %, Equity if Called, EV, Bet Size as applicable), the Time-Grade, then the tier's
+// OWN Overall accuracy (scoped to what this tier shows). Returns the ending y.
+float draw_tier_body(ImDrawList* dl, const ImVec2& tl, float width, float pad, float y,
+                     float row_h, const std::array<float, 3>& col_x,
+                     const engine::GradingResult& result, std::uint8_t tier, const TimeGrade& tg,
+                     float alpha) {
+    const std::vector<RecapRow> rows = build_tier_rows(result, tier);
+    y = draw_header_row(dl, tl, width, y, row_h, col_x, alpha);
+    for (const RecapRow& row : rows) {
+        y = draw_recap_row(dl, tl, width, y, row_h, col_x, input_display_name(row.input), row, alpha);
     }
-    text_at(dl, label_x, y, theme::ColorToken::TextPrimary, alpha,
-            std::format("{}/{} correct ({}%)", s.total_correct, s.total, summary_pct(s)));
-    y += line;
+    y = draw_time_grade_row(dl, tl, width, y, row_h, col_x, tg, alpha);
+    return draw_bottom_overall_row(dl, tl, width, pad, y, row_h, col_x,
+                                   tier_accuracy_pct(result, tier), alpha);
+}
 
-    std::string breakdown = "Per tier:";
-    for (std::size_t t = 0; t < engine::kBetTierCount; ++t) {
-        breakdown += std::format("  T{}: {}/{}", t + 1, s.per_tier[t].correct, s.per_tier[t].total);
+// The Summary tab: one "Tier N — %" row per bet tier (that tier's own Overall), the
+// Time-Grade, then the whole-round Overall (unique-input accuracy). Returns ending y.
+float draw_summary_body(ImDrawList* dl, const ImVec2& tl, float width, float pad, float y,
+                        float row_h, const std::array<float, 3>& col_x,
+                        const engine::GradingResult& result, const TimeGrade& tg, float alpha) {
+    for (std::uint8_t t = 0; t < engine::kBetTierCount; ++t) {
+        y = draw_pct_row(dl, tl, width, y, row_h, col_x, std::format("Tier {}", t + 1),
+                         tier_accuracy_pct(result, t), alpha);
     }
-    text_at(dl, x, y, theme::ColorToken::TextSecondary, alpha, breakdown);
-    y += line;
+    y = draw_time_grade_row(dl, tl, width, y, row_h, col_x, tg, alpha);
+    return draw_bottom_overall_row(dl, tl, width, pad, y, row_h, col_x,
+                                   summary_pct(build_summary(result)), alpha);
+}
 
-    const bool over = time_grade_overtime(tg);
-    text_at(dl, x, y, theme::ColorToken::TextSecondary, alpha,
-            std::format("Target Time: {}s", tg.target_s));
-    text_at(dl, x + width * 0.45f, y,
-            over ? theme::ColorToken::StateFail : theme::ColorToken::StatePass, alpha,
-            over ? std::format("Actual: {}s (+{}s Overtime)", tg.actual_s, tg.actual_s - tg.target_s)
-                 : std::format("Actual: {}s ({}s Undertime)", tg.actual_s, tg.target_s - tg.actual_s));
+// A flat (non-tabbed) recap body: Caller or single-tier Aggressor. Every graded input
+// in one list, the Time-Grade, then the Overall accuracy. Returns the ending y.
+float draw_flat_body(ImDrawList* dl, const ImVec2& tl, float width, float pad, float y,
+                     float row_h, const std::array<float, 3>& col_x,
+                     const engine::GradingResult& result, const TimeGrade& tg, float alpha) {
+    const std::vector<RecapRow> rows = build_flat_rows(result);
+    y = draw_header_row(dl, tl, width, y, row_h, col_x, alpha);
+    for (const RecapRow& row : rows) {
+        y = draw_recap_row(dl, tl, width, y, row_h, col_x, input_display_name(row.input), row, alpha);
+    }
+    y = draw_time_grade_row(dl, tl, width, y, row_h, col_x, tg, alpha);
+    return draw_bottom_overall_row(dl, tl, width, pad, y, row_h, col_x,
+                                   rows_accuracy_pct(std::span<const RecapRow>{rows}), alpha);
 }
 
 }  // namespace
 
-void render_stat_modal(ImDrawList* dl, const engine::ScenarioState& scenario,
-                       const engine::GradingResult& result, RecapTab active_tab,
-                       const TimeGrade& time_grade, const StatModalRender& params) {
+float render_stat_modal(ImDrawList* dl, const engine::ScenarioState& scenario,
+                        const engine::GradingResult& result, RecapTab active_tab,
+                        const TimeGrade& time_grade, const StatModalRender& params) {
     const ImVec2 tl = *params.top_left;
     const ImVec2 br = *params.bottom_right;
     const float alpha = params.alpha;
@@ -388,40 +453,38 @@ void render_stat_modal(ImDrawList* dl, const engine::ScenarioState& scenario,
     const bool tabbed = has_tier_tabs(scenario);
     float body_top = tl.y + pad;
     if (tabbed) {
+        // The tier-tab strip is PINNED: drawn before (and outside) the body clip so it
+        // stays fixed while the body scrolls beneath it.
         const StripGeom g = tab_strip_geom(tl.x, tl.y, width, ImGui::GetTextLineHeight());
         draw_tab_strip(dl, g, active_tab, params.strip_focused, alpha);
         body_top = g.y + g.h + pad * 0.5f;
     }
 
     const std::array<float, 3> col_x = {tl.x + pad, tl.x + width * 0.40f, tl.x + width * 0.74f};
-    const ImVec2 body_tl{tl.x + pad, body_top};
-
-    if (tabbed && active_tab == RecapTab::Summary) {
-        draw_summary_body(dl, body_tl, width - pad * 2.0f, result, scenario, time_grade, alpha);
-        return;
-    }
-
-    const std::vector<RecapRow> rows =
-        tabbed ? build_tier_rows(result, static_cast<std::uint8_t>(active_tab))
-               : build_flat_rows(result);
-
     const float row_h = ImGui::GetTextLineHeight() * 1.8f;
-    float y = body_top;
-    y = draw_header_row(dl, tl, width, y, row_h, col_x, alpha);  // A2: labeled header
-    for (const RecapRow& row : rows) {
-        y = draw_recap_row(dl, tl, width, y, row_h, col_x, row, alpha);
-    }
-    y = draw_time_grade_row(dl, tl, width, y, row_h, col_x, time_grade, alpha);
+    const float body_bottom = br.y - pad * 0.5f;
+    const float avail = body_bottom - body_top;
 
-    // A3: separate the Overall row from the per-input rows with a gap + a heavier
-    // rule, then render it as the dominant grade row (taller, larger font). `pad`
-    // is the modal body inset computed above.
-    y += row_h * 0.5f;
-    dl->AddLine(ImVec2{tl.x + pad, y}, ImVec2{tl.x + width - pad, y},
-                token_alpha_u32(theme::ColorToken::SeparatorLine, alpha), 2.0f);
-    y += row_h * 0.25f;
-    draw_overall_row(dl, tl, y, row_h * kOverallRowScale, col_x, scenario.side_pot,
-                     rows_accuracy_pct(std::span<const RecapRow>{rows}), alpha);
+    // Clip the scrollable body to the modal so nothing draws past the panel; offset it
+    // by scroll_offset. The tier strip above stays pinned (drawn outside this clip).
+    dl->PushClipRect(ImVec2{tl.x, body_top}, ImVec2{br.x, body_bottom}, true);
+    const float y_start = body_top - params.scroll_offset;
+    float y_end = y_start;
+    if (tabbed && active_tab == RecapTab::Summary) {
+        y_end = draw_summary_body(dl, tl, width, pad, y_start, row_h, col_x, result, time_grade,
+                                  alpha);
+    } else if (tabbed) {
+        y_end = draw_tier_body(dl, tl, width, pad, y_start, row_h, col_x, result,
+                               static_cast<std::uint8_t>(active_tab), time_grade, alpha);
+    } else {
+        y_end = draw_flat_body(dl, tl, width, pad, y_start, row_h, col_x, result, time_grade, alpha);
+    }
+    dl->PopClipRect();
+
+    // Overflow = content height beyond the visible body region (clamped >= 0). The
+    // caller clamps scrolling to [0, overflow] and enables the mouse wheel over it.
+    const float content_px = y_end - y_start;
+    return std::max(0.0f, content_px - avail);
 }
 
 }  // namespace poker_trainer::render

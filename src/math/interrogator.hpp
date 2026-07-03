@@ -36,9 +36,11 @@ inline constexpr std::size_t kBoxBufferCapacity = 16;
 
 // ----- Focusable ids for the math-input + bet-size segment -----
 //
-// One stable id per possible box. The caller (Caller) and aggressor-equity-if-
-// called boxes never coexist in one scenario, so they share kFocusEquity; the
-// per-tier Fold / EV boxes get one id each.
+// One stable id per possible box. The Caller Equity and the aggressor Equity-if-
+// Called boxes never coexist in one scenario, so they share kFocusEquity; the
+// per-tier Breakeven Fold % boxes get one id each (kFocusFoldTier). kFocusEvCaller
+// backs the Caller's (tier-less) EV box; kFocusEvTier backs the Aggressor's restored
+// per-tier EV boxes (one per bet tier), used in both gameplay and the tutorial.
 inline constexpr backbone::FocusableId kFocusPotOdds =
     backbone::make_focusable_id("game.math.pot_odds");
 inline constexpr backbone::FocusableId kFocusOuts =
@@ -66,8 +68,8 @@ inline constexpr std::array<backbone::FocusableId, engine::kBetTierCount> kFocus
 // ----- Live input model -----
 
 // One numeric input box: which math quantity it asks for, its per-tier index
-// (set only for the bet-size-dependent Aggressor inputs Fold/EV), its focusable
-// id, the keystroke-filter policy, and the user's typed text.
+// (set for the bet-size-dependent Aggressor inputs, Breakeven Fold % and EV), its
+// focusable id, the keystroke-filter policy, and the user's typed text.
 struct NumericBox {
     engine::InputId input{engine::InputId::PotOdds};
     std::optional<std::uint8_t> tier;            // 0..3 for per-tier Aggressor inputs
@@ -108,6 +110,13 @@ struct InterrogatorState {
     // changes -- never every frame (which would trap the text caret) and never re-
     // grabbing after a click already coupled them. Reset on a new focus segment.
     backbone::FocusableId last_synced_focus{backbone::kNoFocus};
+
+    // Tutorial cooperation (Group A): true on the frame the tutorial's text-focus gate
+    // was suppressing this box from capturing the keyboard (a math stage-1 "Press N"
+    // callout). Tracked so the render path can force a re-grab of the now-focused box
+    // the frame suppression LIFTS (stage 2), where the once-per-change reconcile would
+    // otherwise skip it. Always false outside a tutorial.
+    bool tutorial_text_focus_suppressed{false};
 };
 
 // Math-correctness + within-target-time -> overall pass (the dealer-expression
@@ -153,6 +162,22 @@ struct InterrogatorRuntime {
     // the segment as the zone where Enter advances/submits). Empty in unit tests and
     // before Z08 installs, so the registered list is then just the math segment.
     std::vector<backbone::FocusableId> cluster_focus_tail;
+
+    // SEAM(Z14): the tutorial's text-focus gate (dependency-inverted std::function,
+    // wired at boot to tutorial::tutorial_suppresses_text_focus). When it returns true
+    // -- a math stage-1 "Press N to focus this input" callout -- the render path keeps
+    // every numeric box from capturing ImGui keyboard, so the positional digit key
+    // reaches the tutorial (which focuses the taught box and advances) rather than being
+    // typed into a box. Unset (native tests / no-Z14 build) means never suppress.
+    std::function<bool()> tutorial_text_focus_gate;
+
+    // SEAM(Z14): the single math box the tutorial's current per-box step is teaching
+    // (wired at boot to tutorial::tutorial_live_math_box). When it returns a real id,
+    // EVERY OTHER box + the bet-size group renders disabled (BeginDisabled) -- only the
+    // taught input accepts focus / typing (Group A's "only the taught box is live"
+    // contract). kNoFocus (the table tour, the submit / free-play steps, or no tutorial)
+    // gates nothing. Unset means never gate.
+    std::function<backbone::FocusableId()> tutorial_live_box;
 };
 
 // ----- Self-registration -----

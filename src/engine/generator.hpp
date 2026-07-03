@@ -78,10 +78,11 @@ inline constexpr int kStackStepBb = 5;
 // Aggressor bet tiers carry no separation invariant: bet-size grading is
 // tolerant (evaluator.cpp accepts any tier whose EV is within the EV grading
 // tolerance of the max-EV tier), so near-ties are correct behavior — they yield
-// more than one accepted tier rather than something to exclude. F is sampled
-// once per scenario from the difficulty range; the correct (reference) tier is
-// simply the max-EV tier. The call/fold decision margin (Caller, above) is the
-// only decision-margin invariant retained.
+// more than one accepted tier rather than something to exclude. F is computed
+// situationally per scenario (fold_function.hpp: street + board texture + danger
+// + a narrow jitter, with the bet-size term applied per tier); the correct
+// (reference) tier is simply the max-EV tier. The call/fold decision margin
+// (Caller, above) is the only decision-margin invariant retained.
 
 // Deterministic rejection-sampling cap. If no candidate clears an invariant in
 // this many tries, the best candidate seen is used so generation always
