@@ -471,6 +471,15 @@ void render_auth_body(AccountModalState& a) {
     } else {
         render_sign_in(a, rec, ring);
     }
+    // Sign In / Sign Up bottom: a factual, muted assurance that the SPA never handles the raw
+    // password (Auth0 does). Text only — no Auth0 logo, to stay clear of brand-asset rules; it
+    // is backed by the Privacy Policy. The Forgot sub-view (no password field) omits it.
+    if (!a.forgot_open) {
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
+        ImGui::TextWrapped("Secured by Auth0; we never see your password.");
+        ImGui::PopStyleColor();
+    }
 
     a.last_synced_focus = bridge::active_focus_or_none();
 }

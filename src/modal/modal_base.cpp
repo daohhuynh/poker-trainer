@@ -473,6 +473,13 @@ bool on_modal_key(const backbone::KeyEvent& e) {
         return false;
     }
     if (e.code == backbone::KeyCode::Escape) {
+        // The leaderboard's Report sub-panel: Escape closes just the panel (back to the board),
+        // not the whole leaderboard. The leaderboard render loop performs the actual close +
+        // focus-context restore when it sees the flag.
+        if (g_runtime != nullptr && *id == kLeaderboardModalId && g_runtime->report_panel_open) {
+            g_runtime->report_request_close = true;
+            return true;
+        }
         close_modal();  // confirmations: Escape == No
         return true;
     }

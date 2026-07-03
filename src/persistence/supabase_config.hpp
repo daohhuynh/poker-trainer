@@ -53,6 +53,12 @@ inline constexpr std::string_view kSupabaseAccountUpsertQuery =
 inline constexpr std::string_view kSupabaseAccountSelectColumns =
     "?select=state_blob,display_name&auth0_sub=eq.";
 
+// The PostgREST table holding user reports of leaderboard usernames (the Report User
+// feature). One row per report; the reporter's Auth0 sub + the timestamp default server-side
+// and RLS lets a user INSERT only their own reports (reads are admin-only via the dashboard),
+// with a per-day cap enforced by a trigger. POST <kSupabaseUrl> + kSupabaseRestPrefix + this.
+inline constexpr std::string_view kSupabaseReportsTable = "reports";
+
 // PostgREST RPC for the global leaderboard. POST <kSupabaseUrl> + this returns the
 // top 100 accounts (rank, display_name, lifetime_tomatoes) ordered by Lifetime
 // Tomatoes. Any authenticated caller may read the public board (it filters to

@@ -57,6 +57,21 @@ struct LeaderboardFetchResult {
     std::vector<LeaderboardEntry> entries;
 };
 
+// A user report of a leaderboard username (the Report User feature). The reporter's own
+// Auth0 sub is NOT a field here: it is recorded server-side from the verified bearer (the
+// reports table defaults reporter_auth0_sub to auth.jwt()->>'sub'), so the client cannot
+// spoof it and it never rides through the UI. The timestamp likewise defaults server-side.
+struct ReportRecord {
+    std::string reported_username;
+    bool reason_username{false};
+    bool reason_cheating{false};
+    std::string comment;  // optional free-form
+};
+
+// Outcome of a report submit. RateLimited => the server-side per-day cap rejected it (HTTP
+// 429 via the reports-table trigger); Failed => any other non-2xx (offline, RLS/auth, 5xx).
+enum class ReportOutcome : std::uint8_t { Ok = 0, RateLimited = 1, Failed = 2 };
+
 // Sync seam — server-side account state.
 //
 // In deployment this talks to the leaderboard backend over authenticated
@@ -109,6 +124,15 @@ public:
     // server-side reaping). Non-pure with a default of false so the mock / local-only
     // backends compile unchanged.
     [[nodiscard]] virtual bool delete_auth0_user() { return false; }
+
+    // Submit a user report of a leaderboard username to the reports table over the same
+    // authenticated (Auth0 id_token / RLS) path. The reporter's sub + the timestamp are set
+    // server-side; the client sends only the report fields. Returns Ok on a 2xx, RateLimited
+    // when the server-side per-day cap rejects it (HTTP 429), Failed otherwise. Non-pure with
+    // a default of Failed so the mock / local-only backends compile unchanged.
+    [[nodiscard]] virtual ReportOutcome submit_report(const ReportRecord& /*report*/) {
+        return ReportOutcome::Failed;
+    }
 };
 
 // Server-sync orchestrator.

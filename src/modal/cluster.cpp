@@ -9,6 +9,7 @@
 #include "assets/asset_paths.hpp"
 #include "theme/theme_tokens.hpp"
 
+#include <cfloat>
 #include <cstddef>
 #include <optional>
 
@@ -109,6 +110,25 @@ void draw_button_icon(ImDrawList* dl, const animations::Rect& r, const char* lab
 
 }  // namespace
 
+// The persistent "Training tool, no real money." disclaimer, drawn as its own row directly
+// beneath the cluster and right-aligned to the row's right edge. Smaller than the buttons and
+// muted (the secondary text token at ~70% alpha) so it reads as a passive tag, not a control;
+// it never overlaps the buttons (its own row below them). The full legal disclaimer lives in
+// the Terms of Service; this is the in-app tag.
+void render_training_disclaimer(ImDrawList* dl, const std::array<animations::Rect, 4>& rects) {
+    const animations::Rect& first = rects.front();
+    const animations::Rect& last = rects.back();
+    ImFont* font = ImGui::GetFont();
+    const float size = ImGui::GetFontSize() * 0.8f;  // smaller than the button labels
+    const char* text = "Training tool, no real money.";  // ASCII only (the font has no em dash)
+    const ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
+    const float x = last.x + last.w - ts.x;          // right edge aligned with the last icon
+    const float y = first.y + first.h + size * 0.35f;  // its own row, just below the buttons
+    ImVec4 c = theme::get_color(theme::ColorToken::TextSecondary);
+    c.w *= 0.7f;  // ~70% opacity: passive, not competing with the controls
+    dl->AddText(font, size, ImVec2{x, y}, ImGui::ColorConvertFloat4ToU32(c), text);
+}
+
 void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx) {
     ModalRuntime* rt = modal_runtime();
     if (rt != nullptr) {
@@ -137,6 +157,9 @@ void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx) {
     // Offline sync indicator, left of the leftmost (Shop) icon. Self-gates on
     // sync_state; never reached on Root (the cluster is not drawn there).
     render_offline_indicator(dl, ctx.rects[0]);
+
+    // Passive "Training tool, no real money." tag, its own row beneath the cluster.
+    render_training_disclaimer(dl, ctx.rects);
 }
 
 std::optional<ClusterIcon> cluster_hit_test(float x, float y) {

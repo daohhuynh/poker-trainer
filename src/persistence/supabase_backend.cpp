@@ -196,6 +196,22 @@ std::string build_initial_body(std::string_view auth0_sub,
                                      initial.lifetime, display_name, opted_in);
 }
 
+std::string build_report_body(const ReportRecord& report) {
+    // Exactly the client-supplied columns. reporter_auth0_sub + created_at are omitted so
+    // their server-side DEFAULTs fill them (the reporter identity comes from the verified
+    // bearer, not the client — see the reports-table SQL in the report).
+    std::string body = "{\"reported_username\":\"";
+    body += json_escape(report.reported_username);
+    body += "\",\"reason_username\":";
+    body += report.reason_username ? "true" : "false";
+    body += ",\"reason_cheating\":";
+    body += report.reason_cheating ? "true" : "false";
+    body += ",\"comment\":\"";
+    body += json_escape(report.comment);
+    body += "\"}";
+    return body;
+}
+
 FetchOutcome supabase_fetch_outcome(int http_status, bool row_present) noexcept {
     if (http_status < 200 || http_status >= 300) {
         return FetchOutcome::Failed;
@@ -205,6 +221,16 @@ FetchOutcome supabase_fetch_outcome(int http_status, bool row_present) noexcept 
 
 bool supabase_write_ok(int http_status) noexcept {
     return http_status >= 200 && http_status < 300;
+}
+
+ReportOutcome report_submit_result(int http_status) noexcept {
+    if (http_status >= 200 && http_status < 300) {
+        return ReportOutcome::Ok;
+    }
+    if (http_status == 429) {
+        return ReportOutcome::RateLimited;  // the reports-table trigger's PT429 -> HTTP 429
+    }
+    return ReportOutcome::Failed;
 }
 
 std::optional<std::string> extract_json_string_field(std::string_view json,
@@ -485,6 +511,25 @@ EM_JS(int, pt_read_leaderboard_opt_in, (), {
     return (globalThis.ptLeaderboardOptIn === true) ? 1 : 0;
 });
 
+// Sync INSERT (POST) with Prefer: return=minimal. Used by the report submit, where RLS grants
+// the caller INSERT but NOT SELECT (reads are admin-only) — so a representation return would
+// fail. Returns the HTTP status (429 when the per-day-cap trigger rejects the insert; 0 on a
+// network/XHR throw). The bearer is the live Auth0 id_token, same as every call above.
+EM_JS(int, pt_supabase_insert_minimal, (const char* url, const char* apikey, const char* body), {
+    try {
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", UTF8ToString(url), false);
+        xhr.setRequestHeader("apikey", UTF8ToString(apikey));
+        var s = globalThis.ptAuth0Session || {};
+        var idt = (typeof s.id_token === "string") ? s.id_token : "";
+        if (idt) { xhr.setRequestHeader("Authorization", "Bearer " + idt); }
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.setRequestHeader("Prefer", "return=minimal");
+        xhr.send(UTF8ToString(body));
+        return xhr.status;
+    } catch (e) { return 0; }
+});
+
 // clang-format on
 
 namespace poker_trainer::persistence {
@@ -504,6 +549,11 @@ constexpr int kLeaderboardBufferBytes = 64 * 1024;
 [[nodiscard]] std::string account_base() {
     return std::string{kSupabaseUrl} + std::string{kSupabaseRestPrefix} +
            std::string{kSupabaseAccountTable};
+}
+
+[[nodiscard]] std::string reports_base() {
+    return std::string{kSupabaseUrl} + std::string{kSupabaseRestPrefix} +
+           std::string{kSupabaseReportsTable};
 }
 
 }  // namespace
@@ -568,6 +618,16 @@ LeaderboardFetchResult SupabaseSyncBackend::fetch_leaderboard() {
                                              buf.data(), kLeaderboardBufferBytes);
     buf.resize(std::char_traits<char>::length(buf.c_str()));
     return parse_leaderboard_response(status, buf);
+}
+
+ReportOutcome SupabaseSyncBackend::submit_report(const ReportRecord& report) {
+    // Insert-only (return=minimal): the caller has no SELECT grant on the reports table. The
+    // reporter's sub + the timestamp default server-side; the per-day cap is a trigger that
+    // rejects over-cap inserts with HTTP 429.
+    const std::string body = build_report_body(report);
+    const int status =
+        pt_supabase_insert_minimal(reports_base().c_str(), anon_key().c_str(), body.c_str());
+    return report_submit_result(status);
 }
 
 bool SupabaseSyncBackend::delete_auth0_user() {

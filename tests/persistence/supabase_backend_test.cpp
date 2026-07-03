@@ -157,6 +157,44 @@ TEST(SupabaseShaping, InitialBodyCarriesExactlyTheThreeMigrationFields) {
     EXPECT_NE(body.find("\"display_name\":\"Bob\""), std::string::npos);
 }
 
+TEST(SupabaseReport, BodyCarriesReasonBooleansAndComment) {
+    pt::ReportRecord rec{};
+    rec.reported_username = "Mallory";
+    rec.reason_username = true;
+    rec.reason_cheating = false;
+    rec.comment = "offensive name";
+    const std::string body = pt::build_report_body(rec);
+    EXPECT_NE(body.find("\"reported_username\":\"Mallory\""), std::string::npos);
+    EXPECT_NE(body.find("\"reason_username\":true"), std::string::npos);
+    EXPECT_NE(body.find("\"reason_cheating\":false"), std::string::npos);
+    EXPECT_NE(body.find("\"comment\":\"offensive name\""), std::string::npos);
+    // The reporter's identity is NEVER in the client payload (server-side default).
+    EXPECT_EQ(body.find("reporter"), std::string::npos);
+    EXPECT_EQ(body.find("auth0_sub"), std::string::npos);
+}
+
+TEST(SupabaseReport, BodyEscapesUsernameAndComment) {
+    pt::ReportRecord rec{};
+    rec.reported_username = "A\"B";
+    rec.reason_cheating = true;
+    rec.comment = "line\nbreak\"quote";
+    const std::string body = pt::build_report_body(rec);
+    EXPECT_NE(body.find("\"reported_username\":\"A\\\"B\""), std::string::npos);
+    EXPECT_NE(body.find("\\n"), std::string::npos);
+    EXPECT_NE(body.find("\\\"quote"), std::string::npos);
+}
+
+TEST(SupabaseReport, ResultMapsStatusToOutcome) {
+    EXPECT_EQ(pt::report_submit_result(200), pt::ReportOutcome::Ok);
+    EXPECT_EQ(pt::report_submit_result(201), pt::ReportOutcome::Ok);
+    EXPECT_EQ(pt::report_submit_result(204), pt::ReportOutcome::Ok);
+    EXPECT_EQ(pt::report_submit_result(429), pt::ReportOutcome::RateLimited);
+    EXPECT_EQ(pt::report_submit_result(0), pt::ReportOutcome::Failed);
+    EXPECT_EQ(pt::report_submit_result(400), pt::ReportOutcome::Failed);
+    EXPECT_EQ(pt::report_submit_result(401), pt::ReportOutcome::Failed);
+    EXPECT_EQ(pt::report_submit_result(500), pt::ReportOutcome::Failed);
+}
+
 // --- response translation ---
 
 TEST(SupabaseTranslate, FetchOutcomeFromStatusAndRowPresence) {

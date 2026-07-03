@@ -505,6 +505,19 @@ if(EMSCRIPTEN)
             $<TARGET_FILE_DIR:poker_trainer>/service_worker.js
         COMMENT "Copying service_worker.js next to the wasm bundle"
     )
+
+    # The wasm target emits only poker_trainer.js + .wasm (no .html suffix, so
+    # Emscripten generates no shell). index.html is our own canvas loader: the
+    # Module={canvas} bootstrap, the oncontextmenu preventDefault the leaderboard
+    # right-click-report relies on, and the Vercel Analytics script. Keep it as a
+    # git-tracked source next to service_worker.js and copy it into the bundle so
+    # it survives a clean rebuild instead of being re-authored by hand.
+    add_custom_command(TARGET poker_trainer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/src/bridge/index.html
+            $<TARGET_FILE_DIR:poker_trainer>/index.html
+        COMMENT "Copying index.html next to the wasm bundle"
+    )
 endif()
 
 # -------------------------------------------------------------------------

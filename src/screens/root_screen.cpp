@@ -87,6 +87,17 @@ void render_root_screen() {
     // Home icon (top-right, stationary anchor of the cluster) image slot.
     ru::draw_image_slot(dl, animations::home_icon_rect(canvas), assets::AssetId::IconHome,
                         ru::SlotFallback::Icon, focus_on(kFocusRootHome));
+
+    // The persistent "Training tool, no real money." disclaimer, in the same spot it occupies
+    // on every other screen. Root draws no cluster, so pass the exact rects the Mode Selection
+    // cluster uses (Root morphs into Mode Selection, so this is where the buttons land) — the
+    // disclaimer anchors to the same row and never jumps across the Root -> Mode transition.
+    modal::render_training_disclaimer(
+        dl, std::array<animations::Rect, 4>{
+                animations::mode_button_target_rect(animations::MorphButton::Shop, canvas),
+                animations::mode_button_target_rect(animations::MorphButton::Help, canvas),
+                animations::mode_button_target_rect(animations::MorphButton::Settings, canvas),
+                animations::home_icon_rect(canvas)});
 }
 
 void render_root_morph_frame(float global_t) {

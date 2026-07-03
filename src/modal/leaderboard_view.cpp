@@ -153,6 +153,11 @@ void focus_on_click(backbone::FocusableId id) {
     backbone::snap_focus_to(id);
 }
 
+// Report-User helpers, defined below (after your_row_key) but used by render_list_rows /
+// list_stop_key above them.
+void open_report_popup(ModalRuntime& runtime, std::int64_t rank);
+void open_report_panel(ModalRuntime& runtime, const LeaderboardData& data);
+
 // A text hyperlink (accent_primary, underline on hover or when `highlighted`). Returns
 // true on click. `highlighted` draws a persistent underline for the arrow-key positional
 // highlight on Category A grouped stops (leaderboard guest row).
@@ -287,6 +292,7 @@ void render_list_rows(ModalRuntime& runtime, const LeaderboardData& data,
     // Deferred so the click handoff (which clears the live filter) runs AFTER the row loop,
     // never mid-loop where it would invalidate `query` / the filtered iteration.
     std::int64_t clicked_rank = -1;
+    std::int64_t right_clicked_rank = -1;  // right-click opens the Report popup on that row
     bool scrolled = false;
 
     for (const LeaderboardRow& row : data.rows) {
@@ -297,6 +303,11 @@ void render_list_rows(ModalRuntime& runtime, const LeaderboardData& data,
         const ImVec2 p = ImGui::GetCursorScreenPos();
         if (ImGui::InvisibleButton("##row", ImVec2{region_w, row_h})) {
             clicked_rank = static_cast<std::int64_t>(row.rank);
+        }
+        // Right-click (Report-User feature). IsItemClicked(Right) is hover + right-mouse-down,
+        // so it fires over the row even though InvisibleButton only "activates" on left.
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            right_clicked_rank = static_cast<std::int64_t>(row.rank);
         }
         const bool hov = ImGui::IsItemHovered();
         const ImVec2 rmin = ImGui::GetItemRectMin();
@@ -326,6 +337,13 @@ void render_list_rows(ModalRuntime& runtime, const LeaderboardData& data,
         draw_tomato_count(dl, ImVec2{p.x + region_w - cw - line * 0.3f, ty}, row.lifetime,
                           theme::ColorToken::TextPrimary);
 
+        if (is_highlight || static_cast<std::int64_t>(row.rank) == right_clicked_rank) {
+            // Anchor the Report popup just below the row (a small right indent so it reads as
+            // attached to the name). Captured for the highlighted row every frame, and for a
+            // freshly right-clicked row this same frame (before the highlight moves post-loop).
+            runtime.report_popup_x = rmin.x + region_w * 0.25f;
+            runtime.report_popup_y = rmax.y;
+        }
         if (is_highlight && runtime.leaderboard_scroll_to_highlight) {
             ImGui::SetScrollHereY();  // bring a freshly-jumped row into view (once)
             scrolled = true;
@@ -333,7 +351,21 @@ void render_list_rows(ModalRuntime& runtime, const LeaderboardData& data,
         ImGui::PopID();
     }
 
-    if (clicked_rank >= 0) {
+    // While the report panel is open the list is a frozen backdrop: ignore its clicks.
+    if (runtime.report_panel_open) {
+        return;
+    }
+
+    if (right_clicked_rank >= 0) {
+        // Right-click: move the highlight/focus to this row (if not already there) AND open the
+        // Report popup — either way the user ends focused on that row with the popup open.
+        runtime.leaderboard_highlight_rank = right_clicked_rank;
+        runtime.leaderboard_search.clear();
+        runtime.leaderboard_rank_buffer = RankJumpBuffer{};
+        runtime.leaderboard_scroll_to_highlight = true;
+        focus_on_click(kLeaderboardList);
+        open_report_popup(runtime, right_clicked_rank);
+    } else if (clicked_rank >= 0) {
         // Click a row (incl. a filtered search result): restore the full list, highlight
         // this player, and hand focus to the list stop with the shared cursor here. The
         // scroll is deferred to the next frame, when the full (unfiltered) list renders.
@@ -458,6 +490,22 @@ bool list_stop_key(ModalRuntime& rt, const backbone::KeyEvent& e) {
             max_rank = r;
         }
     }
+    // R opens the "Report" popup on the highlighted row (Report-User feature). The popup does
+    // NOT trap list nav: a later digit / arrow moves the highlight and render_report_popup
+    // auto-dismisses when the highlight leaves report_popup_rank.
+    if (e.code == backbone::KeyCode::LetterR) {
+        if (rt.leaderboard_highlight_rank >= min_rank) {
+            open_report_popup(rt, rt.leaderboard_highlight_rank);
+        }
+        return true;
+    }
+    // Enter / Space have no other function in the user list, so when the popup is open on the
+    // highlighted row they activate Report (open the panel). Otherwise they fall through.
+    if ((e.code == backbone::KeyCode::Enter || e.code == backbone::KeyCode::Space) &&
+        rt.report_popup_open && rt.report_popup_rank == rt.leaderboard_highlight_rank) {
+        open_report_panel(rt, data);
+        return true;
+    }
     const int code = static_cast<int>(e.code);
     if (code >= static_cast<int>(backbone::KeyCode::Digit0) &&
         code <= static_cast<int>(backbone::KeyCode::Digit9)) {
@@ -560,6 +608,321 @@ bool your_row_key(ModalRuntime& rt, const backbone::KeyEvent& e) {
     return activate;
 }
 
+// ===== Report-User feature (popup + panel) =====
+
+// (Re)populate the modal's focus registry with the five leaderboard stops (search = text
+// field; the rest non-text). Extracted from leaderboard_on_open so the report panel close
+// can restore it without also resetting the nav cursor.
+void populate_leaderboard_registry(ModalRuntime& runtime) {
+    if (runtime.focus_registry == nullptr) {
+        return;
+    }
+    bridge::FocusRegistry& reg = *runtime.focus_registry;
+    reg.clear();
+    // Only the search is a text field; the other four stops yield ImGui's keyboard focus so
+    // their digit / arrow / activation keys reach the dispatch rather than an input box.
+    reg.register_element(kLeaderboardShopIcon, bridge::FocusableEntry{});
+    reg.register_element(kLeaderboardSearch, bridge::FocusableEntry{.is_text_field = true});
+    reg.register_element(kLeaderboardList, bridge::FocusableEntry{});
+    reg.register_element(kLeaderboardYourRow, bridge::FocusableEntry{});
+    reg.register_element(kLeaderboardClose, bridge::FocusableEntry{});
+}
+
+// The reporter must be signed in — the report is keyed to their Auth0 sub server-side, and
+// reporting is meaningless for a guest. Guests can still open the panel (to see the form) but
+// Submit stays disabled with a sign-in prompt.
+[[nodiscard]] bool report_signed_in(const ModalRuntime& runtime) {
+    if (!runtime.leaderboard.self) {
+        return false;
+    }
+    return runtime.leaderboard.self().state != LeaderboardSelfState::Guest;
+}
+
+// Submit is gated: at least one reason MUST be checked, and the reporter must be signed in.
+[[nodiscard]] bool report_submit_enabled(const ModalRuntime& runtime) {
+    const bool a_reason = runtime.report_reason_username || runtime.report_reason_cheating;
+    return a_reason && report_signed_in(runtime);
+}
+
+// The report panel's five focus stops, in Tab order (X close last, wraps to the first reason).
+[[nodiscard]] std::span<const backbone::FocusableId> report_panel_focus_list() noexcept {
+    static constexpr std::array<backbone::FocusableId, 5> kList{
+        kReportReasonUsername, kReportReasonCheating, kReportComment, kReportSubmit,
+        kReportClose};
+    return kList;
+}
+
+// Populate the focus registry with the report panel's stops: the two reason checkboxes and the
+// Submit/close toggle via activate hooks (submit/close deferred through request flags so no
+// focus-context swap runs inside a dispatch closure), and the comment as the one text field.
+void populate_report_registry(ModalRuntime& runtime) {
+    if (runtime.focus_registry == nullptr) {
+        return;
+    }
+    bridge::FocusRegistry& reg = *runtime.focus_registry;
+    reg.clear();
+    reg.register_element(kReportReasonUsername, bridge::FocusableEntry{.activate = [&runtime] {
+                             runtime.report_reason_username = !runtime.report_reason_username;
+                         }});
+    reg.register_element(kReportReasonCheating, bridge::FocusableEntry{.activate = [&runtime] {
+                             runtime.report_reason_cheating = !runtime.report_reason_cheating;
+                         }});
+    reg.register_element(kReportComment, bridge::FocusableEntry{.is_text_field = true});
+    reg.register_element(kReportSubmit, bridge::FocusableEntry{.activate = [&runtime] {
+                             if (report_submit_enabled(runtime)) {
+                                 runtime.report_request_submit = true;
+                             }
+                         }});
+    reg.register_element(kReportClose, bridge::FocusableEntry{.activate = [&runtime] {
+                             runtime.report_request_close = true;
+                         }});
+}
+
+// Open the small "Report" context popup anchored to the currently-highlighted row.
+void open_report_popup(ModalRuntime& runtime, std::int64_t rank) {
+    runtime.report_popup_open = true;
+    runtime.report_popup_rank = rank;
+}
+
+// Open the report panel for the row at report_popup_rank: capture the reported player's name +
+// tomato count (context), reset the form, then swap the leaderboard focus context for the
+// panel's (pop + push nets to the modal's single pushed context, mirroring the auth modal's
+// Sign-In/Sign-Up relayout). Runs from a key handler or the popup click — both are safe points
+// for a context swap (close_modal does the same from on_modal_key).
+void open_report_panel(ModalRuntime& runtime, const LeaderboardData& data) {
+    runtime.report_username.clear();
+    runtime.report_lifetime = 0;
+    for (const LeaderboardRow& row : data.rows) {
+        if (static_cast<std::int64_t>(row.rank) == runtime.report_popup_rank) {
+            runtime.report_username = row.name;
+            runtime.report_lifetime = row.lifetime;
+            break;
+        }
+    }
+    if (runtime.report_username.empty()) {
+        return;  // the row vanished (e.g. board reloaded); nothing to report
+    }
+    runtime.report_reason_username = false;
+    runtime.report_reason_cheating = false;
+    runtime.report_comment_buf = {};
+    runtime.report_message = ReportPanelMessage::None;
+    runtime.report_request_submit = false;
+    runtime.report_request_close = false;
+    runtime.report_popup_open = false;
+    runtime.report_panel_open = true;
+
+    populate_report_registry(runtime);
+    backbone::pop_focus_context();  // leave the leaderboard context
+    const std::span<const backbone::FocusableId> list = report_panel_focus_list();
+    backbone::push_focus_context(list, list.front(), "modal.leaderboard.report");
+    runtime.leaderboard_last_synced = backbone::kNoFocus;  // re-sync the reconcile fresh
+}
+
+// Close the report panel and restore the leaderboard focus context (net-zero on the modal's
+// single pushed context). The highlighted rank is left as-is so the board returns to where the
+// user was. Exposed via leaderboard_close_report_panel for the Escape handler.
+void close_report_panel_impl(ModalRuntime& runtime) {
+    runtime.report_panel_open = false;
+    runtime.report_message = ReportPanelMessage::None;
+    runtime.report_request_submit = false;
+    runtime.report_request_close = false;
+
+    populate_leaderboard_registry(runtime);
+    backbone::pop_focus_context();  // leave the report context
+    const std::span<const backbone::FocusableId> list = leaderboard_focus_list();
+    backbone::push_focus_context(list, kLeaderboardList, "modal.leaderboard");
+    runtime.leaderboard_last_synced = backbone::kNoFocus;
+}
+
+// Build the submission and hand it to the boot-wired report seam; map the outcome. On success
+// the panel closes; a rate-limit / failure leaves the panel open with a banner so the user can
+// retry or amend.
+void do_report_submit(ModalRuntime& runtime) {
+    if (!report_submit_enabled(runtime)) {
+        return;  // defensive: the button is disabled in this state
+    }
+    ReportSubmission sub{};
+    sub.username = runtime.report_username;
+    sub.reason_username = runtime.report_reason_username;
+    sub.reason_cheating = runtime.report_reason_cheating;
+    sub.comment = std::string{runtime.report_comment_buf.data()};
+    const ReportOutcome outcome =
+        runtime.leaderboard.submit_report ? runtime.leaderboard.submit_report(sub)
+                                          : ReportOutcome::Failed;
+    switch (outcome) {
+        case ReportOutcome::Ok:
+            close_report_panel_impl(runtime);
+            return;
+        case ReportOutcome::RateLimited:
+            runtime.report_message = ReportPanelMessage::RateLimited;
+            return;
+        case ReportOutcome::Failed:
+            runtime.report_message = ReportPanelMessage::Failed;
+            return;
+    }
+}
+
+// ModalLayer key dispatch while the report panel is open: the checkboxes toggle and Submit /
+// close run their activate hooks (which set the deferred request flags the render loop then
+// processes), and the comment box keeps its text-cursor keys.
+bool report_panel_key(ModalRuntime& runtime, const backbone::KeyEvent& e) {
+    if (e.type != backbone::KeyEventType::KeyDown || runtime.focus_registry == nullptr) {
+        return false;
+    }
+    const bridge::FocusRegistry& reg = *runtime.focus_registry;
+    const backbone::FocusableId focused = bridge::active_focus_or_none();
+    if (reg.is_text_field(focused) &&
+        (e.code == backbone::KeyCode::ArrowLeft || e.code == backbone::KeyCode::ArrowRight)) {
+        return false;  // caret keys belong to the comment InputText
+    }
+    return bridge::dispatch_focus_key(reg, focused, e.code);
+}
+
+// The small "Report" popup, a tiny auto-sized window anchored at the highlighted row. It closes
+// itself if the highlight moved off report_popup_rank (navigation dismisses it) or the list stop
+// lost focus. A left-click on Report opens the panel (deferred to after the window End so no
+// focus-context swap runs mid-window).
+void render_report_popup(ModalRuntime& runtime, const LeaderboardData& data) {
+    const bool list_focused = backbone::is_keyboard_mode_active() &&
+                              backbone::get_focused_element() == kLeaderboardList;
+    if (!list_focused || runtime.leaderboard_highlight_rank != runtime.report_popup_rank) {
+        runtime.report_popup_open = false;  // moved off the row / left the list: dismiss
+        return;
+    }
+    ImGui::SetNextWindowPos(ImVec2{runtime.report_popup_x, runtime.report_popup_y},
+                            ImGuiCond_Always);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                                   ImGuiWindowFlags_NoSavedSettings |
+                                   ImGuiWindowFlags_AlwaysAutoResize;
+    bool report_clicked = false;
+    if (ImGui::Begin("##lb_report_popup", nullptr, flags)) {
+        report_clicked = ImGui::Selectable("Report");
+    }
+    ImGui::End();
+    if (report_clicked) {
+        open_report_panel(runtime, data);
+    }
+}
+
+// The message under Submit, mapping the transient banner to muted / state_fail copy.
+void render_report_message(ReportPanelMessage message) {
+    if (message == ReportPanelMessage::None) {
+        return;
+    }
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::StateFail));
+    if (message == ReportPanelMessage::RateLimited) {
+        ImGui::TextWrapped("You've reached today's report limit. Please try again tomorrow.");
+    } else {
+        ImGui::TextWrapped("Couldn't submit your report. Please try again.");
+    }
+    ImGui::PopStyleColor();
+}
+
+// The report modal panel, a fixed-size window to the RIGHT of the leaderboard. Header "Report
+// User", the reported username (left) + tomato count (right), the two reason checkboxes, the
+// optional comment, and a Submit gated on >=1 reason (and sign-in). X / Escape close it.
+void render_report_panel(ModalRuntime& runtime, const bridge::FocusReconcile& rec, ImU32 ring,
+                         float lb_x, float lb_y, float lb_w) {
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const float gap = vp->Size.x * 0.01f;
+    const float panel_w = vp->Size.x * 0.22f;
+    const float panel_h = vp->Size.y * 0.5f;
+    // Clamp the x so the panel never spills past the viewport's right edge.
+    float px = lb_x + lb_w + gap;
+    if (px + panel_w > vp->Pos.x + vp->Size.x) {
+        px = vp->Pos.x + vp->Size.x - panel_w;
+    }
+    ImGui::SetNextWindowPos(ImVec2{px, lb_y}, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2{panel_w, panel_h}, ImGuiCond_Always);
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                                   ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoSavedSettings;
+    if (!ImGui::Begin("##report_user_modal", nullptr, flags)) {
+        ImGui::End();
+        return;
+    }
+
+    const bool x_clicked = modal_draw_x_close(kReportClose);
+    modal_draw_pill_header(assets::AssetId::IconWarning, "Report User");
+
+    // Context row: reported username (left) + their tomato count (right), same baseline. The
+    // tomato count is drawn to the draw list, so it is positioned absolutely (not via SameLine).
+    {
+        ImDrawList* dl = ImGui::GetWindowDrawList();
+        const ImVec2 rowp = ImGui::GetCursorScreenPos();
+        ImGui::TextUnformatted(runtime.report_username.c_str());
+        const float cw = tomato_count_width(runtime.report_lifetime);
+        const float region_w = ImGui::GetWindowContentRegionMax().x;
+        const ImVec2 win = ImGui::GetWindowPos();
+        draw_tomato_count(dl, ImVec2{win.x + region_w - cw, rowp.y}, runtime.report_lifetime,
+                          theme::ColorToken::TextPrimary);
+    }
+    ImGui::Separator();
+
+    // Reason — two independent checkboxes (at least one mandatory). Each is its own focus stop;
+    // the Checkbox writes through the bound bool, so its return value is intentionally unused.
+    ImGui::TextUnformatted("Reason (choose at least one):");
+    ImGui::Checkbox("Username", &runtime.report_reason_username);
+    if (ImGui::IsItemClicked()) {
+        backbone::activate_keyboard_mode();
+        backbone::snap_focus_to(kReportReasonUsername);
+    }
+    bridge::draw_focus_ring(kReportReasonUsername, ring);
+    ImGui::Checkbox("Cheating", &runtime.report_reason_cheating);
+    if (ImGui::IsItemClicked()) {
+        backbone::activate_keyboard_mode();
+        backbone::snap_focus_to(kReportReasonCheating);
+    }
+    bridge::draw_focus_ring(kReportReasonCheating, ring);
+
+    // Comment — optional free-form text field.
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Comments (optional):");
+    bridge::grab_keyboard_if_target(rec, kReportComment);
+    ImGui::InputTextMultiline("##report_comment", runtime.report_comment_buf.data(),
+                              runtime.report_comment_buf.size(),
+                              ImVec2{-1.0f, ImGui::GetTextLineHeight() * 4.0f});
+    if (ImGui::IsItemClicked()) {
+        backbone::activate_keyboard_mode();
+        backbone::snap_focus_to(kReportComment);
+    }
+    bridge::draw_focus_ring(kReportComment, ring);
+
+    // Submit — disabled until at least one reason is checked (and the reporter is signed in).
+    ImGui::Spacing();
+    const bool enabled = report_submit_enabled(runtime);
+    bool submit_clicked = false;
+    if (!enabled) {
+        ImGui::BeginDisabled();
+    }
+    submit_clicked = ImGui::Button("Submit", ImVec2{-1.0f, 0.0f});
+    if (!enabled) {
+        ImGui::EndDisabled();
+    }
+    if (ImGui::IsItemClicked()) {
+        backbone::activate_keyboard_mode();
+        backbone::snap_focus_to(kReportSubmit);
+    }
+    bridge::draw_focus_ring(kReportSubmit, ring);
+
+    if (!report_signed_in(runtime)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
+        ImGui::TextWrapped("Sign in to report a user.");
+        ImGui::PopStyleColor();
+    }
+    render_report_message(runtime.report_message);
+
+    ImGui::End();
+
+    // Defer the actual close/submit until after End so no context swap runs mid-window.
+    if (x_clicked) {
+        runtime.report_request_close = true;
+    } else if (submit_clicked && enabled) {
+        runtime.report_request_submit = true;
+    }
+}
+
 }  // namespace
 
 std::span<const backbone::FocusableId> leaderboard_focus_list() noexcept {
@@ -575,23 +938,24 @@ void leaderboard_on_open(ModalRuntime& runtime) {
     runtime.leaderboard_scroll_to_highlight = false;
     runtime.leaderboard_saved_highlight_rank = -1;
     runtime.guest_row_highlight = GuestRowHighlight::None;
-    if (runtime.focus_registry == nullptr) {
-        return;
-    }
-    bridge::FocusRegistry& reg = *runtime.focus_registry;
-    reg.clear();
-    // Only the search is a text field; the other four stops yield ImGui's keyboard focus so
-    // their digit / arrow / activation keys reach the dispatch rather than an input box.
-    reg.register_element(kLeaderboardShopIcon, bridge::FocusableEntry{});
-    reg.register_element(kLeaderboardSearch, bridge::FocusableEntry{.is_text_field = true});
-    reg.register_element(kLeaderboardList, bridge::FocusableEntry{});
-    reg.register_element(kLeaderboardYourRow, bridge::FocusableEntry{});
-    reg.register_element(kLeaderboardClose, bridge::FocusableEntry{});
+    // Report-User feature starts closed on every open.
+    runtime.report_popup_open = false;
+    runtime.report_popup_rank = -1;
+    runtime.report_panel_open = false;
+    runtime.report_message = ReportPanelMessage::None;
+    runtime.report_request_submit = false;
+    runtime.report_request_close = false;
+    populate_leaderboard_registry(runtime);
 }
 
 bool leaderboard_dispatch_key(ModalRuntime& runtime, const backbone::KeyEvent& e) {
     if (e.type != backbone::KeyEventType::KeyDown) {
         return false;
+    }
+    // While the report panel is open, its stops (reason checkboxes / comment / submit / close)
+    // own the keys; the leaderboard's own stops are dormant behind it.
+    if (runtime.report_panel_open) {
+        return report_panel_key(runtime, e);
     }
     const backbone::FocusableId focused = backbone::get_focused_element();
     const bool activate = e.code == backbone::KeyCode::Space || e.code == backbone::KeyCode::Enter;
@@ -710,8 +1074,30 @@ void render_leaderboard_view(ModalRuntime& runtime) {
     // Record the element ImGui was reconciled to this frame (for next frame's decision).
     runtime.leaderboard_last_synced = bridge::active_focus_or_none();
 
+    // Geometry of the leaderboard window, for positioning the report panel to its right.
+    const ImVec2 lb_pos = ImGui::GetWindowPos();
+    const ImVec2 lb_size = ImGui::GetWindowSize();
+
     const bool dismiss = x_clicked || modal_click_outside_dismissed();
     modal_end();
+
+    // ===== Report-User feature: the popup + the panel are separate top-level windows drawn
+    // after the leaderboard frame closes (so they float above it, unclipped). The popup shows
+    // only when open and the panel is not; the panel replaces it once Report is activated.
+    if (runtime.report_popup_open && !runtime.report_panel_open) {
+        render_report_popup(runtime, data);
+    }
+    if (runtime.report_panel_open) {
+        render_report_panel(runtime, rec, ring, lb_pos.x, lb_pos.y, lb_size.x);
+    }
+    // Deferred report transitions, all context/registry surgery in one place after both windows.
+    if (runtime.report_request_submit) {
+        runtime.report_request_submit = false;
+        do_report_submit(runtime);
+    } else if (runtime.report_request_close) {
+        runtime.report_request_close = false;
+        close_report_panel_impl(runtime);
+    }
 
     if (to_shop || dismiss) {
 #ifdef __EMSCRIPTEN__

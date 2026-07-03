@@ -536,6 +536,27 @@ void finish_boot_after_persistence() {
         g_boot.live_settings.tomatoes.leaderboard_opt_in = true;
         settings::on_setting_change(g_boot.settings, settings::SettingId::LeaderboardOptIn);
     };
+    // Report User: write the report to Supabase over the same authenticated (id_token / RLS)
+    // path as account_state. The reporter's Auth0 sub + the timestamp are set server-side (the
+    // reports table's DEFAULTs), so nothing identifies the reporter in the client payload. The
+    // per-day cap is enforced server-side and surfaces as RateLimited.
+    g_boot.modals.leaderboard.submit_report =
+        [](const modal::ReportSubmission& sub) -> modal::ReportOutcome {
+        persistence::ReportRecord rec{};
+        rec.reported_username = sub.username;
+        rec.reason_username = sub.reason_username;
+        rec.reason_cheating = sub.reason_cheating;
+        rec.comment = sub.comment;
+        switch (g_boot.sync_backend.submit_report(rec)) {
+            case persistence::ReportOutcome::Ok:
+                return modal::ReportOutcome::Ok;
+            case persistence::ReportOutcome::RateLimited:
+                return modal::ReportOutcome::RateLimited;
+            case persistence::ReportOutcome::Failed:
+                break;
+        }
+        return modal::ReportOutcome::Failed;
+    };
 
     // Install Zone 03: subscribe to scenario_spawned for the spawn audio
     // choreography (the per-frame audio_update + first-gesture autoplay gate are

@@ -82,7 +82,20 @@ namespace poker_trainer::persistence {
     std::string_view auth0_sub, const AccountMigrationState& initial,
     std::string_view display_name, bool opted_in);
 
+// Build the JSON object body for a reports-table INSERT (the Report User feature). Carries
+// exactly the client-supplied columns: the reported username and the two reason booleans and
+// the optional comment. The reporter's auth0_sub and the created_at timestamp are NOT here —
+// they default server-side (reporter_auth0_sub = auth.jwt()->>'sub', created_at = now()), so
+// the client cannot spoof the reporter identity. The username / comment flow through
+// json_escape.
+[[nodiscard]] std::string build_report_body(const ReportRecord& report);
+
 // --- Response translation (pure) ---
+
+// Translate a report-INSERT HTTP status into a ReportOutcome: any 2xx -> Ok; 429 -> RateLimited
+// (the reports-table trigger rejects over-cap inserts with the PostgREST PT429 error code, which
+// surfaces as HTTP 429); anything else (0 network, 401/403 RLS, 4xx/5xx) -> Failed.
+[[nodiscard]] ReportOutcome report_submit_result(int http_status) noexcept;
 
 // Translate an HTTP status from a GET into a fetch outcome, given whether the
 // response carried a row. 2xx + row -> Found; 2xx + no row -> NotFound; anything
@@ -141,6 +154,8 @@ public:
     [[nodiscard]] LeaderboardFetchResult fetch_leaderboard() override;
 
     [[nodiscard]] bool delete_auth0_user() override;
+
+    [[nodiscard]] ReportOutcome submit_report(const ReportRecord& report) override;
 };
 
 #endif  // __EMSCRIPTEN__

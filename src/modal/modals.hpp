@@ -81,6 +81,19 @@ inline constexpr backbone::FocusableId kLeaderboardYourRow =
 inline constexpr backbone::FocusableId kLeaderboardClose =
     backbone::make_focusable_id("leaderboard.close");
 
+// ----- Report-User panel focusables (the report modal to the right of the leaderboard) -----
+// Tab order: reason "Username" -> reason "Cheating" -> comment -> Submit -> X close (wraps).
+inline constexpr backbone::FocusableId kReportReasonUsername =
+    backbone::make_focusable_id("leaderboard.report.reason_username");
+inline constexpr backbone::FocusableId kReportReasonCheating =
+    backbone::make_focusable_id("leaderboard.report.reason_cheating");
+inline constexpr backbone::FocusableId kReportComment =
+    backbone::make_focusable_id("leaderboard.report.comment");
+inline constexpr backbone::FocusableId kReportSubmit =
+    backbone::make_focusable_id("leaderboard.report.submit");
+inline constexpr backbone::FocusableId kReportClose =
+    backbone::make_focusable_id("leaderboard.report.close");
+
 // Rolling window (ms) within which successive digit keystrokes on the leaderboard list
 // stop APPEND to one rank number; after this long without a digit the buffer clears and
 // the next digit starts a fresh number.
@@ -188,6 +201,22 @@ struct LeaderboardSelf {
     std::uint64_t lifetime{0};  // logged-in Lifetime Tomatoes
 };
 
+// A leaderboard user report the user is submitting (the Report User feature; the only
+// user-generated content surface is the public usernames). The reporter's own identity is
+// NOT carried here — it is recorded server-side from the authenticated bearer (never shown
+// in the UI), for detecting report abuse.
+struct ReportSubmission {
+    std::string username;      // the reported player's leaderboard display name
+    bool reason_username{false};
+    bool reason_cheating{false};
+    std::string comment;       // optional free-form
+};
+
+// Outcome of a report submit. RateLimited => the server rejected it because the reporter hit
+// the per-day cap (a friendly "today's limit" message is shown); Failed => any other failure
+// (offline, RLS/auth, server error).
+enum class ReportOutcome : std::uint8_t { Ok, RateLimited, Failed };
+
 struct LeaderboardController {
     std::function<LeaderboardData()> fetch{};            // hit the server (blocking)
     std::function<LeaderboardSelf()> self{};             // your-rank row content
@@ -196,6 +225,7 @@ struct LeaderboardController {
     std::function<void()> enable_opt_in{};               // opted-out "opt in" link: flips
                                                          // the persisted+synced opt-in on
                                                          // in place (no nav to Settings)
+    std::function<ReportOutcome(const ReportSubmission&)> submit_report{};  // Report -> Supabase
     [[nodiscard]] bool wired() const noexcept { return static_cast<bool>(fetch); }
 };
 
@@ -203,6 +233,10 @@ struct LeaderboardController {
 // positional toggle). None = no highlight; Enter/Space defaults to Sign in. SignIn/SignUp =
 // the respective link is highlighted; Enter/Space opens it.
 enum class GuestRowHighlight : std::uint8_t { None, SignIn, SignUp };
+
+// The transient result banner shown in the report panel after a submit attempt. None = no
+// banner (fresh panel, or a successful submit already closed it).
+enum class ReportPanelMessage : std::uint8_t { None, RateLimited, Failed };
 
 // ----- App-root Z11 runtime (owned by Z05 boot; CLAUDE.md sec.10) -----
 struct ModalRuntime {
@@ -272,6 +306,29 @@ struct ModalRuntime {
     // toggle). Reset on open; set by Left/Right/digit keys while the stop is focused.
     GuestRowHighlight guest_row_highlight{GuestRowHighlight::None};
 
+    // ----- Report-User feature (the leaderboard's Report popup + panel) -----
+    // The small "Report" context popup, opened by R or right-click on a highlighted row. It
+    // never traps list navigation: moving the highlight off report_popup_rank dismisses it.
+    bool report_popup_open{false};
+    std::int64_t report_popup_rank{-1};  // the rank the popup anchors to (== the highlight)
+    float report_popup_x{0.0f};          // screen anchor (highlighted row's bottom-left),
+    float report_popup_y{0.0f};          // captured during the list render
+    // The report modal panel, opened to the RIGHT of the leaderboard when Report is activated.
+    // While it is open the leaderboard's focus context is swapped for the panel's (net-zero on
+    // the single pushed modal context, mirroring the auth modal's Sign-In/Sign-Up relayout).
+    bool report_panel_open{false};
+    std::string report_username{};        // the reported player (shown as context)
+    std::uint64_t report_lifetime{0};     // their lifetime tomatoes (shown as context)
+    bool report_reason_username{false};   // reason checkbox 1 ("Username")
+    bool report_reason_cheating{false};   // reason checkbox 2 ("Cheating")
+    std::array<char, 512> report_comment_buf{};  // optional free-form comment (no heap on typing)
+    ReportPanelMessage report_message{ReportPanelMessage::None};  // post-submit result banner
+    // Deferred report actions: keyboard activate closures raise these; the dispatch runs them
+    // AFTER dispatch_focus_key returns, so no focus-context swap happens mid-closure (mirrors
+    // AccountModalState's request_close / request_submit).
+    bool report_request_submit{false};
+    bool report_request_close{false};
+
     // Content providers registered by consumer zones (Zone 12 Settings). Searched on
     // open/close/render/key by id. Empty until a zone registers one.
     std::vector<std::pair<backbone::ModalId, ModalContentProvider>> content_providers{};
@@ -332,6 +389,13 @@ void set_tutorial_start_handler(std::function<void()> handler);
 
 // ----- Cluster (ZONES.md export render_persistent_cluster) -----
 void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx);
+
+// Draw ONLY the "Training tool, no real money." disclaimer row for the given cluster rects
+// (left -> right: Shop, Help, Settings, [Home | Close]) — positioned identically to how
+// render_persistent_cluster draws it. render_persistent_cluster calls this itself; the Root
+// screen (which draws no cluster) calls it directly with the Mode Selection cluster rects so
+// the disclaimer appears in the same spot there too, on every screen.
+void render_training_disclaimer(ImDrawList* dl, const std::array<animations::Rect, 4>& cluster_rects);
 
 // Map a click / a focused element to the cluster icon it hits, using the geometry
 // cached by the last render_persistent_cluster. nullopt when nothing matches.

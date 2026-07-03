@@ -1317,6 +1317,12 @@ void render_legal(SettingsModalState& s, ImU32 ring, std::string_view q) {
         }
     }
     ImGui::Spacing();
+    // Contact / feedback line, muted, alongside the legal entries (informational text, not a
+    // focus stop).
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
+    ImGui::TextWrapped("Feedback, suggestions, or issues? Email pokertrainersupport@gmail.com");
+    ImGui::PopStyleColor();
+    ImGui::Spacing();
 }
 
 // ----- sub-modal bodies -----
