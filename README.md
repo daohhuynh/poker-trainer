@@ -146,7 +146,7 @@ cmake --build build-test -j
 ctest --test-dir build-test
 ```
 
-`ENABLE_TESTS=ON` fetches GoogleTest via `FetchContent` and builds the test executables. `ctest` runs all fourteen of them.
+`ENABLE_TESTS=ON` fetches GoogleTest via `FetchContent` and builds the test executables. `ctest` runs all seventeen of them.
 
 ### WebAssembly build
 
@@ -199,6 +199,6 @@ Read these in order to follow the system from its contracts up to a running scre
 
 ## Testing and build posture
 
-`ctest --test-dir build-test` runs fourteen test executables, all passing. Thirteen are GoogleTest suites totaling 473 test cases (engine determinism and the locked EV formulas, the focus reconcile decision, the event router and focus manager, asset loading, persistence, audio, and the screen/modal wiring); the fourteenth is the Phase 0 sign-off gate (`tests/all_headers_test.cpp`), which includes every contract header and instantiates one of each type to confirm they compile together. Rendering, audio output, and modal layout are verified by running the app rather than unit-tested, by design.
+`ctest --test-dir build-test` runs seventeen test executables, all passing. Sixteen are GoogleTest suites totaling 724 test cases (engine determinism and the locked EV formulas, the focus reconcile decision, the event router and focus manager, asset loading, persistence, audio, and the screen/modal wiring); the seventeenth is the Phase 0 sign-off gate (`tests/all_headers_test.cpp`), which includes every contract header and instantiates one of each type to confirm they compile together. Rendering, audio output, and modal layout are verified by running the app rather than unit-tested, by design.
 
 Everything compiles as strict C++23 under `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Werror`. Low-level Emscripten/WebGL binding code runs under a reduced but still `-Werror` warning baseline.
