@@ -931,6 +931,12 @@ void tutorial_skip() {
         return;
     }
     tutorial_restore_forced_settings();
+    // Skip-with-confirm counts as done: set both the prompt-seen gate (stops the
+    // first-launch prompt next session) and the completion flag, so a skip is durable
+    // across tabs the same way finishing the walkthrough is (see tutorial_finish_to).
+    if (t->seams.mark_completed) {
+        t->seams.mark_completed();  // skip -> has_completed_tutorial = true
+    }
     if (t->seams.mark_prompt_seen) {
         t->seams.mark_prompt_seen();  // skip -> has_seen_tutorial_prompt = true
     }
