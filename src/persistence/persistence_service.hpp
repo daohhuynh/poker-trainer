@@ -99,6 +99,11 @@ public:
     void pump_sync();
 
     // --- Tutorial flags ---
+    //
+    // The mark_* mutations write IDBFS immediately AND, for a logged-in user,
+    // queue a background server sync (same as save_state) so the onboarding
+    // state is durable across tabs and devices, not just this browser's local
+    // storage. Reads come straight off the local store.
 
     [[nodiscard]] bool has_seen_tutorial_prompt() const noexcept;
     void mark_tutorial_prompt_seen();
@@ -106,6 +111,10 @@ public:
     void mark_tutorial_completed();
 
 private:
+    // Queue the current authoritative local state for the background server push
+    // (a no-op for guests). Shared by save_state and the tutorial mark_* methods.
+    void sync_local_state();
+
     IdbfsStore store_;
     SyncEngine sync_;
     Migrator migrator_;

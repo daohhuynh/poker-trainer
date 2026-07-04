@@ -92,7 +92,16 @@ public:
     // mechanic). Replaces every field with the server's values except the
     // account linkage, which stays pinned to the locally authenticated
     // identity, and normalizes the schema version. Writes through immediately.
-    void adopt_server_state(const AppState& server_state);
+    //
+    // The tutorial latches (has_seen_tutorial_prompt / has_completed_tutorial)
+    // are monotonic — once true, never false. When preserve_local_tutorial_latches
+    // is set (the SAME authenticated user re-reconciling), a locally-true latch is
+    // OR'd into the adopted value so a skip/completion that has not yet reached the
+    // server (e.g. set while offline) is not wiped by an older server row. It is
+    // false for a guest upgrade or a different user signing in, so the server's
+    // value wins outright and no onboarding state leaks between accounts.
+    void adopt_server_state(const AppState& server_state,
+                            bool preserve_local_tutorial_latches);
 
     // Replace only the account-linkage fields and write through. Used by the
     // auth flow on sign-in / sign-out without disturbing wallet / unlocks.

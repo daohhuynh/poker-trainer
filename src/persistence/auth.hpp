@@ -164,7 +164,13 @@ public:
     // SyncEngine's session-start gate: a successful reconcile (adopt, or a
     // brand-new account seeded) opens it; a failed one keeps it closed and
     // schedules a reconcile retry.
-    void reconcile_account(std::string_view auth0_user_id);
+    //
+    // preserve_local_tutorial_latches forwards to adopt_server_state: true when the
+    // SAME authenticated user is re-establishing (so an unsynced local skip/completion
+    // is not wiped by an older server row), false for a guest upgrade or a different
+    // user (so nothing leaks between accounts).
+    void reconcile_account(std::string_view auth0_user_id,
+                           bool preserve_local_tutorial_latches);
 
 private:
     // Shared post-authentication path for sign-in and sign-up: stash the

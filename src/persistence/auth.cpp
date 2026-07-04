@@ -132,13 +132,15 @@ bool AuthManager::auth0_health_check() {
     return healthy;
 }
 
-void AuthManager::reconcile_account(std::string_view auth0_user_id) {
+void AuthManager::reconcile_account(std::string_view auth0_user_id,
+                                    bool preserve_local_tutorial_latches) {
     const FetchResult fetched = server_.fetch(auth0_user_id);
     switch (fetched.outcome) {
         case FetchOutcome::Found:
             // Server is the source of truth: IDBFS reconciles to match. The
             // authoritative baseline is now established, so open the push gate.
-            store_.adopt_server_state(fetched.state);
+            store_.adopt_server_state(fetched.state,
+                                      preserve_local_tutorial_latches);
             sync_.note_session_reconciled();
             break;
         case FetchOutcome::NotFound: {
@@ -166,6 +168,17 @@ void AuthManager::reconcile_account(std::string_view auth0_user_id) {
 }
 
 void AuthManager::establish_session(AuthSession session) {
+    // Decide, BEFORE overwriting the account linkage, whether the local tutorial
+    // latches belong to this same account: true only when the SAME authenticated
+    // user is re-establishing (a returning stay-signed-in session, or a re-sign-in
+    // without a sign-out in between). A guest upgrade or a different user leaves it
+    // false so the server's onboarding state wins and nothing leaks across accounts
+    // — and since sign-out resets the account to a guest, a later different user
+    // always lands here as a guest, i.e. false.
+    const AccountState& prior = store_.state().account;
+    const bool same_user = prior.is_authenticated &&
+                           prior.auth0_user_id == session.auth0_user_id;
+
     session_ = std::move(session);
 
     // Persist only the non-sensitive identity; the access token stays in the
@@ -180,7 +193,7 @@ void AuthManager::establish_session(AuthSession session) {
     // Copy the id before reconciling: a Found outcome replaces the cached
     // state, which would otherwise invalidate a view into store_.state().
     const std::string user_id = session_->auth0_user_id;
-    reconcile_account(user_id);
+    reconcile_account(user_id, same_user);
 }
 
 }  // namespace poker_trainer::persistence

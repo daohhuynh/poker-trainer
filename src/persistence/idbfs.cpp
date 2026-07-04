@@ -336,7 +336,8 @@ void IdbfsStore::save_state(const AppState& state) {
     persist();
 }
 
-void IdbfsStore::adopt_server_state(const AppState& server_state) {
+void IdbfsStore::adopt_server_state(const AppState& server_state,
+                                    bool preserve_local_tutorial_latches) {
     // Server is the source of truth for everything except the local authenticated
     // identity (is_authenticated, auth0_user_id, email), which is pinned by the live
     // Auth0 session. The display_name is the EXCEPTION to that pin: it is the user's
@@ -347,8 +348,21 @@ void IdbfsStore::adopt_server_state(const AppState& server_state) {
     if (!server_state.account.display_name.empty()) {
         account.display_name = server_state.account.display_name;
     }
+    // Capture the monotonic tutorial latches before the wholesale replace so a
+    // local skip/completion that has not yet synced (set while offline, or before
+    // this same user's server row was ever updated) survives the adopt instead of
+    // being reset by an older server value. Only for the same user (see the header).
+    const TutorialState local_tutorial = state_.tutorial;
     state_ = server_state;
     state_.account = account;
+    if (preserve_local_tutorial_latches) {
+        state_.tutorial.has_seen_tutorial_prompt =
+            server_state.tutorial.has_seen_tutorial_prompt ||
+            local_tutorial.has_seen_tutorial_prompt;
+        state_.tutorial.has_completed_tutorial =
+            server_state.tutorial.has_completed_tutorial ||
+            local_tutorial.has_completed_tutorial;
+    }
     state_.schema_version = kCurrentSchemaVersion;
     persist();
 }

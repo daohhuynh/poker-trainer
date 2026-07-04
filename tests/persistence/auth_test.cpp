@@ -281,6 +281,81 @@ TEST_F(AuthFlowTest, OfflineAtSessionStartWithholdsPushesUntilReconcileSucceeds)
     EXPECT_EQ(server_.pushes.back().writes.back().tomatoes.spendable, 501u);
 }
 
+// --- Tutorial flags sync to the account (the "prompt re-appears each tab while
+//     signed in" bug) ---
+
+TEST_F(AuthFlowTest, MarkTutorialPromptSeenPushesToServerWhenSignedIn) {
+    // Root cause of the bug: the skip persisted locally but was never queued for
+    // the server, so the next session's reconcile adopted the server's stale
+    // seen=false and re-showed the prompt. The mark_* path now syncs like save_state.
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Found, pt::AppState{}};
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+    ASSERT_TRUE(svc.sign_in(kCreds).has_value());
+
+    svc.mark_tutorial_prompt_seen();
+
+    ASSERT_FALSE(server_.pushes.empty());
+    EXPECT_TRUE(server_.pushes.back().writes.back().tutorial.has_seen_tutorial_prompt);
+}
+
+TEST_F(AuthFlowTest, MarkTutorialPromptSeenDoesNotPushForGuest) {
+    pt::PersistenceService svc = make_service();
+    svc.load_state();  // guest
+
+    svc.mark_tutorial_prompt_seen();
+
+    EXPECT_TRUE(svc.has_seen_tutorial_prompt());  // durable locally
+    EXPECT_TRUE(server_.pushes.empty());          // no server-side account for a guest
+}
+
+TEST_F(AuthFlowTest, ReturningSignedInUserKeepsAnUnsyncedTutorialSkip) {
+    // End-to-end of the reported bug: a signed-in user skips the tutorial, but the
+    // skip does not reach the server (offline / a stale row). On the NEXT session the
+    // same user reconciles against that older server row — the local "seen" latch must
+    // survive rather than be reset (which is what re-showed the prompt every tab).
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Found, pt::AppState{}};
+
+    {
+        // Session 1: sign in (adopts seen=false), then skip. The server row here
+        // stays seen=false — modeling the skip never landing server-side.
+        pt::PersistenceService svc1 = make_service();
+        svc1.load_state();
+        ASSERT_TRUE(svc1.sign_in(kCreds).has_value());
+        ASSERT_FALSE(svc1.has_seen_tutorial_prompt());
+        svc1.mark_tutorial_prompt_seen();
+        ASSERT_TRUE(svc1.has_seen_tutorial_prompt());
+    }
+
+    // Session 2: a fresh boot (fresh sync gate) restores the SAME user.
+    pt::write_sync_state(pt::SyncStateSnapshot{});
+    auth_.restore_ok = true;  // same identity (sub-123)
+
+    pt::PersistenceService svc2 = make_service();
+    svc2.load_state();                        // loads persisted account + local seen=true
+    ASSERT_TRUE(svc2.try_restore_session());  // Found: adopt(server seen=false, preserve=true)
+
+    EXPECT_TRUE(svc2.has_seen_tutorial_prompt());  // the skip survived the reconcile
+}
+
+TEST_F(AuthFlowTest, DifferentUserDoesNotInheritPriorTutorialSkip) {
+    // User A skips (local latch set), signs out (IDBFS kept, account -> guest), then a
+    // different user B signs in on the same browser. B's server row has seen=false and
+    // must win — B is prompted, i.e. A's onboarding state does not leak into B.
+    server_.fetch_result = pt::FetchResult{pt::FetchOutcome::Found, pt::AppState{}};
+    pt::PersistenceService svc = make_service();
+    svc.load_state();
+    ASSERT_TRUE(svc.sign_in(kCreds).has_value());  // user A (sub-123)
+    svc.mark_tutorial_prompt_seen();
+    ASSERT_TRUE(svc.sign_out().has_value());       // account -> guest, IDBFS kept
+    ASSERT_TRUE(svc.has_seen_tutorial_prompt());   // A's latch is still on disk
+
+    auth_.session = pt::AuthSession{"sub-999", "Bob", "bob@example.com", "tok-b"};
+    ASSERT_TRUE(svc.sign_in(kCreds).has_value());  // user B; prior at establish is a guest
+
+    EXPECT_FALSE(svc.has_seen_tutorial_prompt());  // server-authoritative: no leak
+}
+
 // --- Stay-signed-in (silent restore) ---
 
 TEST_F(AuthFlowTest, RestoreSessionReauthenticatesAndAdoptsServerState) {

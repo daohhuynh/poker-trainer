@@ -78,7 +78,7 @@ TEST(Idbfs, AdoptServerStatePinsLocalIdentityButTakesServerDisplayName) {
     server_state.tomatoes.spendable = 999;
     server_state.account.auth0_user_id = "server|other";
     server_state.account.display_name = "RyanTheGrinder";
-    store.adopt_server_state(server_state);
+    store.adopt_server_state(server_state, /*preserve_local_tutorial_latches=*/false);
 
     EXPECT_EQ(store.state().tomatoes.spendable, 999u);
     EXPECT_EQ(store.state().account.auth0_user_id, "local|me");      // session-pinned
@@ -100,7 +100,7 @@ TEST(Idbfs, AdoptServerStateKeepsLocalDisplayNameWhenServerEmpty) {
     // A server row with no display_name must not blank out the live local name.
     pt::AppState server_state = pt::test::make_populated_state();
     server_state.account.display_name.clear();
-    store.adopt_server_state(server_state);
+    store.adopt_server_state(server_state, /*preserve_local_tutorial_latches=*/false);
 
     EXPECT_EQ(store.state().account.display_name, "LocalName");
 }
@@ -142,6 +142,43 @@ TEST(Idbfs, TutorialCompletedLifecyclePersists) {
 
     pt::IdbfsStore reloaded(storage);
     EXPECT_TRUE(reloaded.load_state().tutorial.has_completed_tutorial);
+}
+
+TEST(Idbfs, AdoptServerStatePreservesLocalTutorialLatchesWhenAsked) {
+    pt::test::MemoryStorage storage;
+    pt::IdbfsStore store(storage);
+
+    // Local: the user skipped the tutorial, but the skip has not reached the server.
+    pt::AccountState identity{};
+    identity.is_authenticated = true;
+    identity.auth0_user_id = "local|me";
+    store.update_account(identity);
+    store.mark_tutorial_prompt_seen();
+    store.mark_tutorial_completed();
+
+    // A server row that predates the skip (both latches false). Same user
+    // re-reconciling -> the monotonic local latches must survive the adopt.
+    pt::AppState server_state{};
+    store.adopt_server_state(server_state, /*preserve_local_tutorial_latches=*/true);
+
+    EXPECT_TRUE(store.has_seen_tutorial_prompt());
+    EXPECT_TRUE(store.has_completed_tutorial());
+}
+
+TEST(Idbfs, AdoptServerStateDropsLocalTutorialLatchesForADifferentUser) {
+    pt::test::MemoryStorage storage;
+    pt::IdbfsStore store(storage);
+
+    // A leftover local latch (e.g. a prior user on this browser).
+    store.mark_tutorial_prompt_seen();
+    ASSERT_TRUE(store.has_seen_tutorial_prompt());
+
+    // A different account's server row (latch false) with preservation off: the
+    // server value wins outright, so onboarding state never leaks between accounts.
+    pt::AppState server_state{};
+    store.adopt_server_state(server_state, /*preserve_local_tutorial_latches=*/false);
+
+    EXPECT_FALSE(store.has_seen_tutorial_prompt());
 }
 
 TEST(Idbfs, UpdateAccountPersistsIdentityWithoutTouchingWallet) {

@@ -22,8 +22,18 @@ void PersistenceService::save_state(const AppState& state) {
     // IDBFS writes immediately; the server sync runs in the background for
     // logged-in users (guests have no server-side account state).
     store_.save_state(state);
-    if (state.account.is_authenticated) {
-        sync_.record_state_change(state.account.auth0_user_id, state);
+    sync_local_state();
+}
+
+void PersistenceService::sync_local_state() {
+    // Enqueue the current authoritative local state for the background server
+    // push. record_state_change itself is gated on a successful session-start
+    // reconcile, so a pre-reconcile write stays durable in IDBFS but is not
+    // pushed until the server-authoritative baseline is established. A no-op for
+    // guests (no server-side account state).
+    const AppState& current = store_.state();
+    if (current.account.is_authenticated) {
+        sync_.record_state_change(current.account.auth0_user_id, current);
     }
 }
 
@@ -36,7 +46,9 @@ void PersistenceService::reconcile_on_session_start() {
         return;  // guest: local IDBFS is authoritative, nothing to reconcile
     }
     const std::string user_id = store_.state().account.auth0_user_id;
-    auth_.reconcile_account(user_id);
+    // The same already-established user retrying a session-start reconcile: keep
+    // any local tutorial latch that has not yet reached the server.
+    auth_.reconcile_account(user_id, /*preserve_local_tutorial_latches=*/true);
 }
 
 bool PersistenceService::try_restore_session() { return auth_.restore_session(); }
@@ -106,6 +118,7 @@ bool PersistenceService::has_seen_tutorial_prompt() const noexcept {
 
 void PersistenceService::mark_tutorial_prompt_seen() {
     store_.mark_tutorial_prompt_seen();
+    sync_local_state();
 }
 
 bool PersistenceService::has_completed_tutorial() const noexcept {
@@ -114,6 +127,7 @@ bool PersistenceService::has_completed_tutorial() const noexcept {
 
 void PersistenceService::mark_tutorial_completed() {
     store_.mark_tutorial_completed();
+    sync_local_state();
 }
 
 }  // namespace poker_trainer::persistence
