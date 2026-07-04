@@ -444,6 +444,16 @@ void render_modal_overlay() {
             render_confirm_modal(g_runtime->confirm);
         } else if (*id == kSettingsModalId) {
             render_settings_shell();
+        } else if (*id == kSettingsDocId || *id == kSettingsSectionResetId) {
+            // The Settings sub-modals (legal-doc viewer, section-reset multi-select) are
+            // their own modal ids stacked over Settings. Render whichever is current through
+            // the same content-provider shell as the main modal. Without this dispatch a
+            // sub-modal shows only the scrim — its provider body (e.g. the legal-doc HTML
+            // overlay, which calls show_html_overlay) never runs.
+            if (const ModalContentProvider* p = modal_content_for(*id);
+                p != nullptr && p->render_body) {
+                render_provider_shell(*p);
+            }
         } else if (*id == kShopModalId) {
             render_shop_shell();
         } else if (*id == kLeaderboardModalId) {

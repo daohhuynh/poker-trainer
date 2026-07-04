@@ -2,6 +2,7 @@
 
 #include "bridge/canvas_sizing.hpp"
 #include "bridge/gl_renderer.hpp"
+#include "bridge/html_overlay.hpp"
 #include "bridge/input_routing.hpp"
 
 #include "backbone/event_router.hpp"
@@ -195,6 +196,21 @@ void maybe_first_user_gesture() {
 EM_BOOL on_key_down(int, const EmscriptenKeyboardEvent* e, void*) {
     maybe_first_user_gesture();
     feed_imgui_keyboard(e, /*down=*/true);
+    // Legal-doc overlay: PageUp/PageDown scroll the shown doc. These are not backbone
+    // KeyCodes (the sealed enum has no Page keys), so they are handled here at the DOM layer.
+    // A page step is ~60% of the canvas height (the doc modal is ~0.7 of the viewport). Passes
+    // through untouched when no doc overlay is visible (arrows scroll via the modal dispatch).
+    if (html_overlay_visible()) {
+        const float page = static_cast<float>(canvas_dims().height) * 0.6f;
+        if (std::strcmp(e->code, "PageDown") == 0) {
+            scroll_html_overlay(page);
+            return EM_TRUE;
+        }
+        if (std::strcmp(e->code, "PageUp") == 0) {
+            scroll_html_overlay(-page);
+            return EM_TRUE;
+        }
+    }
     const backbone::KeyCode code = map_key_code(e->code);
     // WantCaptureKeyboard (from the last NewFrame) is true while an InputText is
     // active. The gate is the single arbitration point: a key ImGui is consuming
@@ -284,6 +300,13 @@ EM_BOOL on_mouse_up(int, const EmscriptenMouseEvent* e, void*) {
 }
 
 EM_BOOL on_wheel(int, const EmscriptenWheelEvent* e, void*) {
+    // Legal-doc overlay: it is pointer-events:none, so the wheel falls THROUGH to the canvas
+    // here. Forward the raw deltaY so the doc scrolls natively, and consume the event (ImGui
+    // must not also scroll the modal window). No-op / normal handling when no doc is shown.
+    if (html_overlay_visible()) {
+        scroll_html_overlay(static_cast<float>(e->deltaY));
+        return EM_TRUE;
+    }
     ImGui::GetIO().AddMouseWheelEvent(0.0f, static_cast<float>(-e->deltaY) * 0.01f);
     if (router_should_see_mouse()) {
         backbone::dispatch_mouse_event(

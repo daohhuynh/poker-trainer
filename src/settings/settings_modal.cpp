@@ -30,6 +30,7 @@
 #endif
 
 #include "bridge/focus_registry.hpp"
+#include "bridge/html_overlay.hpp"
 
 // Zone 12 — Settings modal content. The body (search + sidebar + scrollable sections),
 // the per-control widgets (coupled/clamped over the pure cores in settings_logic.hpp),
@@ -517,8 +518,18 @@ void activate_sidebar(SettingsModalState& s, SettingsSection section) {
 
 // ----- sub-modal focus ids -----
 
+constexpr backbone::FocusableId kDocNav = backbone::make_focusable_id("settings.doc.nav");
 constexpr backbone::FocusableId kDocClose = backbone::make_focusable_id("settings.doc.close");
-constexpr std::array<backbone::FocusableId, 1> kDocFocusOrder{kDocClose};
+// Tab order in the doc modal: the Next/Prev swap button (Terms/Privacy only), then X. The
+// doc itself is never a focus stop — it is a scroll surface the app drives (see below). The
+// About doc has no sibling to swap to, so its only stop is the X.
+constexpr std::array<backbone::FocusableId, 2> kDocFocusOrderDoc{kDocNav, kDocClose};
+constexpr std::array<backbone::FocusableId, 1> kDocFocusOrderAbout{kDocClose};
+
+// Per-keypress scroll distance for the legal-doc overlay's arrow keys. DOM key auto-repeat
+// makes a held arrow scroll smoothly; the wheel and PageUp/PageDown are forwarded at the
+// platform layer (they are not backbone KeyCodes). See dispatch_settings_key.
+constexpr float kDocArrowScrollPx = 72.0f;
 
 constexpr std::array<backbone::FocusableId, kSectionCount> kSrToggle{
     backbone::make_focusable_id("settings.sr.gameplay"),
@@ -536,6 +547,16 @@ constexpr backbone::FocusableId kSrClose = backbone::make_focusable_id("settings
 constexpr std::array<backbone::FocusableId, kSectionCount + 2> kSrFocusOrder{
     kSrToggle[0], kSrToggle[1], kSrToggle[2], kSrToggle[3], kSrToggle[4], kSrToggle[5],
     kSrToggle[6], kSrToggle[7], kSrToggle[8], kSrReset,     kSrClose};
+
+// Write the pinned pill label for the currently shown doc into s.doc_header. The doc
+// provider's header_name points at that buffer, so the shell draws the live label. Called
+// wherever doc_kind changes (the doc modal's on_open, and the Terms<->Privacy swap).
+void set_doc_header(SettingsModalState& s) {
+    const char* label = s.doc_kind == SettingsModalState::DocKind::Terms     ? "Terms of Service"
+                        : s.doc_kind == SettingsModalState::DocKind::Privacy ? "Privacy Policy"
+                                                                             : "About";
+    std::snprintf(s.doc_header.data(), s.doc_header.size(), "%s", label);
+}
 
 void open_doc(SettingsModalState& s, SettingsModalState::DocKind kind) {
     s.doc_kind = kind;
@@ -842,6 +863,12 @@ void populate_doc_registry(SettingsModalState& s) {
     }
     bridge::FocusRegistry& reg = *s.focus_registry;
     reg.clear();
+    // The Next/Prev swap button is a focus stop only for Terms/Privacy (About has no sibling
+    // to swap to). It raises the deferred swap flag, applied at the top of the next render.
+    if (s.doc_kind != SettingsModalState::DocKind::About) {
+        reg.register_element(
+            kDocNav, bridge::FocusableEntry{.activate = [&s] { s.request_doc_switch = true; }});
+    }
     reg.register_element(kDocClose, bridge::FocusableEntry{.activate = [&s] { s.request_close = true; }});
 }
 
@@ -927,6 +954,19 @@ constexpr std::array<BodyFocusOwner, 45> kBodyFocusOwners{{
 bool dispatch_settings_key(SettingsModalState& s, const backbone::KeyEvent& e) {
     if (e.type != backbone::KeyEventType::KeyDown || s.focus_registry == nullptr) {
         return false;
+    }
+    // Legal doc overlay: arrows scroll the HTML doc (a scroll surface, not a focus stop),
+    // so they never reach the focus-nav handler. Gated to the doc modal showing Terms/
+    // Privacy (About is native ImGui, no overlay). The wheel + PageUp/PageDown — which are
+    // not backbone KeyCodes — are forwarded to the overlay at the platform (DOM) layer.
+    if (s.doc_kind != SettingsModalState::DocKind::About &&
+        (e.code == backbone::KeyCode::ArrowUp || e.code == backbone::KeyCode::ArrowDown)) {
+        const std::optional<backbone::ModalId> top = backbone::current_modal_id();
+        if (top.has_value() && *top == modal::kSettingsDocId) {
+            bridge::scroll_html_overlay(e.code == backbone::KeyCode::ArrowUp ? -kDocArrowScrollPx
+                                                                             : kDocArrowScrollPx);
+            return true;
+        }
     }
     // Search-filtered Tab traversal (Bug D): while a query hides controls in the MAIN
     // Settings modal, Tab/Shift-Tab must skip the unrendered stops so focus never lands
@@ -1357,7 +1397,80 @@ void render_section_reset_body(SettingsModalState& s) {
     }
 }
 
+// The Terms/Privacy legal docs render as a scrollable HTML overlay (an <iframe> the app
+// positions over the modal body). ImGui cannot draw HTML, so the body here reserves the
+// region, frames it, and hands the rect to the overlay; the chrome (the Next/Prev swap
+// button) is drawn ImGui-side so it stays a real focus/click target outside the overlay rect.
+void render_doc_html(SettingsModalState& s, ImU32 ring) {
+    const bool is_terms = (s.doc_kind == SettingsModalState::DocKind::Terms);
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    // Next/Prev swap button, drawn in the chrome to the LEFT of the top-right X (never inside
+    // the overlay rect). Save/restore the cursor so the body still starts below the header.
+    // The arrow is a vector triangle (the app font is ASCII-only — a Unicode arrow won't render).
+    const ImVec2 saved = ImGui::GetCursorPos();
+    const float x_btn = ImGui::GetTextLineHeight() * 1.6f;  // matches modal_draw_x_close
+    const float region_w = ImGui::GetWindowContentRegionMax().x;
+    const ImVec2 fp = ImGui::GetStyle().FramePadding;
+    const float gap = ImGui::GetStyle().ItemInnerSpacing.x;
+    const float arrow_w = ImGui::GetFontSize() * 0.55f;
+    const char* nav_label = is_terms ? "Next to Privacy Policy" : "Back to Terms of Service";
+    const bool arrow_right = is_terms;  // Terms -> forward (right arrow); Privacy -> back (left)
+    const float btn_w = ImGui::CalcTextSize(nav_label).x + fp.x * 2.0f;
+    const float cluster_right = region_w - x_btn - gap;
+    const float btn_x =
+        arrow_right ? (cluster_right - arrow_w - gap - btn_w) : (cluster_right - btn_w);
+    ImGui::SetCursorPos(ImVec2{btn_x, ImGui::GetStyle().WindowPadding.y});
+    const bool nav_clicked = ImGui::Button(nav_label);
+    if (ImGui::IsItemClicked()) {
+        focus_on_click(kDocNav);
+    }
+    bridge::draw_focus_ring(kDocNav, ring);
+    const ImVec2 bmin = ImGui::GetItemRectMin();
+    const ImVec2 bmax = ImGui::GetItemRectMax();
+    const float cy = (bmin.y + bmax.y) * 0.5f;
+    const float ah = ImGui::GetFontSize() * 0.5f;
+    const ImU32 tri = token_u32(theme::ColorToken::TextPrimary);
+    if (arrow_right) {
+        const float ax = bmax.x + gap;
+        dl->AddTriangleFilled(ImVec2{ax, cy - ah}, ImVec2{ax, cy + ah}, ImVec2{ax + arrow_w, cy},
+                              tri);
+    } else {
+        const float ax = bmin.x - gap - arrow_w;
+        dl->AddTriangleFilled(ImVec2{ax + arrow_w, cy - ah}, ImVec2{ax + arrow_w, cy + ah},
+                              ImVec2{ax, cy}, tri);
+    }
+    if (nav_clicked) {
+        s.request_doc_switch = true;
+    }
+    ImGui::SetCursorPos(saved);
+
+    // The overlay fills the body region. Draw a themed frame at the body edge and inset the
+    // (opaque, light) iframe a couple px so the frame line stays visible around it.
+    const ImVec2 body_min = ImGui::GetCursorScreenPos();
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    if (avail.x > 1.0f && avail.y > 1.0f) {
+        constexpr float kInset = 2.0f;
+        dl->AddRect(body_min, ImVec2{body_min.x + avail.x, body_min.y + avail.y},
+                    token_u32(theme::ColorToken::BorderDefault), 4.0f, 0, 1.5f);
+        bridge::show_html_overlay(is_terms ? "/terms.html" : "/privacy.html", body_min.x + kInset,
+                                  body_min.y + kInset, avail.x - 2.0f * kInset,
+                                  avail.y - 2.0f * kInset);
+        ImGui::Dummy(avail);  // consume the region so the ImGui window neither overflows nor scrolls
+    }
+}
+
 void render_doc_body(SettingsModalState& s) {
+    // Deferred Terms<->Privacy swap (nav button: mouse click or keyboard activate). Applied
+    // once here at the top of the body; the pinned header lags by a single frame (the shell
+    // drew it before this body ran), which is imperceptible.
+    if (s.request_doc_switch) {
+        s.request_doc_switch = false;
+        s.doc_kind = (s.doc_kind == SettingsModalState::DocKind::Terms)
+                         ? SettingsModalState::DocKind::Privacy
+                         : SettingsModalState::DocKind::Terms;
+        set_doc_header(s);
+    }
     switch (s.doc_kind) {
         case SettingsModalState::DocKind::About:
             ImGui::TextUnformatted(kAppVersion);
@@ -1372,16 +1485,8 @@ void render_doc_body(SettingsModalState& s) {
             ImGui::PopStyleColor();
             break;
         case SettingsModalState::DocKind::Terms:
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-            ImGui::TextWrapped("Terms of Service: placeholder. The final legal copy is pending "
-                               "(supplied separately).");
-            ImGui::PopStyleColor();
-            break;
         case SettingsModalState::DocKind::Privacy:
-            ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-            ImGui::TextWrapped("Privacy Policy: placeholder. The final legal copy is pending "
-                               "(supplied separately).");
-            ImGui::PopStyleColor();
+            render_doc_html(s, token_u32(theme::ColorToken::BorderFocus));
             break;
     }
 }
@@ -1438,17 +1543,30 @@ modal::ModalContentProvider make_section_reset_provider(SettingsModalState& s) {
 modal::ModalContentProvider make_doc_provider(SettingsModalState& s) {
     modal::ModalContentProvider p{};
     p.header_icon = assets::AssetId::IconSettings;
-    p.header_name = "Legal";
+    // The pinned pill tracks the shown doc: header_name points at s.doc_header, which the
+    // shell reads each frame and set_doc_header (on_open / swap) keeps in sync.
+    p.header_name = s.doc_header.data();
     p.close_focus = kDocClose;
     p.render_body = [&s] { render_doc_body(s); };
-    p.focus_list = [] { return std::span<const backbone::FocusableId>(kDocFocusOrder); };
-    p.initial_focus = kDocClose;
+    // The Next/Prev swap button is a focus stop for Terms/Privacy only; About has just the X.
+    p.focus_list = [&s] {
+        return s.doc_kind == SettingsModalState::DocKind::About
+                   ? std::span<const backbone::FocusableId>(kDocFocusOrderAbout)
+                   : std::span<const backbone::FocusableId>(kDocFocusOrderDoc);
+    };
+    // Leave initial focus unset so it defaults to the first stop of the active list: the
+    // Next/Prev swap button for Terms/Privacy, and the X for About (which has no swap button).
+    p.initial_focus = backbone::kNoFocus;
     p.dispatch = [&s](const backbone::KeyEvent& e) { return dispatch_settings_key(s, e); };
     p.on_open = [&s] {
         s.last_synced_focus = backbone::kNoFocus;
+        set_doc_header(s);  // both entry points (Settings->Legal, Sign Up consent) route here
         populate_doc_registry(s);
     };
-    p.on_close = [&s] { populate_main_registry(s); };  // restore the Settings registry
+    p.on_close = [&s] {
+        bridge::hide_html_overlay();  // release the overlay on every dismiss path (X/Esc/outside)
+        populate_main_registry(s);    // restore the Settings registry
+    };
     return p;
 }
 

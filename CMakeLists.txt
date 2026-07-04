@@ -205,7 +205,11 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         # no GL context under the test compiler), so bridge stays ImGui-free. The
         # real WebGL2 upload (the #ifdef __EMSCRIPTEN__ branch) is compiled into
         # bridge_platform for the wasm app instead (mirrors the audio_backend split).
-        target_sources(bridge PRIVATE src/bridge/texture_bind.cpp)
+        # html_overlay.cpp follows the same split: its no-op (#else) branch here lets
+        # the native `settings` library resolve bridge::show_html_overlay et al.; the
+        # real EM_ASM iframe body compiles into bridge_platform (whose binding baseline
+        # allows EM_ASM's '$' argument placeholders that the pure lib's -Wpedantic rejects).
+        target_sources(bridge PRIVATE src/bridge/texture_bind.cpp src/bridge/html_overlay.cpp)
     endif()
 
     # ---------------------------------------------------------------------
@@ -450,6 +454,7 @@ if(EMSCRIPTEN)
         src/bridge/platform.cpp
         src/bridge/gl_renderer.cpp
         src/bridge/texture_bind.cpp
+        src/bridge/html_overlay.cpp
         src/bridge/cdn_fetch.cpp
         src/bridge/sfx_prefetch.cpp
         src/bridge/tier_orchestrator.cpp
@@ -517,6 +522,23 @@ if(EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/src/bridge/index.html
             $<TARGET_FILE_DIR:poker_trainer>/index.html
         COMMENT "Copying index.html next to the wasm bundle"
+    )
+
+    # The two hosted legal documents (final, unedited legal copy). Same pattern as
+    # index.html: git-tracked source under src/bridge/, copied into the bundle root so the
+    # in-app legal-doc overlay loads them at /privacy.html and /terms.html and they survive
+    # a clean rebuild instead of being deployed by hand.
+    add_custom_command(TARGET poker_trainer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/src/bridge/privacy.html
+            $<TARGET_FILE_DIR:poker_trainer>/privacy.html
+        COMMENT "Copying privacy.html next to the wasm bundle"
+    )
+    add_custom_command(TARGET poker_trainer POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/src/bridge/terms.html
+            $<TARGET_FILE_DIR:poker_trainer>/terms.html
+        COMMENT "Copying terms.html next to the wasm bundle"
     )
 endif()
 

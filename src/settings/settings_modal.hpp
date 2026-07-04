@@ -229,6 +229,13 @@ struct SettingsModalState {
     // Legal document modal: which document the doc modal shows.
     enum class DocKind : std::uint8_t { Terms = 0, Privacy = 1, About = 2 };
     DocKind doc_kind{DocKind::About};
+    // Deferred Terms<->Privacy swap, raised by the doc modal's Next/Prev button (mouse
+    // click or keyboard activate) and applied at the top of the next doc-body render.
+    bool request_doc_switch{false};
+    // The doc modal's pinned pill label, tracking the shown document. The content
+    // provider's header_name points at this stable buffer so the shell draws the live
+    // label ("Terms of Service" / "Privacy Policy" / "About") each frame.
+    std::array<char, 24> doc_header{};
 };
 
 // ----- Exports -----
