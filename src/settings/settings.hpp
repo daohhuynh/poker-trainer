@@ -154,6 +154,11 @@ struct DisplaySettings {
 
     // Particle drift. Controls Tier 1 ambient particle motion. Default ON.
     bool particle_drift{true};
+
+    // Hover/focus tilt. Controls the Tier-1 hover + keyboard-focus "tilt" wobble on
+    // primary nav/menu/action buttons. Independent of particle_drift; also suppressed
+    // by reduce_motion. Default ON.
+    bool hover_tilt{true};
 };
 
 // ----- Section 4: Audio -----

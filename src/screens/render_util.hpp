@@ -18,8 +18,11 @@
 
 #include <imgui.h>
 
+#include "backbone/focus_manager.hpp"
+
 #include "bridge/ambient.hpp"
 #include "bridge/asset_image.hpp"
+#include "bridge/tilt_render.hpp"
 #include "theme/theme_tokens.hpp"
 
 namespace poker_trainer::screens::render_util {
@@ -80,6 +83,23 @@ inline void button(ImDrawList* dl, const animations::Rect& r, const char* label,
     if (focused) {
         focus_outline(dl, r);
     }
+}
+
+// A themed nav / menu button with the Tier-1 ambient breath (optional) + the hover /
+// keyboard-focus tilt applied. VISUAL-ONLY: the caller's click + focus hit-tests must use
+// the ORIGINAL rect `r` — the breath and tilt only move the drawn pixels, never the
+// clickable/focusable region. `mouse` is the live cursor for the hover test; `id` +
+// `focused` drive the focus-tilt channel and the focus outline. `breathe` is true for
+// buttons that also breathe (the Root grid), false for tilt-only buttons (Mode Selection).
+inline void nav_button(ImDrawList* dl, const animations::Rect& r, const char* label,
+                       backbone::FocusableId id, ImVec2 mouse, bool focused,
+                       bool breathe = true) {
+    const bool hovered =
+        mouse.x >= r.x && mouse.x <= r.x + r.w && mouse.y >= r.y && mouse.y <= r.y + r.h;
+    const animations::Rect drawn = breathe ? breathed(r) : r;
+    const ImVec2 center{drawn.x + drawn.w * 0.5f, drawn.y + drawn.h * 0.5f};
+    const bridge::TiltScope tilt(dl, center, bridge::hover_tilt_angle(id, hovered, focused));
+    button(dl, drawn, label, focused);
 }
 
 // How an image slot degrades when its art is unavailable (asset still loading, a

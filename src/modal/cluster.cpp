@@ -17,6 +17,7 @@
 
 #include "bridge/ambient.hpp"
 #include "bridge/asset_image.hpp"
+#include "bridge/tilt_render.hpp"
 
 // Zone 11 — the persistent top-right cluster: rendering (icon glyph on Game /
 // Post-Round, Zone 07's morph-handoff button look on Mode Selection), the offline
@@ -155,6 +156,19 @@ void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx) {
         const bool as_button =
             ctx.style == ClusterStyle::MorphButton && icon != ClusterIcon::Home &&
             icon != ClusterIcon::Close;
+        // Hover/focus tilt on Shop/Help/Settings only — never on Close/Home (leave/close-
+        // adjacent), and never on the Game screen (keep active-play chrome calm). The tilt
+        // is visual-only; cluster_hit_test still keys off the stored, un-tilted ctx.rects.
+        const bool tilt_eligible =
+            ctx.screen != ClusterScreen::Game &&
+            (icon == ClusterIcon::Shop || icon == ClusterIcon::Help ||
+             icon == ClusterIcon::Settings);
+        const ImVec2 center{dr.x + dr.w * 0.5f, dr.y + dr.h * 0.5f};
+        // Only eligible icons drive a tilt slot (keeps Home / Close / the Game-screen
+        // cluster out of the pool entirely).
+        const float tilt_angle =
+            tilt_eligible ? bridge::hover_tilt_angle(ctx.ids[i], hovered, focused) : 0.0f;
+        const bridge::TiltScope tilt(dl, center, tilt_angle);
         if (as_button) {
             draw_button_icon(dl, dr, button_label(icon), focused, hovered);
         } else {

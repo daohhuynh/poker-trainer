@@ -96,16 +96,22 @@ void render_mode_selection_screen() {
     // the Particle drift toggle).
     bridge::render_ambient_particles(dl, canvas.width, canvas.height);
 
-    // STANDARD button (top-left, the Play morph target).
-    ru::button(dl, animations::standard_button_rect(canvas), "STANDARD", focus_on(kFocusStandard));
-
-    // Centered middle row: Aggressor, Caller, Custom (left -> right).
-    ru::button(dl, animations::mode_middle_button_rect(0, canvas), "Aggressor",
-               focus_on(kFocusAggressorButton));
-    ru::button(dl, animations::mode_middle_button_rect(1, canvas), "Caller",
-               focus_on(kFocusCallerButton));
-    ru::button(dl, animations::mode_middle_button_rect(2, canvas), "Custom",
-               focus_on(kFocusCustomButton));
+    // STANDARD (top-left, the Play morph target) + the Aggressor / Caller / Custom row.
+    // These primary menu buttons tilt on hover / keyboard focus (no breathing here —
+    // breathing is Root + cluster only). Click + focus hit-tests use the plain rects.
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    const animations::Rect standard_r = animations::standard_button_rect(canvas);
+    const animations::Rect aggressor_r = animations::mode_middle_button_rect(0, canvas);
+    const animations::Rect caller_r = animations::mode_middle_button_rect(1, canvas);
+    const animations::Rect custom_r = animations::mode_middle_button_rect(2, canvas);
+    ru::nav_button(dl, standard_r, "STANDARD", kFocusStandard, mouse, focus_on(kFocusStandard),
+                   /*breathe=*/false);
+    ru::nav_button(dl, aggressor_r, "Aggressor", kFocusAggressorButton, mouse,
+                   focus_on(kFocusAggressorButton), /*breathe=*/false);
+    ru::nav_button(dl, caller_r, "Caller", kFocusCallerButton, mouse, focus_on(kFocusCallerButton),
+                   /*breathe=*/false);
+    ru::nav_button(dl, custom_r, "Custom", kFocusCustomButton, mouse, focus_on(kFocusCustomButton),
+                   /*breathe=*/false);
 
     render_cluster(dl, canvas);
 }

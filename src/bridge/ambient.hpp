@@ -18,6 +18,8 @@
 // the pure bridge library — compile under the ImGui-free native test compiler; the
 // particle draw's ImGui body lives behind __EMSCRIPTEN__ in the .cpp.
 
+#include "backbone/focus_manager.hpp"  // FocusableId
+
 #include <cstdint>
 #include <functional>
 
@@ -28,6 +30,17 @@ namespace poker_trainer::bridge {
 // ----- Tuning constants (Tier 1 Ambient) -----
 inline constexpr float kBreathAmplitude = 0.02f;  // ±2% scale
 inline constexpr float kBreathHz = 0.5f;          // one full grow/shrink cycle / 2 s
+
+// ----- Hover / focus tilt (Tier-1-adjacent) -----
+// A hover/focus tilt that eases IN to a held peak lean and eases back OUT to rest on
+// leave (not a one-shot wobble): the button leans to kTiltPeakRad while hovered or
+// keyboard-focused and HOLDS there, then settles home once neither. Per-element state
+// (see the .cpp) means the return keeps animating after the cursor / focus moves on, so
+// several buttons can be mid-transition at once (spam-tab or a mouse sweep).
+inline constexpr float kTiltPeakRad = 0.14f;     // held peak lean (~8°); direction random per entry
+inline constexpr float kTiltRiseTauMs = 50.0f;   // quick ease-in to the peak
+inline constexpr float kTiltFallTauMs = 100.0f;  // slightly slower settle back to rest
+inline constexpr float kTiltMaxStepMs = 64.0f;   // per-frame delta clamp (backgrounded tab, etc.)
 
 // Sparse by design: a low count of slow motes reads as atmosphere, not a particle
 // effect. "If in doubt, fewer and slower."
@@ -53,6 +66,12 @@ struct AmbientParticle {
 [[nodiscard]] AmbientParticle ambient_particle_at(int index, std::uint64_t ms, float w,
                                                   float h) noexcept;
 
+// One frame of the tilt ease: moves `progress` (0 = rest, 1 = peak) toward `target`
+// (0 or 1) by an exponential approach over the frame delta `dt_ms` — a quick rise to the
+// peak, a slightly slower settle back. Pure; the per-element progress state lives in the
+// .cpp. Unit-tested.
+[[nodiscard]] float tilt_ease_step(float progress, float target, float dt_ms) noexcept;
+
 // A top-left/bottom-right box in pixels. ImGui-free so the breathing transform stays
 // in the pure bridge library; call sites convert to/from their own rect type.
 struct BreathBox {
@@ -75,11 +94,24 @@ struct BreathBox {
 void set_ambient_gates(std::function<bool()> reduce_motion,
                        std::function<bool()> particle_drift);
 
+// Hover/focus tilt gate seam (wired once in boot). true => the Hover-tilt toggle is
+// ON (default on). The tilt is additionally suppressed by reduce_motion.
+void set_hover_tilt_gate(std::function<bool()> hover_tilt);
+
 // ----- Gated service (render sites call these) -----
 
 // The current breath scale read off the shared clock, or exactly 1.0 when Reduce
 // Motion suppresses Tier 1. Multiply a rect's half-extents by this to breathe it.
 [[nodiscard]] float ambient_breath_scale();
+
+// The current tilt angle (radians) for element `id` given its live hover / keyboard-
+// focus state. Eases toward a held peak lean while hovered or focused and eases back to
+// rest when neither, keeping per-element progress so the return finishes after the
+// cursor / focus leaves. Drives toward rest (0) when Reduce Motion is on OR the Hover-
+// tilt toggle is off. Call it once per frame for every eligible element (hovered or not)
+// so its ease-back advances. Visual-only — callers rotate the button's DRAW vertices
+// about its center, never the hit-test / focus rect.
+[[nodiscard]] float hover_tilt_angle(backbone::FocusableId id, bool hovered, bool focused);
 
 // Draw the ambient particle drift onto `dl`, sized to the `w`×`h` canvas. Intended as
 // a background pass (call it right after a screen's background, before its UI, so the

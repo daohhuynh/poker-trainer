@@ -2,6 +2,7 @@
 
 #include "backbone/animation_clock.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <utility>
@@ -27,6 +28,7 @@ constexpr float kPi = 3.14159265358979323846f;
 // are never exercised — the pure math is tested directly.
 std::function<bool()> g_reduce_motion;   // true => Reduce Motion ON  => Tier 1 off
 std::function<bool()> g_particle_drift;  // true => Particle drift toggle ON
+std::function<bool()> g_hover_tilt;      // true => Hover-tilt toggle ON
 
 [[nodiscard]] bool reduce_motion_on() noexcept {
     return static_cast<bool>(g_reduce_motion) && g_reduce_motion();
@@ -34,6 +36,58 @@ std::function<bool()> g_particle_drift;  // true => Particle drift toggle ON
 // Only read from the particle draw (wasm-only), so it is unused in the native build.
 [[nodiscard, maybe_unused]] bool particle_drift_on() noexcept {
     return static_cast<bool>(g_particle_drift) && g_particle_drift();
+}
+[[nodiscard]] bool hover_tilt_on() noexcept {
+    return !reduce_motion_on() && static_cast<bool>(g_hover_tilt) && g_hover_tilt();
+}
+
+// Per-element tilt progress (0 = rest, 1 = held peak), eased toward the element's active
+// state each frame and eased back when it goes inactive — so a button keeps animating its
+// return AFTER the cursor / focus leaves, and many can be mid-transition at once. A small
+// fixed pool keyed by element id (no per-frame allocation); transient Z05-owned render
+// state, the same file-scope-seam shape as the gates above (CLAUDE.md §10: a Z05 render
+// service, not cross-zone shared state).
+struct TiltSlot {
+    backbone::FocusableId id{};
+    float progress{0.0f};
+    float sign{1.0f};        // current lean direction (+1 / -1); re-rolled on each entry
+    std::uint64_t last_ms{0};
+    bool used{false};
+    bool was_active{false};  // previous frame's active state, for the rest->active edge
+};
+constexpr std::size_t kTiltSlotCount = 24;
+std::array<TiltSlot, kTiltSlotCount> g_tilt_slots{};
+
+[[nodiscard]] TiltSlot& tilt_slot_for(backbone::FocusableId id, std::uint64_t now) noexcept {
+    std::size_t free_slot = kTiltSlotCount;  // sentinel: no free slot seen yet
+    for (std::size_t i = 0; i < kTiltSlotCount; ++i) {
+        if (g_tilt_slots[i].used && g_tilt_slots[i].id == id) {
+            return g_tilt_slots[i];
+        }
+        if (free_slot == kTiltSlotCount && !g_tilt_slots[i].used) {
+            free_slot = i;
+        }
+    }
+    // First sighting of this element: claim a free slot (the pool comfortably exceeds the
+    // handful of eligible buttons, so a free slot is effectively always available).
+    TiltSlot& s = g_tilt_slots[free_slot < kTiltSlotCount ? free_slot : 0];
+    s = TiltSlot{};
+    s.id = id;
+    s.used = true;
+    s.last_ms = now;
+    return s;
+}
+
+// Cosmetic-only PRNG (xorshift32) used to pick a random lean direction on each entry, so
+// hovering / tabbing the same button leans left or right unpredictably — it reads more
+// organic than a fixed per-button side. NOT scenario state: never seeded from a Scenario
+// ID, never persisted, and it has no bearing on scenario reproducibility.
+std::uint32_t g_tilt_rng = 0x9e3779b9u;
+[[nodiscard]] float random_lean_sign() noexcept {
+    g_tilt_rng ^= g_tilt_rng << 13;
+    g_tilt_rng ^= g_tilt_rng >> 17;
+    g_tilt_rng ^= g_tilt_rng << 5;
+    return (g_tilt_rng & 1u) != 0u ? 1.0f : -1.0f;
 }
 
 // Cheap deterministic hash -> [0, 1). `salt` selects an independent parameter stream
@@ -103,6 +157,40 @@ float ambient_breath_scale() {
         return 1.0f;  // Reduce Motion: static
     }
     return ambient_breath_scale_at(backbone::total_ms_since_app_start());
+}
+
+float tilt_ease_step(float progress, float target, float dt_ms) noexcept {
+    // Exponential approach: quick rise to the peak, slightly slower settle back to rest.
+    const float tau = (target > progress) ? kTiltRiseTauMs : kTiltFallTauMs;
+    const float alpha = 1.0f - std::exp(-dt_ms / tau);
+    return progress + (target - progress) * alpha;
+}
+
+void set_hover_tilt_gate(std::function<bool()> hover_tilt) {
+    g_hover_tilt = std::move(hover_tilt);
+}
+
+float hover_tilt_angle(backbone::FocusableId id, bool hovered, bool focused) {
+    const std::uint64_t now = backbone::total_ms_since_app_start();
+    TiltSlot& slot = tilt_slot_for(id, now);
+    float dt_ms = static_cast<float>(now - slot.last_ms);
+    slot.last_ms = now;
+    if (dt_ms > kTiltMaxStepMs) {
+        dt_ms = kTiltMaxStepMs;  // a backgrounded/paused tab must not teleport the tilt
+    }
+    // Target the held peak while hovered or focused, but only while Tier 1 tilt is
+    // enabled; a disabled gate (Reduce Motion / toggle off) drives the target to rest so
+    // any in-flight tilt eases home rather than snapping.
+    const bool active = hover_tilt_on() && (hovered || focused);
+    // On a genuine entry (rest -> active) roll a fresh random lean direction; if the
+    // element re-activates while still mid-lean, keep the current direction so the tilt
+    // never snaps through center.
+    if (active && !slot.was_active && slot.progress < 0.05f) {
+        slot.sign = random_lean_sign();
+    }
+    slot.was_active = active;
+    slot.progress = tilt_ease_step(slot.progress, active ? 1.0f : 0.0f, dt_ms);
+    return slot.progress * slot.sign * kTiltPeakRad;
 }
 
 void render_ambient_particles(ImDrawList* dl, float w, float h) {

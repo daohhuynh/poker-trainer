@@ -310,6 +310,14 @@ struct PostRoundLayout {
 // ----- Render pieces -----
 
 void draw_again(ImDrawList* dl, const anim::Rect& r, AgainState state, bool focused) {
+    // Hover/focus tilt (primary action button). Visual-only — the click + focus hit-tests
+    // key off `r`, which is untouched; only the drawn pixels tilt.
+    const ImVec2 m = ImGui::GetIO().MousePos;
+    const bool hovered = m.x >= r.x && m.x <= r.x + r.w && m.y >= r.y && m.y <= r.y + r.h;
+    const ImVec2 tilt_center{r.x + r.w * 0.5f, r.y + r.h * 0.5f};
+    const bridge::TiltScope tilt(dl, tilt_center,
+                                 bridge::hover_tilt_angle(kFocusAgain, hovered, focused));
+
     const theme::ColorToken fill =
         state == AgainState::Armed ? theme::ColorToken::AgainButtonArmed : theme::ColorToken::ButtonBg;
     dl->AddRectFilled(ImVec2{r.x, r.y}, ImVec2{r.x + r.w, r.y + r.h}, token_u32(fill), 6.0f);

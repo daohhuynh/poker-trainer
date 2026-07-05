@@ -685,6 +685,11 @@ void populate_main_registry(SettingsModalState& s) {
                              s.live->display.particle_drift = !s.live->display.particle_drift;
                              on_setting_change(s, SettingId::ParticleDrift);
                          }});
+    reg.register_element(kDiHoverTilt, bridge::FocusableEntry{.activate = [&s] {
+                             if (s.live == nullptr) return;
+                             s.live->display.hover_tilt = !s.live->display.hover_tilt;
+                             on_setting_change(s, SettingId::HoverTilt);
+                         }});
 
     // Audio
     reg.register_element(kAuMusicType,
@@ -896,6 +901,7 @@ constexpr std::array<BodyFocusOwner, 45> kBodyFocusOwners{{
     {kDiTheme, SettingId::Theme},
     {kDiReduceMotion, SettingId::ReduceMotion},
     {kDiParticleDrift, SettingId::ParticleDrift},
+    {kDiHoverTilt, SettingId::HoverTilt},
     {kAuMusicType, SettingId::MusicType},
     {kAuVolumeSlider, SettingId::Volume},
     {kAuVolumeInput, SettingId::Volume},
@@ -1134,6 +1140,12 @@ void render_display(SettingsModalState& s, ImU32 ring, std::string_view q) {
         if (widget_checkbox(kDiParticleDrift, "Particle drift", d.particle_drift, ring,
                             s.scroll_follow_focus)) {
             on_setting_change(s, SettingId::ParticleDrift);
+        }
+    }
+    if (setting_visible(SettingId::HoverTilt, q)) {
+        if (widget_checkbox(kDiHoverTilt, "Hover tilt", d.hover_tilt, ring,
+                            s.scroll_follow_focus)) {
+            on_setting_change(s, SettingId::HoverTilt);
         }
     }
     ImGui::Spacing();

@@ -175,6 +175,7 @@ std::vector<std::uint8_t> encode_settings(const settings::Settings& s) {
     put_bool(o, d.reduce_motion);
     put_bool(o, d.background_atmospheric_movement);
     put_bool(o, d.particle_drift);
+    put_bool(o, d.hover_tilt);
 
     const settings::AudioSettings& a = s.audio;
     put_u8(o, a.volume);
@@ -247,6 +248,7 @@ std::optional<settings::Settings> decode_settings(std::span<const std::uint8_t> 
     d.reduce_motion = rd.boolean();
     d.background_atmospheric_movement = rd.boolean();
     d.particle_drift = rd.boolean();
+    d.hover_tilt = rd.boolean();
 
     settings::AudioSettings& a = s.audio;
     a.volume = rd.u8();

@@ -1,4 +1,4 @@
-# Poker Trainer V1.1 — Zone Breakdown
+# Poker Trainer V1.0 — Zone Breakdown
 
 This document defines the 14 implementation zones plus Phase 0. Each zone is a parallel-buildable unit with explicit dependencies, owned source paths, and exports.
 

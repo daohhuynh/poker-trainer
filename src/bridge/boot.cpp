@@ -262,6 +262,7 @@ void finish_boot_after_persistence() {
     bridge::set_ambient_gates(
         [] { return g_boot.live_settings.display.reduce_motion; },
         [] { return g_boot.live_settings.display.particle_drift; });
+    bridge::set_hover_tilt_gate([] { return g_boot.live_settings.display.hover_tilt; });
 
     // Wire the LIVE settings into the launch path (scenario generation) and into
     // Zone 09 (its fallback regeneration), then install Zone 09: its Game-screen

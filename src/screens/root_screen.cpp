@@ -79,16 +79,21 @@ void render_root_screen() {
                         ru::SlotFallback::Icon, /*focused=*/false);
 
     // Middle 2x2 grid: Play=TL, Settings=TR, Shop=BL, Help=BR. The draw rects breathe
-    // (Tier-1 ambient); the click handler hit-tests the un-breathed grid rects.
-    ru::button(dl, ru::breathed(animations::root_grid_button_rect(animations::MorphButton::Play, canvas)),
-               "PLAY", focus_on(kFocusRootPlay));
-    ru::button(dl,
-               ru::breathed(animations::root_grid_button_rect(animations::MorphButton::Settings, canvas)),
-               "Settings", focus_on(kFocusRootSettings));
-    ru::button(dl, ru::breathed(animations::root_grid_button_rect(animations::MorphButton::Shop, canvas)),
-               "Shop", focus_on(kFocusRootShop));
-    ru::button(dl, ru::breathed(animations::root_grid_button_rect(animations::MorphButton::Help, canvas)),
-               "Help", focus_on(kFocusRootHelp));
+    // (Tier-1 ambient) and tilt on hover / keyboard focus; click + focus hit-tests use
+    // the un-breathed, un-tilted grid rects.
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    const animations::Rect play_r =
+        animations::root_grid_button_rect(animations::MorphButton::Play, canvas);
+    const animations::Rect settings_r =
+        animations::root_grid_button_rect(animations::MorphButton::Settings, canvas);
+    const animations::Rect shop_r =
+        animations::root_grid_button_rect(animations::MorphButton::Shop, canvas);
+    const animations::Rect help_r =
+        animations::root_grid_button_rect(animations::MorphButton::Help, canvas);
+    ru::nav_button(dl, play_r, "PLAY", kFocusRootPlay, mouse, focus_on(kFocusRootPlay));
+    ru::nav_button(dl, settings_r, "Settings", kFocusRootSettings, mouse, focus_on(kFocusRootSettings));
+    ru::nav_button(dl, shop_r, "Shop", kFocusRootShop, mouse, focus_on(kFocusRootShop));
+    ru::nav_button(dl, help_r, "Help", kFocusRootHelp, mouse, focus_on(kFocusRootHelp));
 
     // Home icon (top-right, stationary anchor of the cluster) image slot.
     ru::draw_image_slot(dl, animations::home_icon_rect(canvas), assets::AssetId::IconHome,

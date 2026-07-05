@@ -73,6 +73,42 @@ TEST(AmbientParticles, AreSubtleAndSoft) {
     }
 }
 
+TEST(HoverTilt, EasesToHeldPeakWhileActive) {
+    // Hovered / focused: progress rises toward 1 and HOLDS there — a held lean, not a
+    // wobble that reverts.
+    float p = 0.0f;
+    for (int i = 0; i < 200; ++i) {  // ~3.2 s at 16 ms/frame
+        p = pt::tilt_ease_step(p, 1.0f, 16.0f);
+    }
+    EXPECT_GT(p, 0.98f);
+    EXPECT_LE(p, 1.0f + 1e-4f);
+}
+
+TEST(HoverTilt, SettlesBackToRestOnLeave) {
+    // On leave the target is 0 and progress eases home (the return keeps animating).
+    float p = 1.0f;
+    for (int i = 0; i < 200; ++i) {
+        p = pt::tilt_ease_step(p, 0.0f, 16.0f);
+    }
+    EXPECT_LT(p, 0.02f);
+    EXPECT_GE(p, -1e-4f);
+}
+
+TEST(HoverTilt, EaseIsMonotonicRisingAndBounded) {
+    float p = 0.0f;
+    for (int i = 0; i < 60; ++i) {
+        const float next = pt::tilt_ease_step(p, 1.0f, 16.0f);
+        EXPECT_GE(next, p - 1e-6f);  // never reverses while the target is the peak
+        EXPECT_LE(next, 1.0f + 1e-4f);
+        p = next;
+    }
+}
+
+TEST(HoverTilt, HeldPeakIsMoreThanAFewDegrees) {
+    // "More aggressive": the held lean is a clearly-visible angle (> ~5°).
+    EXPECT_GT(pt::kTiltPeakRad, 0.087f);  // 0.087 rad ≈ 5°
+}
+
 TEST(AmbientParticles, DriftIsVariedNotUniform) {
     constexpr float w = 800.0f;
     constexpr float h = 600.0f;
