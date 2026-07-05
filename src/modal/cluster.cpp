@@ -15,6 +15,7 @@
 
 #include <imgui.h>
 
+#include "bridge/ambient.hpp"
 #include "bridge/asset_image.hpp"
 
 // Zone 11 — the persistent top-right cluster: rendering (icon glyph on Game /
@@ -137,20 +138,27 @@ void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx) {
     }
 
     const ImVec2 mouse = ImGui::GetIO().MousePos;
+    // Tier-1 ambient breath, applied to the DRAW rect only. Hover/focus/hit-testing all
+    // key off the stored (un-breathed) ctx.rects, so the ±2% wobble never shifts a click
+    // target.
+    const float breath = bridge::ambient_breath_scale();
     for (std::size_t i = 0; i < ctx.rects.size(); ++i) {
         const ClusterIcon icon = icon_for_index(ctx.screen, i);
         const animations::Rect& r = ctx.rects[i];
         const bool hovered = point_in(r, mouse.x, mouse.y);
         const bool focused = focused_on(ctx.ids[i]);
+        const bridge::BreathBox bb =
+            bridge::breathe_box(bridge::BreathBox{r.x, r.y, r.x + r.w, r.y + r.h}, breath);
+        const animations::Rect dr{bb.x0, bb.y0, bb.x1 - bb.x0, bb.y1 - bb.y0};
         // Mode Selection draws Shop/Help/Settings as morph buttons; Home/Close (and
         // every Game / Post-Round icon) render as glyphs.
         const bool as_button =
             ctx.style == ClusterStyle::MorphButton && icon != ClusterIcon::Home &&
             icon != ClusterIcon::Close;
         if (as_button) {
-            draw_button_icon(dl, r, button_label(icon), focused, hovered);
+            draw_button_icon(dl, dr, button_label(icon), focused, hovered);
         } else {
-            draw_glyph_icon(dl, r, asset_for_icon(icon), focused, hovered);
+            draw_glyph_icon(dl, dr, asset_for_icon(icon), focused, hovered);
         }
     }
 

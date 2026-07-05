@@ -70,19 +70,25 @@ void render_root_screen() {
     ru::draw_image_slot(dl, canvas_rect(canvas), assets::AssetId::BackgroundRoot,
                         ru::SlotFallback::Background, /*focused=*/false);
 
+    // Tier-1 ambient particle drift, behind the UI (self-gates on Reduce Motion +
+    // the Particle drift toggle).
+    bridge::render_ambient_particles(dl, canvas.width, canvas.height);
+
     // Logo (top-left) image slot.
     ru::draw_image_slot(dl, animations::logo_rect(canvas), assets::AssetId::AppLogo,
                         ru::SlotFallback::Icon, /*focused=*/false);
 
-    // Middle 2x2 grid: Play=TL, Settings=TR, Shop=BL, Help=BR.
-    ru::button(dl, animations::root_grid_button_rect(animations::MorphButton::Play, canvas), "PLAY",
-               focus_on(kFocusRootPlay));
-    ru::button(dl, animations::root_grid_button_rect(animations::MorphButton::Settings, canvas),
+    // Middle 2x2 grid: Play=TL, Settings=TR, Shop=BL, Help=BR. The draw rects breathe
+    // (Tier-1 ambient); the click handler hit-tests the un-breathed grid rects.
+    ru::button(dl, ru::breathed(animations::root_grid_button_rect(animations::MorphButton::Play, canvas)),
+               "PLAY", focus_on(kFocusRootPlay));
+    ru::button(dl,
+               ru::breathed(animations::root_grid_button_rect(animations::MorphButton::Settings, canvas)),
                "Settings", focus_on(kFocusRootSettings));
-    ru::button(dl, animations::root_grid_button_rect(animations::MorphButton::Shop, canvas), "Shop",
-               focus_on(kFocusRootShop));
-    ru::button(dl, animations::root_grid_button_rect(animations::MorphButton::Help, canvas), "Help",
-               focus_on(kFocusRootHelp));
+    ru::button(dl, ru::breathed(animations::root_grid_button_rect(animations::MorphButton::Shop, canvas)),
+               "Shop", focus_on(kFocusRootShop));
+    ru::button(dl, ru::breathed(animations::root_grid_button_rect(animations::MorphButton::Help, canvas)),
+               "Help", focus_on(kFocusRootHelp));
 
     // Home icon (top-right, stationary anchor of the cluster) image slot.
     ru::draw_image_slot(dl, animations::home_icon_rect(canvas), assets::AssetId::IconHome,

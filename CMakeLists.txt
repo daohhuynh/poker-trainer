@@ -186,6 +186,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/bridge/tier_schedule.cpp
         src/bridge/settings_persistence.cpp
         src/bridge/persistent_weights_store.cpp
+        src/bridge/ambient.cpp
     )
     target_include_directories(bridge PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(bridge PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
@@ -714,6 +715,7 @@ if(ENABLE_TESTS)
         tests/bridge/focus_reconcile_test.cpp
         tests/bridge/frame_tick_test.cpp
         tests/bridge/auth_outcome_test.cpp
+        tests/bridge/ambient_test.cpp
     )
     target_include_directories(bridge_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src

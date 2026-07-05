@@ -51,7 +51,6 @@ enum class SettingId : std::uint16_t {
     // Display
     Theme,
     ReduceMotion,
-    BackgroundMovement,
     ParticleDrift,
     // Audio
     MusicType,
@@ -90,7 +89,7 @@ struct SettingEntry {
 // The full searchable catalog, in body order. Every blob is authored lowercase and
 // begins with the section name so a section query ("gameplay", "account") resolves to
 // every control in that section (kills the "account hits / gameplay misses" asymmetry).
-inline constexpr std::array<SettingEntry, 29> kSettingCatalog{{
+inline constexpr std::array<SettingEntry, 28> kSettingCatalog{{
     {SettingId::StreetWeights, "Street split weights", SettingsSection::Gameplay,
      "gameplay street split weights pre-flop preflop flop turn river save reset sum applies next game"},
     {SettingId::ChipDenomination, "Chip denomination mode", SettingsSection::Gameplay,
@@ -109,8 +108,6 @@ inline constexpr std::array<SettingEntry, 29> kSettingCatalog{{
      "display color colour theme palette no limit slate ocean sage"},
     {SettingId::ReduceMotion, "Reduce motion", SettingsSection::Display,
      "display reduce motion accessibility"},
-    {SettingId::BackgroundMovement, "Background atmospheric movement", SettingsSection::Display,
-     "display background atmospheric movement ambient"},
     {SettingId::ParticleDrift, "Particle drift", SettingsSection::Display,
      "display particle drift particles"},
     {SettingId::MusicType, "Music type", SettingsSection::Audio,

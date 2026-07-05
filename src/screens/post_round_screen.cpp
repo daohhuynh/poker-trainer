@@ -460,6 +460,10 @@ void render_post_round_screen(PostRoundRuntime& runtime) {
     render_util::draw_image_slot(dl, anim::Rect{0.0f, 0.0f, w, h}, assets::AssetId::BackgroundMode,
                                  render_util::SlotFallback::Background, false);
 
+    // Tier-1 ambient particle drift, behind the dealer + stat modal (self-gates on
+    // Reduce Motion + the Particle drift toggle).
+    bridge::render_ambient_particles(dl, w, h);
+
     // Front-facing dealer.
     ImVec2 dealer_tl{l.dealer.x, l.dealer.y};
     ImVec2 dealer_br{l.dealer.x + l.dealer.w, l.dealer.y + l.dealer.h};

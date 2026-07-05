@@ -62,12 +62,12 @@ TEST(BugB, FixedAndFixedChipDenominationsResolveChipMode) {
     EXPECT_TRUE(st::setting_visible(st::SettingId::ChipDenomination, "fixed"));
     EXPECT_TRUE(st::setting_visible(st::SettingId::ChipDenomination, "fixed chip denominations"));
     // "fixed" must not leak into unrelated entries.
-    EXPECT_FALSE(st::setting_visible(st::SettingId::BackgroundMovement, "fixed"));
+    EXPECT_FALSE(st::setting_visible(st::SettingId::ParticleDrift, "fixed"));
 }
 
-TEST(BugB, CashReturnsUnitsButNotBackgroundMovement) {
+TEST(BugB, CashReturnsUnitsButNotParticleDrift) {
     EXPECT_TRUE(st::setting_visible(st::SettingId::UnitToggle, "cash"));
-    EXPECT_FALSE(st::setting_visible(st::SettingId::BackgroundMovement, "cash"));  // no false positive
+    EXPECT_FALSE(st::setting_visible(st::SettingId::ParticleDrift, "cash"));  // no false positive
 }
 
 TEST(BugB, NonsenseQueryIsEmptyResult) {

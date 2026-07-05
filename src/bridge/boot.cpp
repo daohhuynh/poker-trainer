@@ -1,5 +1,6 @@
 #include "bridge/boot.hpp"
 
+#include "bridge/ambient.hpp"
 #include "bridge/bridge_runtime.hpp"
 #include "bridge/cdn_fetch.hpp"
 #include "bridge/game_launch.hpp"
@@ -253,6 +254,14 @@ void finish_boot_after_persistence() {
     screens::install_screens(g_boot.screens, *g_boot.weights_store);
 
     const auto live_settings_source = [] { return g_boot.live_settings; };
+
+    // SEAM(Z05 Tier-1 Ambient): gate the ambient motion layer (button/dealer breathing
+    // + particle drift) on the live settings. Reduce Motion suppresses all of Tier 1;
+    // the Particle drift toggle independently controls the drift. Read as two bools so
+    // no full Settings copy happens per frame.
+    bridge::set_ambient_gates(
+        [] { return g_boot.live_settings.display.reduce_motion; },
+        [] { return g_boot.live_settings.display.particle_drift; });
 
     // Wire the LIVE settings into the launch path (scenario generation) and into
     // Zone 09 (its fallback regeneration), then install Zone 09: its Game-screen

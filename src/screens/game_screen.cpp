@@ -35,6 +35,7 @@
 
 #include <imgui.h>
 
+#include "bridge/ambient.hpp"
 #include "bridge/game_launch.hpp"
 #include "bridge/screen_dispatch.hpp"
 
@@ -203,6 +204,10 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
     // 1) Room + table (behind everything). First-person: the authored art recedes
     //    from the camera; everything below is positioned into that frame.
     rnd::draw_table(dl, layout);
+
+    // 1a) Tier-1 ambient particle drift, over the felt but under the chips/cards/HUD
+    //     (self-gates on Reduce Motion + the Particle drift toggle).
+    bridge::render_ambient_particles(dl, vp->Size.x, vp->Size.y);
 
     // 2) Denomination set: drives every chip cluster (pot, opponent stacks, bet).
     const std::span<const rnd::Denomination> set =

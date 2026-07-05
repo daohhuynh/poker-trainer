@@ -18,10 +18,20 @@
 
 #include <imgui.h>
 
+#include "bridge/ambient.hpp"
 #include "bridge/asset_image.hpp"
 #include "theme/theme_tokens.hpp"
 
 namespace poker_trainer::screens::render_util {
+
+// Apply the Tier-1 ambient "breath" (±2% sine scale about the rect's center) to a draw
+// rect. Visual only — call sites keep the original rect for hit-testing. Returns the
+// rect unchanged when Reduce Motion is on (ambient_breath_scale() == 1.0).
+[[nodiscard]] inline animations::Rect breathed(const animations::Rect& r) {
+    const bridge::BreathBox b = bridge::breathe_box(
+        bridge::BreathBox{r.x, r.y, r.x + r.w, r.y + r.h}, bridge::ambient_breath_scale());
+    return animations::Rect{b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0};
+}
 
 [[nodiscard]] inline ImVec2 top_left(const animations::Rect& r) noexcept {
     return ImVec2{r.x, r.y};

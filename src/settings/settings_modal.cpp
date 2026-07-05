@@ -680,12 +680,6 @@ void populate_main_registry(SettingsModalState& s) {
                              s.live->display.reduce_motion = !s.live->display.reduce_motion;
                              on_setting_change(s, SettingId::ReduceMotion);
                          }});
-    reg.register_element(kDiBackgroundMovement, bridge::FocusableEntry{.activate = [&s] {
-                             if (s.live == nullptr) return;
-                             s.live->display.background_atmospheric_movement =
-                                 !s.live->display.background_atmospheric_movement;
-                             on_setting_change(s, SettingId::BackgroundMovement);
-                         }});
     reg.register_element(kDiParticleDrift, bridge::FocusableEntry{.activate = [&s] {
                              if (s.live == nullptr) return;
                              s.live->display.particle_drift = !s.live->display.particle_drift;
@@ -901,7 +895,6 @@ constexpr std::array<BodyFocusOwner, 45> kBodyFocusOwners{{
     {kUnUnitToggle, SettingId::UnitToggle},
     {kDiTheme, SettingId::Theme},
     {kDiReduceMotion, SettingId::ReduceMotion},
-    {kDiBackgroundMovement, SettingId::BackgroundMovement},
     {kDiParticleDrift, SettingId::ParticleDrift},
     {kAuMusicType, SettingId::MusicType},
     {kAuVolumeSlider, SettingId::Volume},
@@ -1135,12 +1128,6 @@ void render_display(SettingsModalState& s, ImU32 ring, std::string_view q) {
     if (setting_visible(SettingId::ReduceMotion, q)) {
         if (widget_checkbox(kDiReduceMotion, "Reduce motion", d.reduce_motion, ring, s.scroll_follow_focus)) {
             on_setting_change(s, SettingId::ReduceMotion);
-        }
-    }
-    if (setting_visible(SettingId::BackgroundMovement, q)) {
-        if (widget_checkbox(kDiBackgroundMovement, "Background atmospheric movement",
-                            d.background_atmospheric_movement, ring, s.scroll_follow_focus)) {
-            on_setting_change(s, SettingId::BackgroundMovement);
         }
     }
     if (setting_visible(SettingId::ParticleDrift, q)) {

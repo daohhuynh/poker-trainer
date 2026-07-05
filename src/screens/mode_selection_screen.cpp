@@ -92,6 +92,10 @@ void render_mode_selection_screen() {
                         assets::AssetId::BackgroundMode, ru::SlotFallback::Background,
                         /*focused=*/false);
 
+    // Tier-1 ambient particle drift, behind the UI (self-gates on Reduce Motion +
+    // the Particle drift toggle).
+    bridge::render_ambient_particles(dl, canvas.width, canvas.height);
+
     // STANDARD button (top-left, the Play morph target).
     ru::button(dl, animations::standard_button_rect(canvas), "STANDARD", focus_on(kFocusStandard));
 

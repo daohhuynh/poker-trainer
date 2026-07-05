@@ -2,6 +2,7 @@
 
 #include "theme/theme_tokens.hpp"
 
+#include "bridge/ambient.hpp"
 #include "bridge/texture_bind.hpp"
 
 #include <algorithm>
@@ -45,8 +46,13 @@ bool draw_image_alpha(ImDrawList* dl, ImVec2 p_min, ImVec2 p_max, assets::AssetI
 }
 
 void draw_front_dealer(ImDrawList* dl, const FrontDealerRender& params) {
-    const ImVec2 tl = *params.top_left;
-    const ImVec2 br = *params.bottom_right;
+    // Tier-1 ambient breath (±2% about the dealer's center; a no-op under Reduce Motion).
+    const bridge::BreathBox bb = bridge::breathe_box(
+        bridge::BreathBox{params.top_left->x, params.top_left->y, params.bottom_right->x,
+                          params.bottom_right->y},
+        bridge::ambient_breath_scale());
+    const ImVec2 tl{bb.x0, bb.y0};
+    const ImVec2 br{bb.x1, bb.y1};
     const float dealer_alpha = params.dealer_alpha;
 
     if (params.frog_active) {

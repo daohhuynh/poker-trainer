@@ -5,6 +5,7 @@
 #include <imgui.h>
 
 #include "assets/asset_paths.hpp"
+#include "bridge/ambient.hpp"
 #include "bridge/asset_image.hpp"
 
 namespace poker_trainer::render {
@@ -21,8 +22,14 @@ void draw_dealer(ImDrawList* dl, const GameLayout& layout, bool frog_active) {
     if (dl == nullptr) {
         return;
     }
-    const ImVec2 tl{layout.dealer_tl.x, layout.dealer_tl.y};
-    const ImVec2 br{layout.dealer_tl.x + layout.dealer_w, layout.dealer_tl.y + layout.dealer_h};
+    // Tier-1 ambient breath (±2% about the dealer's center; a no-op under Reduce Motion).
+    const bridge::BreathBox bb = bridge::breathe_box(
+        bridge::BreathBox{layout.dealer_tl.x, layout.dealer_tl.y,
+                          layout.dealer_tl.x + layout.dealer_w,
+                          layout.dealer_tl.y + layout.dealer_h},
+        bridge::ambient_breath_scale());
+    const ImVec2 tl{bb.x0, bb.y0};
+    const ImVec2 br{bb.x1, bb.y1};
 
     // Dealer art via the shared texture-bind seam: the side-profile Butler, or the
     // Frog base when the 22-click easter egg is active. The Butler<->Frog swap is
