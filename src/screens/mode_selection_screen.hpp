@@ -15,8 +15,12 @@
 #include "backbone/game_mode.hpp"
 #include "backbone/screen_state.hpp"
 
+#include "bridge/screen_dispatch.hpp"
+
 #include <array>
+#include <cstddef>
 #include <optional>
+#include <span>
 
 namespace poker_trainer::screens {
 
@@ -90,9 +94,24 @@ inline constexpr std::array<backbone::FocusableId, 8> kModeSelectionFocusOrder{
 };
 
 // Register the Mode Selection focus list as the base context. Called on screen
-// entry (idempotent — register_focus_list replaces the active list).
+// entry (idempotent — register_focus_list replaces the active list). When the "Show
+// Shop button" setting is off, the Shop slot is dropped so Tab skips the hidden icon
+// (the cluster likewise stops drawing / hit-testing it). register_focus_list copies the
+// span, so the local filtered buffer is safe.
 inline void register_mode_selection_focus_list() noexcept {
-    backbone::register_focus_list(backbone::ScreenId::ModeSelection, kModeSelectionFocusOrder);
+    if (bridge::shop_icon_visible()) {
+        backbone::register_focus_list(backbone::ScreenId::ModeSelection, kModeSelectionFocusOrder);
+        return;
+    }
+    std::array<backbone::FocusableId, kModeSelectionFocusOrder.size() - 1> filtered{};
+    std::size_t n = 0;
+    for (const backbone::FocusableId id : kModeSelectionFocusOrder) {
+        if (id != kFocusModeShop) {
+            filtered[n++] = id;
+        }
+    }
+    backbone::register_focus_list(backbone::ScreenId::ModeSelection,
+                                  std::span<const backbone::FocusableId>{filtered.data(), n});
 }
 
 // ----- Keyboard activation (Space / Enter) ------------------------------------

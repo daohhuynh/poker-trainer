@@ -46,6 +46,12 @@ inline constexpr float kTiltMaxStepMs = 64.0f;   // per-frame delta clamp (backg
 // effect. "If in doubt, fewer and slower."
 inline constexpr int kAmbientParticleCount = 24;
 
+// ----- Tier-2 cursor parallax (tilt-set only) -----
+// The tilt-set elements (Root buttons + the tilt-eligible cluster icons) drift a few
+// pixels INVERSE to the cursor's offset from screen center, for passive depth — in the
+// spirit of the ±2% breath. Subtle: clamped to ±kParallaxMaxPx at the screen edges.
+inline constexpr float kParallaxMaxPx = 4.0f;  // max inverse shift (within the 2–5px band)
+
 // ----- Pure math (no ImGui, no settings — unit-tested) -----
 
 // The breathing scale at absolute clock time `ms`: 1 ± 2% on a 0.5 Hz sine, so one
@@ -98,6 +104,27 @@ void set_ambient_gates(std::function<bool()> reduce_motion,
 // ON (default on). The tilt is additionally suppressed by reduce_motion.
 void set_hover_tilt_gate(std::function<bool()> hover_tilt);
 
+// ----- OS prefers-reduced-motion (Display Settings: "additionally honored at runtime") -----
+//
+// The effective reduce-motion state that gates EVERY motion tier is the in-app Reduce
+// Motion toggle OR the OS `prefers-reduced-motion: reduce` media query — either "reduce"
+// input wins (a pure OR; neither the toggle being off nor the OS being unset overrides the
+// other). The in-app toggle stays the user's stored value; the OS query is a separate input
+// stored here, never written back to settings.
+//
+// The actual matchMedia query is a browser binding and lives in platform.cpp (compiled with
+// the binding warning baseline that permits EM_ASM); it feeds the sampled value in through
+// set_os_reduced_motion so this pure library — held to -Wpedantic — stays EM_ASM-free.
+
+// Store the latest OS prefers-reduced-motion sample (platform.cpp calls this). Native tests
+// never call it, so the OS input stays false there.
+void set_os_reduced_motion(bool reduced) noexcept;
+
+// The single effective reduce-motion state: the in-app Reduce Motion toggle OR the OS
+// prefers-reduced-motion query. Every motion tier (Tier-1 breath/particles, the hover tilt,
+// the Root→Mode morph, the Caller chip-push, Tier-2 cursor parallax) funnels through this.
+[[nodiscard]] bool effective_reduce_motion();
+
 // ----- Gated service (render sites call these) -----
 
 // The current breath scale read off the shared clock, or exactly 1.0 when Reduce
@@ -112,6 +139,18 @@ void set_hover_tilt_gate(std::function<bool()> hover_tilt);
 // so its ease-back advances. Visual-only — callers rotate the button's DRAW vertices
 // about its center, never the hit-test / focus rect.
 [[nodiscard]] float hover_tilt_angle(backbone::FocusableId id, bool hovered, bool focused);
+
+// Tier-2 cursor parallax offset (pixels) for a tilt-set element, given the live cursor and
+// the viewport size. A small shift INVERSE to the cursor's displacement from screen center,
+// clamped to ±kParallaxMaxPx. Same gating as hover_tilt_angle: {0,0} when the effective
+// reduce-motion state is on OR the Hover-tilt toggle is off. VISUAL-ONLY — add it to a DRAW
+// rect, never the hit-test / focus rect (the same discipline as breath and tilt).
+struct ParallaxOffset {
+    float dx{0.0f};
+    float dy{0.0f};
+};
+[[nodiscard]] ParallaxOffset cursor_parallax_offset(float mouse_x, float mouse_y,
+                                                    float viewport_w, float viewport_h);
 
 // Draw the ambient particle drift onto `dl`, sized to the `w`×`h` canvas. Intended as
 // a background pass (call it right after a screen's background, before its UI, so the

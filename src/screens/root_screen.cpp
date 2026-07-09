@@ -95,9 +95,11 @@ void render_root_screen() {
     ru::nav_button(dl, shop_r, "Shop", kFocusRootShop, mouse, focus_on(kFocusRootShop));
     ru::nav_button(dl, help_r, "Help", kFocusRootHelp, mouse, focus_on(kFocusRootHelp));
 
-    // Home icon (top-right, stationary anchor of the cluster) image slot.
-    ru::draw_image_slot(dl, animations::home_icon_rect(canvas), assets::AssetId::IconHome,
-                        ru::SlotFallback::Icon, focus_on(kFocusRootHome));
+    // Home icon (top-right, stationary anchor of the cluster): a full persistent button —
+    // breath + hover/focus tilt + cursor parallax, like the grid buttons. Hit-testing still
+    // uses the original home_icon_rect (visual-only motion).
+    ru::nav_image_slot(dl, animations::home_icon_rect(canvas), assets::AssetId::IconHome,
+                       ru::SlotFallback::Icon, kFocusRootHome, mouse, focus_on(kFocusRootHome));
 
     // The persistent "Training tool, no real money." disclaimer, in the same spot it occupies
     // on every other screen. Root draws no cluster, so pass the exact rects the Mode Selection

@@ -53,6 +53,30 @@ void register_overlay_renderer(OverlayRenderFn renderer);
 // after the active screen renders. A no-op when no overlay is registered.
 void render_overlay();
 
+// ----- Persistent-cluster Shop-icon visibility gate (Settings: "Show Shop button") -----
+//
+// The persistent cluster (Zone 11) renders across the Mode Selection / Game / Post-Round
+// screens. When the user hides the Shop button, the Shop icon must not draw, must not
+// hit-test, and must be skipped in every screen's Tab order. Like the ambient / hover-tilt
+// gates, boot wires a single live-settings reader once; the cluster render + hit-test and
+// each screen's focus-list registration consult it. Lives in the bridge (not Zone 11) so the
+// Game focus list — built in Zone 09, which does not depend on Zone 11 — can read the same
+// gate. Defaults to VISIBLE when unwired (native tests), preserving the with-Shop focus order.
+void set_shop_icon_visible_gate(std::function<bool()> visible);
+[[nodiscard]] bool shop_icon_visible() noexcept;
+
+// ----- Offline hint (browser connectivity) for the offline indicator -----
+//
+// The offline sync indicator normally shows on a failed sync ATTEMPT (SyncStatus::
+// SyncFailing). That means simply going offline — without a state change to fail-push —
+// surfaces nothing. Boot wires this hint to "authenticated AND the browser reports offline"
+// (navigator.onLine), and the indicator ORs it with the sync status so a logged-in user who
+// drops connectivity sees the indicator immediately. Lives in the bridge so the Zone 11
+// indicator can read it without a Zone 04 / platform dependency. Default false (unwired /
+// native tests / guests).
+void set_offline_hint_gate(std::function<bool()> hint);
+[[nodiscard]] bool offline_hint() noexcept;
+
 // Clear all registrations (screen renderers + overlay). Used by tests.
 void reset_screen_dispatch_for_testing() noexcept;
 

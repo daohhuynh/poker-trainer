@@ -96,7 +96,14 @@ inline void nav_button(ImDrawList* dl, const animations::Rect& r, const char* la
                        bool breathe = true) {
     const bool hovered =
         mouse.x >= r.x && mouse.x <= r.x + r.w && mouse.y >= r.y && mouse.y <= r.y + r.h;
-    const animations::Rect drawn = breathe ? breathed(r) : r;
+    animations::Rect drawn = breathe ? breathed(r) : r;
+    // Tier-2 cursor parallax: shift the DRAW rect a few px inverse to the cursor (a no-op
+    // when Reduce Motion is on or the Hover-tilt toggle is off — same gating as the tilt).
+    // Visual-only: `r` (the hit-test / focus region) is never shifted.
+    const ImVec2 vp = ImGui::GetMainViewport()->Size;
+    const bridge::ParallaxOffset px = bridge::cursor_parallax_offset(mouse.x, mouse.y, vp.x, vp.y);
+    drawn.x += px.dx;
+    drawn.y += px.dy;
     const ImVec2 center{drawn.x + drawn.w * 0.5f, drawn.y + drawn.h * 0.5f};
     const bridge::TiltScope tilt(dl, center, bridge::hover_tilt_angle(id, hovered, focused));
     button(dl, drawn, label, focused);
@@ -131,6 +138,26 @@ inline void draw_image_slot(ImDrawList* dl, const animations::Rect& r, assets::A
     if (focused) {
         focus_outline(dl, r);
     }
+}
+
+// An image-based persistent button (e.g. the Root Home icon) with the SAME motion treatment
+// as nav_button — the Tier-1 breath, the Tier-2 cursor parallax, and the hover / keyboard-
+// focus tilt — so an icon button reads identically to the labeled ones. VISUAL-ONLY: the
+// caller's click + focus hit-tests must use the ORIGINAL rect `r`; the breath/parallax/tilt
+// only move the drawn pixels.
+inline void nav_image_slot(ImDrawList* dl, const animations::Rect& r, assets::AssetId id,
+                           SlotFallback fallback, backbone::FocusableId focus_id, ImVec2 mouse,
+                           bool focused, bool breathe = true) {
+    const bool hovered =
+        mouse.x >= r.x && mouse.x <= r.x + r.w && mouse.y >= r.y && mouse.y <= r.y + r.h;
+    animations::Rect drawn = breathe ? breathed(r) : r;
+    const ImVec2 vp = ImGui::GetMainViewport()->Size;
+    const bridge::ParallaxOffset px = bridge::cursor_parallax_offset(mouse.x, mouse.y, vp.x, vp.y);
+    drawn.x += px.dx;
+    drawn.y += px.dy;
+    const ImVec2 center{drawn.x + drawn.w * 0.5f, drawn.y + drawn.h * 0.5f};
+    const bridge::TiltScope tilt(dl, center, bridge::hover_tilt_angle(focus_id, hovered, focused));
+    draw_image_slot(dl, drawn, id, fallback, focused);
 }
 
 }  // namespace poker_trainer::screens::render_util

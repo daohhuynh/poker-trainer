@@ -5,6 +5,7 @@
 #include "modal/help_modal.hpp"
 #include "modal/leaderboard_view.hpp"
 #include "modal/modals.hpp"
+#include "modal/offline_indicator.hpp"
 #include "modal/outage_banner.hpp"
 #include "modal/shop_view.hpp"
 
@@ -465,6 +466,11 @@ void render_modal_overlay() {
 
     // The outage banner renders above any modal (top-center foreground).
     render_outage_banner(g_runtime->banner);
+
+    // The offline sync indicator: a bottom-right corner line, drawn on the FOREGROUND draw
+    // list so it sits above an open modal and shows on EVERY screen (this overlay runs every
+    // frame, before/independent of the cluster). Self-gates on sync_state.
+    render_offline_indicator(ImGui::GetForegroundDrawList());
 }
 
 // ===== Keyboard handlers =====

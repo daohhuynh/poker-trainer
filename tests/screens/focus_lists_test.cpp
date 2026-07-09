@@ -10,6 +10,8 @@
 
 #include "backbone/focus_manager.hpp"
 
+#include "bridge/screen_dispatch.hpp"
+
 #include <cstdint>
 #include <vector>
 
@@ -17,6 +19,7 @@
 
 namespace sc = poker_trainer::screens;
 namespace bb = poker_trainer::backbone;
+namespace br = poker_trainer::bridge;
 
 namespace {
 
@@ -41,7 +44,10 @@ protected:
         bb::reset_focus_manager_for_testing();
         bb::activate_keyboard_mode();  // otherwise get_focused_element returns kNoFocus
     }
-    void TearDown() override { bb::reset_focus_manager_for_testing(); }
+    void TearDown() override {
+        bb::reset_focus_manager_for_testing();
+        br::set_shop_icon_visible_gate(nullptr);  // restore the default (Shop visible)
+    }
 };
 
 }  // namespace
@@ -70,6 +76,24 @@ TEST_F(FocusListTest, ModeSelectionOrderAndWrap) {
     };
     EXPECT_EQ(walk_forward(sc::kFocusStandard, want.size()), want);
     EXPECT_EQ(focused(), sc::kFocusStandard.value);  // wrapped Home -> STANDARD
+}
+
+TEST_F(FocusListTest, ModeSelectionShopHiddenSkipsShopStop) {
+    // "Show Shop button" off: the Shop stop is dropped from the Tab order (the cluster
+    // likewise stops drawing / hit-testing it), so Tab can never land on the hidden icon.
+    br::set_shop_icon_visible_gate([] { return false; });
+    sc::register_mode_selection_focus_list();
+    const std::vector<std::uint64_t> want{
+        sc::kFocusStandard.value,     sc::kFocusAggressorButton.value, sc::kFocusCallerButton.value,
+        sc::kFocusCustomButton.value, sc::kFocusModeHelp.value,        sc::kFocusModeSettings.value,
+        sc::kFocusModeHome.value,
+    };
+    EXPECT_EQ(walk_forward(sc::kFocusStandard, want.size()), want);
+    EXPECT_EQ(focused(), sc::kFocusStandard.value);  // wrapped Home -> STANDARD, no Shop stop
+
+    // Snapping to the hidden Shop id is a no-op (it is not in the active list).
+    bb::snap_focus_to(sc::kFocusModeShop);
+    EXPECT_NE(focused(), sc::kFocusModeShop.value);
 }
 
 TEST_F(FocusListTest, SnapMovesPointer) {

@@ -1,7 +1,6 @@
 #include "modal/modals.hpp"
 
 #include "modal/modal_base.hpp"
-#include "modal/offline_indicator.hpp"
 
 #include "backbone/focus_manager.hpp"
 #include "backbone/screen_state.hpp"
@@ -17,6 +16,7 @@
 
 #include "bridge/ambient.hpp"
 #include "bridge/asset_image.hpp"
+#include "bridge/screen_dispatch.hpp"
 #include "bridge/tilt_render.hpp"
 
 // Zone 11 — the persistent top-right cluster: rendering (icon glyph on Game /
@@ -143,26 +143,42 @@ void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx) {
     // key off the stored (un-breathed) ctx.rects, so the ±2% wobble never shifts a click
     // target.
     const float breath = bridge::ambient_breath_scale();
+    const bool shop_visible = bridge::shop_icon_visible();
     for (std::size_t i = 0; i < ctx.rects.size(); ++i) {
         const ClusterIcon icon = icon_for_index(ctx.screen, i);
+        // "Show Shop button" off: the Shop icon is not drawn (its slot stays empty; the
+        // remaining icons keep their positions, so the group is simply narrower on the
+        // left). It is likewise skipped in hit-testing + focus resolution below.
+        if (icon == ClusterIcon::Shop && !shop_visible) {
+            continue;
+        }
         const animations::Rect& r = ctx.rects[i];
         const bool hovered = point_in(r, mouse.x, mouse.y);
         const bool focused = focused_on(ctx.ids[i]);
         const bridge::BreathBox bb =
             bridge::breathe_box(bridge::BreathBox{r.x, r.y, r.x + r.w, r.y + r.h}, breath);
-        const animations::Rect dr{bb.x0, bb.y0, bb.x1 - bb.x0, bb.y1 - bb.y0};
+        animations::Rect dr{bb.x0, bb.y0, bb.x1 - bb.x0, bb.y1 - bb.y0};
         // Mode Selection draws Shop/Help/Settings as morph buttons; Home/Close (and
         // every Game / Post-Round icon) render as glyphs.
         const bool as_button =
             ctx.style == ClusterStyle::MorphButton && icon != ClusterIcon::Home &&
             icon != ClusterIcon::Close;
-        // Hover/focus tilt on Shop/Help/Settings only — never on Close/Home (leave/close-
-        // adjacent), and never on the Game screen (keep active-play chrome calm). The tilt
-        // is visual-only; cluster_hit_test still keys off the stored, un-tilted ctx.rects.
-        const bool tilt_eligible =
-            ctx.screen != ClusterScreen::Game &&
-            (icon == ClusterIcon::Shop || icon == ClusterIcon::Help ||
-             icon == ClusterIcon::Settings);
+        // Hover/focus tilt on every Mode Selection / Post-Round cluster icon — Shop, Help,
+        // Settings AND Home (Home is a full persistent button like the rest). Never on the
+        // Game screen (keep active-play chrome calm), which also excludes the Close (X) icon
+        // since Close only appears there. The tilt is visual-only; cluster_hit_test still
+        // keys off the stored, un-tilted ctx.rects.
+        const bool tilt_eligible = ctx.screen != ClusterScreen::Game;
+        // Tier-2 cursor parallax rides the same element set as the tilt: shift the DRAW rect
+        // a few px inverse to the cursor (a no-op under Reduce Motion / Hover-tilt off). The
+        // stored ctx.rects (hit-test + focus) are never shifted.
+        if (tilt_eligible) {
+            const ImVec2 vp = ImGui::GetMainViewport()->Size;
+            const bridge::ParallaxOffset px =
+                bridge::cursor_parallax_offset(mouse.x, mouse.y, vp.x, vp.y);
+            dr.x += px.dx;
+            dr.y += px.dy;
+        }
         const ImVec2 center{dr.x + dr.w * 0.5f, dr.y + dr.h * 0.5f};
         // Only eligible icons drive a tilt slot (keeps Home / Close / the Game-screen
         // cluster out of the pool entirely).
@@ -176,9 +192,9 @@ void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx) {
         }
     }
 
-    // Offline sync indicator, left of the leftmost (Shop) icon. Self-gates on
-    // sync_state; never reached on Root (the cluster is not drawn there).
-    render_offline_indicator(dl, ctx.rects[0]);
+    // The offline sync indicator is no longer a cluster element — it is a bottom-right
+    // corner line drawn as a top-level overlay (render_modal_overlay -> render_offline_
+    // indicator), so it shows on every screen the frame a sync fails.
 
     // Passive "Training tool, no real money." tag, its own row beneath the cluster.
     render_training_disclaimer(dl, ctx.rects);
@@ -189,9 +205,14 @@ std::optional<ClusterIcon> cluster_hit_test(float x, float y) {
     if (rt == nullptr || !rt->has_cluster) {
         return std::nullopt;
     }
+    const bool shop_visible = bridge::shop_icon_visible();
     for (std::size_t i = 0; i < rt->cluster.rects.size(); ++i) {
+        const ClusterIcon icon = icon_for_index(rt->cluster.screen, i);
+        if (icon == ClusterIcon::Shop && !shop_visible) {
+            continue;  // hidden Shop: its (empty) slot is not clickable
+        }
         if (point_in(rt->cluster.rects[i], x, y)) {
-            return icon_for_index(rt->cluster.screen, i);
+            return icon;
         }
     }
     return std::nullopt;
@@ -202,9 +223,14 @@ std::optional<ClusterIcon> cluster_action_for_focus(backbone::FocusableId focuse
     if (rt == nullptr || !rt->has_cluster) {
         return std::nullopt;
     }
+    const bool shop_visible = bridge::shop_icon_visible();
     for (std::size_t i = 0; i < rt->cluster.ids.size(); ++i) {
         if (rt->cluster.ids[i] == focused) {
-            return icon_for_index(rt->cluster.screen, i);
+            const ClusterIcon icon = icon_for_index(rt->cluster.screen, i);
+            if (icon == ClusterIcon::Shop && !shop_visible) {
+                return std::nullopt;  // hidden Shop is never activatable, even if stale-focused
+            }
+            return icon;
         }
     }
     return std::nullopt;

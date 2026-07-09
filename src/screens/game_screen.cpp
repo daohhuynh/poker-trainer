@@ -260,7 +260,10 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
             // Forward-pushed rest position: partway from the seat toward the pot.
             const float fwd_x = lerp(seat.x, layout.pot.x, 0.55f);
             const float fwd_y = lerp(seat.y, layout.pot.y, 0.55f);
-            const float t = runtime.spawn_seen
+            // Reduce Motion (in-app or OS) renders the chips in their final pushed-forward
+            // position immediately — no slide (t == 1). The chip-spawn SFX is Z03's spawn
+            // choreography and is unaffected by this visual gate.
+            const float t = (runtime.spawn_seen && !bridge::effective_reduce_motion())
                                 ? animations::chip_push_progress(runtime.spawn_ms,
                                                                  backbone::total_ms_since_app_start())
                                 : 1.0f;

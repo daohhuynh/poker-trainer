@@ -127,7 +127,7 @@ inline constexpr std::array<SettingEntry, 29> kSettingCatalog{{
     {SettingId::DefaultRecapTab, "Default Aggressor recap tab", SettingsSection::Recap,
      "recap default aggressor tab tier 1 summary"},
     {SettingId::ShopVisibility, "Shop button visibility", SettingsSection::Tomatoes,
-     "tomatoes shop button visibility show visible"},
+     "tomatoes show shop button visibility visible"},
     {SettingId::ResetTomatoes, "Reset tomatoes", SettingsSection::Tomatoes,
      "tomatoes reset tomatoes wallet currency"},
     {SettingId::LeaderboardOptIn, "Leaderboard opt-in", SettingsSection::Tomatoes,

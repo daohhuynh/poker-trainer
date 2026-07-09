@@ -3,8 +3,11 @@
 #include "bridge/ambient.hpp"
 #include "bridge/bridge_runtime.hpp"
 #include "bridge/cdn_fetch.hpp"
+#include "bridge/frame_tick.hpp"
 #include "bridge/game_launch.hpp"
 #include "bridge/idbfs_backend.hpp"
+#include "bridge/screen_dispatch.hpp"
+#include "bridge/sfx_trigger.hpp"
 #include "bridge/main_loop.hpp"
 #include "bridge/persistent_weights_store.hpp"
 #include "bridge/platform.hpp"
@@ -226,7 +229,22 @@ void finish_boot_after_persistence() {
     // (non-incognito) lands signed in with the server state adopted; a guest or an
     // expired/absent refresh token is a no-op. Doing it here means an adopted server
     // state (settings, wallet, unlocks) is reflected from the very first frame.
-    static_cast<void>(g_boot.service->try_restore_session());
+    const bool session_restored = g_boot.service->try_restore_session();
+
+    // Offline / failed restore with a PERSISTED authenticated account (IDBFS persists the
+    // account linkage across reloads): the stay-signed-in refresh grant is a network call
+    // that fails offline, so try_restore_session returns false and the session-start
+    // reconcile never runs. Without this, the sync subsystem sits at Idle (indicator hidden)
+    // even though there is unsynced local state, and pump_sync's reconcile-retry stays dormant
+    // (it only fires from SyncFailing). Kick the reconcile explicitly for the persisted
+    // account: offline it fails -> SyncFailing (the offline indicator shows this frame on
+    // every screen) and, being SyncFailing, pump_sync's retry now drives recovery once
+    // connectivity returns. A no-op for guests (reconcile_on_session_start self-gates on
+    // is_authenticated) and skipped entirely when the session was restored online (the
+    // restore path already reconciled).
+    if (!session_restored && g_boot.service->state().account.is_authenticated) {
+        g_boot.service->reconcile_on_session_start();
+    }
 
     // Build the app's live settings from persisted state via Zone 12's full codec
     // ('PTS1'), migrating a legacy interim blob (theme + custom split) when present.
@@ -263,6 +281,51 @@ void finish_boot_after_persistence() {
         [] { return g_boot.live_settings.display.reduce_motion; },
         [] { return g_boot.live_settings.display.particle_drift; });
     bridge::set_hover_tilt_gate([] { return g_boot.live_settings.display.hover_tilt; });
+
+    // Additionally honor the OS prefers-reduced-motion query at runtime (Display Settings):
+    // install the matchMedia watch once, then sample it each frame so effective_reduce_motion
+    // (in-app toggle OR OS query) re-evaluates live. The OS input is kept separate from the
+    // user's stored toggle — the two are OR'd, never overwritten.
+    bridge::install_os_reduced_motion_watch();
+    register_frame_tick([] { bridge::refresh_os_reduced_motion(); });
+
+    // Offline indicator connectivity hint: watch navigator.onLine so the indicator shows the
+    // moment a signed-in user drops connectivity — not only after a failed sync ATTEMPT
+    // (which needs a state change to fail-push). The indicator ORs this with the sync status;
+    // it stays hidden for guests (nothing to sync) and whenever the browser reports online.
+    bridge::install_online_watch();
+    bridge::set_offline_hint_gate([] {
+        return g_boot.service.has_value() &&
+               g_boot.service->state().account.is_authenticated && !bridge::browser_online();
+    });
+
+    // SEAM(Z11 cluster / Settings): gate the persistent cluster's Shop icon on the live
+    // "Show Shop button" setting. When off, the cluster skips drawing + hit-testing the Shop
+    // icon and every screen's focus list omits it (Tab can't land on a hidden icon).
+    bridge::set_shop_icon_visible_gate(
+        [] { return g_boot.live_settings.tomatoes.shop_button_visible; });
+
+    // Leave-Site confirmation (Browser Navigation Behavior): arm the browser's native
+    // "Leave site?" dialog ONLY while the user is mid-drill — the Game screen with an active
+    // scenario — AND the "Confirm before leaving site" setting is on (default on). On Root /
+    // Mode / Post-Round, or with the setting off, it disarms so those exit cleanly and no
+    // stale beforeunload fires. Driven per frame off the live screen state + setting, with a
+    // change guard so the platform call (and its DOM touch) only runs when the armed state
+    // flips. The native dialog is the reliable mechanism — browsers do not let an in-canvas
+    // modal block beforeunload — so back / tab-close / Cmd-Ctrl+W / reload all use it.
+    register_frame_tick([] {
+        static bool last_armed = false;
+        static bool initialized = false;
+        const backbone::ScreenStateSnapshot snap = backbone::read_screen_state();
+        const bool should_confirm = snap.current == backbone::ScreenId::Game &&
+                                    snap.active_scenario.has_value() &&
+                                    g_boot.live_settings.general.confirm_before_leaving_site;
+        if (!initialized || should_confirm != last_armed) {
+            bridge::set_leave_confirmation_active(should_confirm);
+            last_armed = should_confirm;
+            initialized = true;
+        }
+    });
 
     // Wire the LIVE settings into the launch path (scenario generation) and into
     // Zone 09 (its fallback regeneration), then install Zone 09: its Game-screen
@@ -574,6 +637,11 @@ void finish_boot_after_persistence() {
     // dependency — Z03 loads audio by path and degrades gracefully when absent.
     audio::install_audio();
 
+    // Wire the cross-zone SFX-trigger seam to Z03's play_sfx. Zones that must fire a cue
+    // but don't depend on Z03 (e.g. Z09's math-input keybinds) call bridge::play_sfx, which
+    // forwards here through Z03's normal mute/volume routing.
+    bridge::set_sfx_player([](audio::SfxId id) { audio::play_sfx(id); });
+
     // Restore the persisted shuffle-pool composition (Module 7). install_audio seeded
     // each genre's starter; replay the saved active_pool_track_ids on top so previously
     // added/purchased tracks return to rotation across a reload. add_to_shuffle is
@@ -595,6 +663,18 @@ void finish_boot_after_persistence() {
     // deferred-launch poll. Uses the register_frame_tick seam, so the main loop is
     // not edited as triggers land.
     install_tier_orchestrator();
+
+    // Drive the offline-sync retry loop once per frame. PersistenceService::pump_sync
+    // owns the 5s->15s->30s->60s backoff (SyncEngine::pump): on a failed push it keeps
+    // the offline indicator up and reschedules; on recovery it flushes queued writes in
+    // order and the indicator clears. Nothing else calls it, so without this tick the
+    // backoff never runs. pump_sync is a no-op for guests and self-gates on the
+    // session-start reconcile, so an unconditional per-frame call is safe.
+    register_frame_tick([] {
+        if (g_boot.service.has_value()) {
+            g_boot.service->pump_sync();
+        }
+    });
 
     // ----- Zone 14 (Tutorial System) -----
     //

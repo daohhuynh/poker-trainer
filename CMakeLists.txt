@@ -187,6 +187,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
         src/bridge/settings_persistence.cpp
         src/bridge/persistent_weights_store.cpp
         src/bridge/ambient.cpp
+        src/bridge/sfx_trigger.cpp
     )
     target_include_directories(bridge PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(bridge PRIVATE ${POKER_TRAINER_WARNING_FLAGS})

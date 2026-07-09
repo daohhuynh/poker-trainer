@@ -1,5 +1,6 @@
 #include "bridge/platform.hpp"
 
+#include "bridge/ambient.hpp"
 #include "bridge/canvas_sizing.hpp"
 #include "bridge/gl_renderer.hpp"
 #include "bridge/html_overlay.hpp"
@@ -416,6 +417,75 @@ void platform_present(float r, float g, float b, float a) noexcept {
     glClearColor(r, g, b, a);
     glClear(GL_COLOR_BUFFER_BIT);
     gl_renderer_render(ImGui::GetDrawData());
+}
+
+void install_online_watch() {
+    // navigator.onLine plus online/offline listeners into a JS flag. browser_online() reads
+    // it each frame, so a live connectivity change is reflected without a reload.
+    EM_ASM({
+        window.__ptOnline = navigator.onLine ? 1 : 0;
+        window.addEventListener('online', function() { window.__ptOnline = 1; });
+        window.addEventListener('offline', function() { window.__ptOnline = 0; });
+    });
+}
+
+bool browser_online() {
+    return EM_ASM_INT({
+        return (typeof window.__ptOnline !== 'undefined') ? window.__ptOnline : 1;
+    }) != 0;
+}
+
+void install_os_reduced_motion_watch() {
+    // matchMedia('(prefers-reduced-motion: reduce)') with a change listener into a JS flag,
+    // plus an initial read. refresh_os_reduced_motion() samples the flag each frame, so a
+    // mid-session OS change re-evaluates without a reload. Guarded for older browsers that
+    // only expose the deprecated addListener.
+    EM_ASM({
+        var mq = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)');
+        if (!mq) {
+            window.__ptOsReduce = 0;
+            return;
+        }
+        var apply = function() { window.__ptOsReduce = mq.matches ? 1 : 0; };
+        apply();
+        if (mq.addEventListener) {
+            mq.addEventListener('change', apply);
+        } else if (mq.addListener) {
+            mq.addListener(apply);
+        }
+    });
+    refresh_os_reduced_motion();
+}
+
+void refresh_os_reduced_motion() {
+    const int reduced = EM_ASM_INT({
+        return (typeof window.__ptOsReduce !== 'undefined') ? window.__ptOsReduce : 0;
+    });
+    set_os_reduced_motion(reduced != 0);
+}
+
+void set_leave_confirmation_active(bool active) {
+    // Install one beforeunload listener lazily, then just flip the active flag. When active
+    // the listener calls preventDefault()/returnValue so the BROWSER shows its own native
+    // "Leave site?" dialog on back / tab-close / Cmd-Ctrl+W / reload; when inactive the
+    // listener is inert and the page unloads freely. Kept idempotent so it can be driven
+    // every frame without churning the DOM.
+    EM_ASM(
+        {
+            if (!window.__ptLeaveConfirmInstalled) {
+                window.__ptLeaveConfirmActive = false;
+                window.addEventListener('beforeunload', function(ev) {
+                    if (window.__ptLeaveConfirmActive) {
+                        ev.preventDefault();
+                        ev.returnValue = "";  // required for Chrome to raise the native dialog
+                        return "";
+                    }
+                });
+                window.__ptLeaveConfirmInstalled = true;
+            }
+            window.__ptLeaveConfirmActive = ($0 != 0);
+        },
+        active ? 1 : 0);
 }
 
 }  // namespace poker_trainer::bridge

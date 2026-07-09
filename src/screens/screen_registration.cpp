@@ -10,6 +10,7 @@
 
 #include <cstdint>
 
+#include "bridge/ambient.hpp"
 #include "bridge/frame_tick.hpp"
 #include "bridge/screen_dispatch.hpp"
 
@@ -41,6 +42,17 @@ void render_root_dispatch(ScreensRuntime& runtime) {
 
     const std::uint64_t now = backbone::total_ms_since_app_start();
     if (runtime.morph.active()) {
+        if (bridge::effective_reduce_motion()) {
+            // Reduce Motion (in-app or OS): suppress the tween. Draw the end-state
+            // (progress == 1, the Mode-Selection layout) for this one frame and commit
+            // the Root->Mode transition immediately — the same reset + set_screen a
+            // completed advance_morph performs — so the buttons arrive instantly with
+            // no motion and no pop.
+            render_root_morph_frame(1.0f);
+            runtime.morph.reset();
+            backbone::set_screen(backbone::ScreenId::ModeSelection, std::nullopt);
+            return;
+        }
         // Snapshot progress before advancing: advance_morph resets the controller
         // (and commits the screen-state transition to Mode Selection) on the step
         // that crosses the finish line.

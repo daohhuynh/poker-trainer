@@ -246,8 +246,14 @@ void ensure_focus_registered(PostRoundRuntime& runtime) {
     runtime.focus_head.push_back(kFocusCopy);
     runtime.focus_head.push_back(kFocusShare);
     // Cluster tail: Shop -> Help -> Settings -> Home, then Tab wraps from Home back
-    // to the first item (the tier strip when multi-tier, else Again).
+    // to the first item (the tier strip when multi-tier, else Again). The Shop stop is
+    // dropped when the "Show Shop button" setting is off so Tab skips the hidden icon
+    // (the cluster likewise stops drawing / hit-testing it).
+    const bool shop_visible = bridge::shop_icon_visible();
     for (const backbone::FocusableId cid : kClusterFocusIds) {
+        if (cid == kFocusShop && !shop_visible) {
+            continue;
+        }
         runtime.focus_head.push_back(cid);
     }
     backbone::register_focus_list(backbone::ScreenId::PostRound,

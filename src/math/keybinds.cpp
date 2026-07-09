@@ -24,6 +24,7 @@
 #include "bridge/focus_registry.hpp"
 #include "bridge/game_launch.hpp"
 #include "bridge/screen_dispatch.hpp"
+#include "bridge/sfx_trigger.hpp"
 
 namespace poker_trainer::interrogator {
 
@@ -122,7 +123,17 @@ void populate_focus_registry(InterrogatorRuntime& runtime) {
 // registration, so Tab reaches the cluster and wraps from X back to the first input.
 void register_game_focus_list(const InterrogatorRuntime& runtime) {
     std::vector<backbone::FocusableId> full = runtime.state.focus_segment;
-    full.insert(full.end(), runtime.cluster_focus_tail.begin(), runtime.cluster_focus_tail.end());
+    // The cluster tail is Shop, Help, Settings, X (index 0 == Shop, per the cluster
+    // icon-order convention). When the "Show Shop button" setting is off, drop the Shop
+    // stop so Tab skips the hidden icon (the cluster likewise stops drawing / hit-testing
+    // it). bridge::shop_icon_visible() is the same live gate the cluster reads.
+    const bool shop_visible = bridge::shop_icon_visible();
+    for (std::size_t i = 0; i < runtime.cluster_focus_tail.size(); ++i) {
+        if (i == 0 && !shop_visible) {
+            continue;
+        }
+        full.push_back(runtime.cluster_focus_tail[i]);
+    }
     backbone::register_focus_list(backbone::ScreenId::Game, full);
 }
 
@@ -293,6 +304,11 @@ bool on_number_key(InterrogatorRuntime& runtime, const backbone::KeyEvent& e) {
     }
     backbone::activate_keyboard_mode();
     backbone::snap_focus_to(target);
+    // Module 2: the subtle ButtonClickConfirmation cue confirms the keyboard input
+    // registered when a 1-6 keybind focuses a math input — especially valuable with the
+    // HUD hidden. Routed through the bridge SFX seam (boot -> audio::play_sfx), so Z09
+    // takes no Zone 03 dependency and Z03's mute/volume handling still applies.
+    bridge::play_sfx(audio::SfxId::ButtonClickConfirmation);
     return true;
 }
 

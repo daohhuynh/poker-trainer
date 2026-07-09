@@ -2,6 +2,7 @@
 
 #include "backbone/animation_clock.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -9,7 +10,9 @@
 
 // The particle draw is the only ImGui/theme-touching part; it is compiled only in the
 // wasm build (the native bridge library stays ImGui-free). Native tests exercise the
-// pure math directly and never draw.
+// pure math directly and never draw. The OS prefers-reduced-motion matchMedia query is a
+// browser binding and lives in platform.cpp (binding baseline) — this pure library, held to
+// -Wpedantic, stays EM_ASM-free and only stores the sampled value via set_os_reduced_motion.
 #ifdef __EMSCRIPTEN__
 #include "theme/theme_tokens.hpp"
 
@@ -26,11 +29,17 @@ constexpr float kPi = 3.14159265358979323846f;
 // modal_base's g_tutorial_start_handler pattern (a Z05-owned seam, not shared
 // cross-zone state). Unset in native unit tests, where the gated render/scale paths
 // are never exercised — the pure math is tested directly.
-std::function<bool()> g_reduce_motion;   // true => Reduce Motion ON  => Tier 1 off
+std::function<bool()> g_reduce_motion;   // true => in-app Reduce Motion toggle ON
 std::function<bool()> g_particle_drift;  // true => Particle drift toggle ON
 std::function<bool()> g_hover_tilt;      // true => Hover-tilt toggle ON
 
-[[nodiscard]] bool reduce_motion_on() noexcept {
+// The OS prefers-reduced-motion query, sampled once per frame by refresh_os_reduced_motion.
+// A separate input from the in-app toggle: the two are OR'd in effective_reduce_motion, and
+// this is never written back to the user's stored setting. Always false in the native build.
+bool g_os_reduced_motion = false;
+
+// The in-app Reduce Motion toggle alone (unset => off, e.g. native tests).
+[[nodiscard]] bool reduce_motion_toggle_on() noexcept {
     return static_cast<bool>(g_reduce_motion) && g_reduce_motion();
 }
 // Only read from the particle draw (wasm-only), so it is unused in the native build.
@@ -38,7 +47,7 @@ std::function<bool()> g_hover_tilt;      // true => Hover-tilt toggle ON
     return static_cast<bool>(g_particle_drift) && g_particle_drift();
 }
 [[nodiscard]] bool hover_tilt_on() noexcept {
-    return !reduce_motion_on() && static_cast<bool>(g_hover_tilt) && g_hover_tilt();
+    return !effective_reduce_motion() && static_cast<bool>(g_hover_tilt) && g_hover_tilt();
 }
 
 // Per-element tilt progress (0 = rest, 1 = held peak), eased toward the element's active
@@ -153,8 +162,8 @@ void set_ambient_gates(std::function<bool()> reduce_motion,
 }
 
 float ambient_breath_scale() {
-    if (reduce_motion_on()) {
-        return 1.0f;  // Reduce Motion: static
+    if (effective_reduce_motion()) {
+        return 1.0f;  // Reduce Motion (in-app or OS): static
     }
     return ambient_breath_scale_at(backbone::total_ms_since_app_start());
 }
@@ -168,6 +177,14 @@ float tilt_ease_step(float progress, float target, float dt_ms) noexcept {
 
 void set_hover_tilt_gate(std::function<bool()> hover_tilt) {
     g_hover_tilt = std::move(hover_tilt);
+}
+
+void set_os_reduced_motion(bool reduced) noexcept { g_os_reduced_motion = reduced; }
+
+bool effective_reduce_motion() {
+    // Either input being "reduce" wins (a pure OR): the in-app toggle can force motion off,
+    // and the OS setting can additionally force it off, but neither overrides the other.
+    return reduce_motion_toggle_on() || g_os_reduced_motion;
 }
 
 float hover_tilt_angle(backbone::FocusableId id, bool hovered, bool focused) {
@@ -193,14 +210,29 @@ float hover_tilt_angle(backbone::FocusableId id, bool hovered, bool focused) {
     return slot.progress * slot.sign * kTiltPeakRad;
 }
 
+ParallaxOffset cursor_parallax_offset(float mouse_x, float mouse_y, float viewport_w,
+                                      float viewport_h) {
+    // Same gating as the hover tilt (Reduce Motion — in-app or OS — plus the Hover-tilt
+    // toggle): a Tier-2 sibling of the tilt, on the same element set.
+    if (!hover_tilt_on() || viewport_w <= 0.0f || viewport_h <= 0.0f) {
+        return ParallaxOffset{0.0f, 0.0f};
+    }
+    // Normalized cursor displacement from screen center in [-1, 1], then INVERSE so the
+    // elements drift opposite the cursor for a passive sense of depth. Clamped so an off-
+    // canvas cursor never exceeds the subtle ±kParallaxMaxPx band.
+    const float ndx = std::clamp((mouse_x - viewport_w * 0.5f) / (viewport_w * 0.5f), -1.0f, 1.0f);
+    const float ndy = std::clamp((mouse_y - viewport_h * 0.5f) / (viewport_h * 0.5f), -1.0f, 1.0f);
+    return ParallaxOffset{-ndx * kParallaxMaxPx, -ndy * kParallaxMaxPx};
+}
+
 void render_ambient_particles(ImDrawList* dl, float w, float h) {
 #ifdef __EMSCRIPTEN__
     if (dl == nullptr || w <= 0.0f || h <= 0.0f) {
         return;
     }
-    // Gate: off under Reduce Motion, and independently off when the Particle drift
-    // toggle is cleared.
-    if (reduce_motion_on() || !particle_drift_on()) {
+    // Gate: off under Reduce Motion (in-app or OS), and independently off when the
+    // Particle drift toggle is cleared.
+    if (effective_reduce_motion() || !particle_drift_on()) {
         return;
     }
 
