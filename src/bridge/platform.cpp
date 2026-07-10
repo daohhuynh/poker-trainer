@@ -5,6 +5,7 @@
 #include "bridge/gl_renderer.hpp"
 #include "bridge/html_overlay.hpp"
 #include "bridge/input_routing.hpp"
+#include "bridge/screen_transition.hpp"
 
 #include "backbone/event_router.hpp"
 
@@ -194,8 +195,34 @@ void maybe_first_user_gesture() {
     }
 }
 
+// The canvas-owned navigation keys: consumed from the browser so the page never scrolls,
+// moves focus off the canvas, or navigates back on these.
+[[nodiscard]] bool is_canvas_captured_key(backbone::KeyCode code) noexcept {
+    switch (code) {
+        case backbone::KeyCode::Tab:
+        case backbone::KeyCode::ArrowUp:
+        case backbone::KeyCode::ArrowDown:
+        case backbone::KeyCode::ArrowLeft:
+        case backbone::KeyCode::ArrowRight:
+        case backbone::KeyCode::Space:
+        case backbone::KeyCode::Backspace:
+            return true;
+        default:
+            return false;
+    }
+}
+
 EM_BOOL on_key_down(int, const EmscriptenKeyboardEvent* e, void*) {
     maybe_first_user_gesture();
+    const backbone::KeyCode code = map_key_code(e->code);
+    // Input is inert while a screen transition animates: feed the key to NEITHER ImGui nor
+    // the router. The Game math-input window now renders (and slides) during a transition,
+    // so without this an active InputText could capture typing mid-slide / mid-fade. No
+    // transition can be navigated through or a second one started either. Still consume the
+    // canvas navigation keys so the browser does not scroll / move focus off the canvas.
+    if (is_screen_transition_active()) {
+        return is_canvas_captured_key(code) ? EM_TRUE : EM_FALSE;
+    }
     feed_imgui_keyboard(e, /*down=*/true);
     // Legal-doc overlay: PageUp/PageDown scroll the shown doc. These are not backbone
     // KeyCodes (the sealed enum has no Page keys), so they are handled here at the DOM layer.
@@ -212,7 +239,6 @@ EM_BOOL on_key_down(int, const EmscriptenKeyboardEvent* e, void*) {
             return EM_TRUE;
         }
     }
-    const backbone::KeyCode code = map_key_code(e->code);
     // WantCaptureKeyboard (from the last NewFrame) is true while an InputText is
     // active. The gate is the single arbitration point: a key ImGui is consuming
     // for text editing is not ALSO dispatched as a screen command — except Tab /
@@ -255,7 +281,8 @@ EM_BOOL on_key_up(int, const EmscriptenKeyboardEvent* e, void*) {
     }
     feed_imgui_keyboard(e, /*down=*/false);
     const backbone::KeyCode code = map_key_code(e->code);
-    if (router_should_see_key(ImGui::GetIO().WantCaptureKeyboard, code)) {
+    if (router_should_see_key(ImGui::GetIO().WantCaptureKeyboard, code) &&
+        !is_screen_transition_active()) {
         backbone::dispatch_key_event(
             {backbone::KeyEventType::KeyUp, code, map_mods(e)});
     }
@@ -269,7 +296,7 @@ void feed_imgui_mouse_pos(const EmscriptenMouseEvent* e) {
 
 EM_BOOL on_mouse_move(int, const EmscriptenMouseEvent* e, void*) {
     feed_imgui_mouse_pos(e);
-    if (router_should_see_mouse()) {
+    if (router_should_see_mouse() && !is_screen_transition_active()) {
         backbone::dispatch_mouse_event(
             {backbone::MouseEventType::MouseMove, static_cast<float>(e->targetX),
              static_cast<float>(e->targetY), 0, 0.0f});
@@ -280,6 +307,14 @@ EM_BOOL on_mouse_move(int, const EmscriptenMouseEvent* e, void*) {
 EM_BOOL on_mouse_down(int, const EmscriptenMouseEvent* e, void*) {
     maybe_first_user_gesture();
     feed_imgui_mouse_pos(e);
+    // Input is inert while a screen transition animates: withhold the ImGui button-down
+    // too (not only the router feed) so the render-path inline handlers that read
+    // ImGui::IsMouseClicked directly (the Post-Round Again/Exit hit-tests, the Game
+    // dealer/cluster clicks) also stay dormant, and no click can start a second
+    // transition mid-fade.
+    if (is_screen_transition_active()) {
+        return EM_TRUE;
+    }
     ImGui::GetIO().AddMouseButtonEvent(imgui_mouse_button(e->button), true);
     if (router_should_see_mouse()) {
         backbone::dispatch_mouse_event(
@@ -291,8 +326,10 @@ EM_BOOL on_mouse_down(int, const EmscriptenMouseEvent* e, void*) {
 
 EM_BOOL on_mouse_up(int, const EmscriptenMouseEvent* e, void*) {
     feed_imgui_mouse_pos(e);
+    // Always feed the release to ImGui (so a button held into a transition never strands
+    // "down"), but gate the router while a transition animates.
     ImGui::GetIO().AddMouseButtonEvent(imgui_mouse_button(e->button), false);
-    if (router_should_see_mouse()) {
+    if (router_should_see_mouse() && !is_screen_transition_active()) {
         backbone::dispatch_mouse_event(
             {backbone::MouseEventType::MouseUp, static_cast<float>(e->targetX),
              static_cast<float>(e->targetY), static_cast<int>(e->button), 0.0f});
@@ -306,6 +343,10 @@ EM_BOOL on_wheel(int, const EmscriptenWheelEvent* e, void*) {
     // must not also scroll the modal window). No-op / normal handling when no doc is shown.
     if (html_overlay_visible()) {
         scroll_html_overlay(static_cast<float>(e->deltaY));
+        return EM_TRUE;
+    }
+    // No scrolling (ImGui or router) while a screen transition animates.
+    if (is_screen_transition_active()) {
         return EM_TRUE;
     }
     ImGui::GetIO().AddMouseWheelEvent(0.0f, static_cast<float>(-e->deltaY) * 0.01f);

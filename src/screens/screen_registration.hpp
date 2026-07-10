@@ -21,9 +21,13 @@ namespace poker_trainer::screens {
 // (the bridge owns the app-root runtime); install_screens threads references into
 // the dispatch registry. Not global state — Z05 owns exactly one of these.
 struct ScreensRuntime {
-    // The Root -> Mode Selection morph (started by the Root Play handler, drawn
-    // and advanced by the Root render).
+    // The Root <-> Mode Selection button morph (started by the Root Play handler for the
+    // forward direction, drawn + advanced by the Root render). The same controller drives
+    // the REVERSE (Mode Selection -> Root) morph — its timeline is direction-agnostic;
+    // morph_to_root selects which dispatch renders it (Root render = forward, Mode render
+    // = reverse) and which screen the completion commits to.
     animations::MorphController morph;
+    bool morph_to_root{false};
 
     // The Custom popup view-model (live weights + the InputText buffers ImGui
     // needs across frames + the open flag).

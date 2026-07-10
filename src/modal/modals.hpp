@@ -402,9 +402,9 @@ void render_training_disclaimer(ImDrawList* dl, const std::array<animations::Rec
 [[nodiscard]] std::optional<ClusterIcon> cluster_hit_test(float x, float y);
 [[nodiscard]] std::optional<ClusterIcon> cluster_action_for_focus(backbone::FocusableId focused);
 
-// Perform an icon's action: Shop/Help/Settings open their modal; Home returns to
-// Root (instant cut; the ceremonial transition is a Z14 seam); Close opens the
-// leave-drill confirmation (Game).
+// Perform an icon's action: Shop/Help/Settings open their modal; Home returns to Root
+// (ceremonial fade from Post-Round, instant cut from Mode Selection — see cluster.cpp);
+// Close opens the leave-drill confirmation (Game).
 void activate_cluster_icon(ClusterIcon icon);
 
 }  // namespace poker_trainer::modal

@@ -42,6 +42,7 @@
 
 #include "bridge/game_launch.hpp"
 #include "bridge/screen_dispatch.hpp"
+#include "bridge/screen_transition.hpp"
 
 namespace poker_trainer::screens {
 
@@ -94,8 +95,10 @@ constexpr std::array<backbone::FocusableId, 4> kClusterFocusIds = {
     return false;
 }
 
-// Dealer-arrival fade-in durations (ARCHITECTURE: dealer ~600ms, then modal
-// ~600ms after the dealer). Phase 1 (the screen slide-in) is a Z14 seam.
+// Dealer-arrival fade-in durations (ARCHITECTURE Dealer Arrival: Phase 1 = the 350ms
+// slide-in, then Phase 2 = dealer ~600ms, then Phase 3 = modal ~600ms after the dealer).
+// The slide (Phase 1) is driven by the bridge's screen-transition module; these govern
+// the Phase 2/3 fades that begin once the slide stamps snap.arrival_start_ms.
 constexpr float kDealerFadeMs = 600.0f;
 constexpr float kModalFadeMs = 600.0f;
 constexpr std::uint64_t kCopyFlashMs = 1000;  // "Copied" flash window
@@ -134,8 +137,11 @@ std::function<bool()> g_again_commit_override{};
 void commit_again(PostRoundRuntime& runtime) {
     const engine::ScenarioId prev = runtime.snap.scenario.id;
     backbone::fire_again_pressed(backbone::AgainPressedEvent{prev});
-    runtime.snap.valid = false;
     runtime.focus_registered = false;
+    // The snapshot stays valid so the outgoing Post-Round keeps rendering through the
+    // 350ms slide-out (the launch below drives the Post-Round -> Game slide from the
+    // bridge). `current` becomes Game at launch, so Post-Round is not rendered normally
+    // once the slide ends; the next capture_and_enter overwrites the snapshot.
     // Tutorial cooperation: an active tutorial redirects the commit (to the next
     // teaching seed, or the Tutorial Complete screen) instead of replaying.
     if (g_again_commit_override && g_again_commit_override()) {
@@ -146,8 +152,8 @@ void commit_again(PostRoundRuntime& runtime) {
     // keeps its split weights. The launch mode is unrecoverable from the finished
     // scenario (STANDARD produces a Caller-or-Aggressor hand), so the bridge persists
     // it at launch and Again replays through it. The relaunch generates a fresh
-    // scenario (ScenarioSpawned) and sets the screen back to Game. SEAM(Z14): the
-    // Post-Round -> Game slide-out animation.
+    // scenario (ScenarioSpawned), sets the screen back to Game, and (since the launch
+    // originates from Post-Round) drives the 350ms left-to-right slide + SlideOut SFX.
     const std::optional<bridge::LaunchConfig> cfg = bridge::last_launch_config();
     if (cfg.has_value()) {
         bridge::request_game_launch(cfg->mode, cfg->custom);
@@ -160,12 +166,18 @@ void commit_again(PostRoundRuntime& runtime) {
 }
 
 void do_exit(PostRoundRuntime& runtime) {
-    backbone::fire_exit_to_mode_selection(
-        backbone::ExitToModeSelectionEvent{runtime.snap.scenario.id});
-    runtime.snap.valid = false;
-    runtime.focus_registered = false;
-    // SEAM(Z14): the ceremonial fade-to-black; Z13 performs only the state change.
-    backbone::set_screen(backbone::ScreenId::ModeSelection, std::nullopt);
+    // Post-Round -> Mode Selection via the ~1.5s ceremonial fade. The whole state change
+    // (the exit event that resets the Delta Timer, invalidating the snapshot, and the
+    // screen swap) is deferred to the fully-black midpoint so the recap keeps rendering
+    // intact through the fade-out — the timer stops at the swap, never visibly mid-fade.
+    // When "Screen transitions" is OFF this runs synchronously (an instant cut).
+    const engine::ScenarioId id = runtime.snap.scenario.id;
+    bridge::begin_ceremonial_transition([&runtime, id] {
+        backbone::fire_exit_to_mode_selection(backbone::ExitToModeSelectionEvent{id});
+        runtime.snap.valid = false;
+        runtime.focus_registered = false;
+        backbone::set_screen(backbone::ScreenId::ModeSelection, std::nullopt);
+    });
 }
 
 void do_copy(PostRoundRuntime& runtime) {
@@ -213,7 +225,9 @@ void capture_and_enter(PostRoundRuntime& runtime, interrogator::InterrogatorRunt
     snap.pass = ev.passed;
     snap.elapsed_ms = ev.elapsed_ms;
     snap.frog_active = easter_egg_frog_active();
-    snap.arrival_start_ms = backbone::total_ms_since_app_start();
+    // Sentinel: the dealer-arrival clock is not stamped until the slide-in completes, so
+    // the dealer + modal stay hidden (Phase 1 shows only the background) during the slide.
+    snap.arrival_start_ms = 0;
     snap.valid = true;
 
     reset_again(runtime.again);
@@ -225,16 +239,29 @@ void capture_and_enter(PostRoundRuntime& runtime, interrogator::InterrogatorRunt
         render::has_tier_tabs(snap.scenario) ? default_tab(s) : render::RecapTab::Tier1;
     runtime.recap_scroll = 0.0f;
 
-    // SEAM(Z14): the Game -> Post-Round 350ms slide-in. Zone 09 left the screen
-    // transition unwired (its do_submit only fires the bus events), so Z13 drives
-    // the state change off GradingComplete; the slide itself is Z14's.
-    backbone::set_screen(backbone::ScreenId::PostRound, snap.scenario.id);
+    // Game -> Post-Round: a 350ms right-to-left slide (SlideIn SFX). Zone 09's do_submit
+    // only fires the bus events, so Z13 drives the transition off GradingComplete. The
+    // swap into PostRound + the dealer-arrival clock origin are deferred to slide
+    // completion (Dealer Arrival Phase 1 = slide, then Phase 2/3 = dealer/modal fade), so
+    // the dealer + modal do not appear until the slide finishes. When "Screen
+    // transitions" is OFF this collapses to an instant cut (on_complete runs now).
+    const engine::ScenarioId id = snap.scenario.id;
+    bridge::begin_slide_transition(
+        bridge::SlideDirection::GameToPostRound, audio::SfxId::SlideIn, [&runtime, id] {
+            runtime.snap.arrival_start_ms = backbone::total_ms_since_app_start();
+            backbone::set_screen(backbone::ScreenId::PostRound, id);
+        });
 }
 
 // Register the head focus list once per entry, while PostRound is the current
 // screen (mirrors Z07's register-on-entry pattern).
 void ensure_focus_registered(PostRoundRuntime& runtime) {
-    if (runtime.focus_registered) {
+    // Only arm the Post-Round focus context once PostRound is actually the current
+    // screen. During the Game -> Post-Round slide the screen is still Game (the swap
+    // runs at slide completion) even though render_post_round_screen already draws the
+    // incoming half; registering there would relock a context that is not yet active.
+    if (runtime.focus_registered ||
+        backbone::read_screen_state().current != backbone::ScreenId::PostRound) {
         return;
     }
     runtime.focus_head.clear();
@@ -459,18 +486,27 @@ void render_post_round_screen(PostRoundRuntime& runtime) {
     runtime.copy_rect = l.copy;
     runtime.share_rect = l.share;
 
-    // Fade-in: dealer ~600ms, then modal ~600ms after. Honor the Recap toggle
-    // (off -> everything appears at once).
-    float dealer_alpha = 1.0f;
-    float modal_alpha = 1.0f;
-    if (settings.recap.dealer_arrival_animation) {
+    // Dealer + modal fade-in. arrival_start_ms == 0 marks Phase 1 (still sliding in): the
+    // background alone is visible, dealer + modal hidden, until the slide completes and
+    // stamps the clock. Then Phase 2 fades the dealer (~600ms) and Phase 3 the modal
+    // (~600ms after). The Recap toggle off shows everything at once at the slide's end.
+    float dealer_alpha;
+    float modal_alpha;
+    if (runtime.snap.arrival_start_ms == 0) {
+        dealer_alpha = 0.0f;
+        modal_alpha = 0.0f;
+    } else if (settings.recap.dealer_arrival_animation) {
         const std::uint64_t now = backbone::total_ms_since_app_start();
         const float elapsed = static_cast<float>(now - runtime.snap.arrival_start_ms);
         dealer_alpha = clamp01(elapsed / kDealerFadeMs);
         modal_alpha = clamp01((elapsed - kDealerFadeMs) / kModalFadeMs);
+    } else {
+        dealer_alpha = 1.0f;
+        modal_alpha = 1.0f;
     }
 
-    // Background (background_mode, full opacity — Phase 1 slide is a Z14 seam).
+    // Background (background_mode, full opacity). The screen slide itself is applied by
+    // the bridge's screen-transition module (it renders this whole screen at an offset).
     render_util::draw_image_slot(dl, anim::Rect{0.0f, 0.0f, w, h}, assets::AssetId::BackgroundMode,
                                  render_util::SlotFallback::Background, false);
 

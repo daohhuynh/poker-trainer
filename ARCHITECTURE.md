@@ -237,7 +237,7 @@ Global Unit Toggle — switches all UI numbers between raw Cash and Big Blinds.
 
 ### Display Settings
 
-Color tint theme setting — a dropdown menu listing the available themes in this order: No Limit, Slate, Ocean, Sage. Selects the active theme. Full specification in 'Notes — Color Tint Theme.' Reduce Motion toggle (controls Tiers 1, 2, and 4 of the Motion Layer; default OFF — motion enabled — with the OS prefers-reduced-motion media query additionally honored at runtime). Background atmospheric movement toggle (controls the silhouette sprite drift in the blurred background; default ON). Particle drift toggle (controls Tier 1 ambient particle motion; default ON).
+Color tint theme setting — a dropdown menu listing the available themes in this order: No Limit, Slate, Ocean, Sage. Selects the active theme. Full specification in 'Notes — Color Tint Theme.' Reduce Motion toggle (controls Tiers 1, 2, and 4 of the Motion Layer; default OFF — motion enabled — with the OS prefers-reduced-motion media query additionally honored at runtime). Background atmospheric movement toggle (controls the silhouette sprite drift in the blurred background; default ON). Particle drift toggle (controls Tier 1 ambient particle motion; default ON). Screen transitions toggle (default ON; controls the ceremonial fade-to-black and the 350ms Game↔Post-Round slide transitions — with the toggle off OR Reduce Motion on, those transitions are instant cuts). Grouped here with the other motion toggles; Reduce Motion gates it alongside the toggle.
 
 ### Audio Settings
 
@@ -245,7 +245,7 @@ Music type dropdown — default "Lounge Jazz." Choices: Lounge Jazz, Classical, 
 
 ### Recap Settings
 
-Settings specific to the Post-Round Screen behavior. These toggles are independent of the global Reduce Motion accessibility setting — Reduce Motion governs accessibility-shaped motion suppression (Tiers 1, 2, and 4 of the Motion Layer), while these toggles govern preference-shaped recap-specific behavior. Dealer arrival animation toggle (default ON). When enabled, the Post-Round Screen renders the dealer and modal via a sequenced fade-in (background slides in, dealer fades in over ~600ms, modal fades in over ~600ms after the dealer). When disabled, all elements appear simultaneously at the end of the screen slide transition with no sequenced fade-in. Screen transitions toggle (default ON). When enabled, ceremonial fade-to-black transitions and 350ms slide transitions render their full animations. When disabled, all screen-to-screen transitions occur as instant cuts with no animation. This toggle does not affect modal open/close animations or the Root ↔ Mode Selection button morph, which are governed by Reduce Motion. Default Aggressor recap tab. A single-select control (Tier 1 / Summary) determining which tab is displayed by default when the user lands on the Post-Round Screen for a multi-tier Aggressor scenario. Default value: Tier 1. This setting only applies when the Bet Sizing Engine setting is enabled, since only multi-tier Aggressor scenarios have tier tabs.
+Settings specific to the Post-Round Screen behavior. These toggles are independent of the global Reduce Motion accessibility setting — Reduce Motion governs accessibility-shaped motion suppression (Tiers 1, 2, and 4 of the Motion Layer), while these toggles govern preference-shaped recap-specific behavior. Dealer arrival animation toggle (default ON). When enabled, the Post-Round Screen renders the dealer and modal via a sequenced fade-in (background slides in, dealer fades in over ~600ms, modal fades in over ~600ms after the dealer). When disabled, all elements appear simultaneously at the end of the screen slide transition with no sequenced fade-in. (The Screen transitions toggle lives in Display Settings, not here.) Default Aggressor recap tab. A single-select control (Tier 1 / Summary) determining which tab is displayed by default when the user lands on the Post-Round Screen for a multi-tier Aggressor scenario. Default value: Tier 1. This setting only applies when the Bet Sizing Engine setting is enabled, since only multi-tier Aggressor scenarios have tier tabs.
 
 ### Tomatoes Settings
 
@@ -414,11 +414,11 @@ Used for the Game ↔ Post-Round loop, signaling lateral movement between paired
 
 ### Crossfade Transitions (already specified, ~300ms)
 
-Used for the existing button morph between Root and Mode Selection screens, including the synchronized crossfade between background blur variants. See "Background Continuity Across Screens" for the existing specification.
+Used for the button morph between Root and Mode Selection screens, including the synchronized crossfade between background blur variants. The morph is bidirectional: Root → Mode Selection plays it forward (the 2x2 grid morphs into the STANDARD button plus the top-right icon cluster), and Mode Selection → Root (via the Home icon or Escape) plays it in reverse (the STANDARD button and icon cluster morph back into the 2x2 grid). Governed by Reduce Motion (on → instant cut). See "Background Continuity Across Screens" for the existing specification.
 
 ### Settings Toggle
 
-A "Screen transitions" toggle in the Recap Settings section (default ON) controls whether ceremonial fade-to-black and slide transitions render their full animation or are replaced with instant cuts. When disabled, all screen-to-screen transitions occur instantly with no animation. The toggle does not affect modal open/close animations or the existing Root ↔ Mode Selection button morph (those remain controlled by the global Reduce Motion setting).
+A "Screen transitions" toggle in the Display Settings section (default ON) controls whether ceremonial fade-to-black and slide transitions render their full animation or are replaced with instant cuts. Both this toggle and the global Reduce Motion setting gate these transitions: with the toggle off OR Reduce Motion on, all screen-to-screen transitions occur instantly with no animation. The toggle does not affect modal open/close animations. Reduce Motion additionally governs the Root ↔ Mode Selection button morph (both directions), so Reduce Motion suppresses every screen-to-screen transition in the application.
 
 ## Notes — Escape Key Behavior
 

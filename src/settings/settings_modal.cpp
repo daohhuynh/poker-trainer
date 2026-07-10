@@ -690,6 +690,11 @@ void populate_main_registry(SettingsModalState& s) {
                              s.live->display.hover_tilt = !s.live->display.hover_tilt;
                              on_setting_change(s, SettingId::HoverTilt);
                          }});
+    reg.register_element(kReScreenTransitions, bridge::FocusableEntry{.activate = [&s] {
+                             if (s.live == nullptr) return;
+                             s.live->recap.transitions_enabled = !s.live->recap.transitions_enabled;
+                             on_setting_change(s, SettingId::ScreenTransitions);
+                         }});
 
     // Audio
     reg.register_element(kAuMusicType,
@@ -734,11 +739,6 @@ void populate_main_registry(SettingsModalState& s) {
                              s.live->recap.dealer_arrival_animation =
                                  !s.live->recap.dealer_arrival_animation;
                              on_setting_change(s, SettingId::DealerArrival);
-                         }});
-    reg.register_element(kReScreenTransitions, bridge::FocusableEntry{.activate = [&s] {
-                             if (s.live == nullptr) return;
-                             s.live->recap.transitions_enabled = !s.live->recap.transitions_enabled;
-                             on_setting_change(s, SettingId::ScreenTransitions);
                          }});
     reg.register_element(
         kReDefaultRecapTab,
@@ -902,6 +902,7 @@ constexpr std::array<BodyFocusOwner, 45> kBodyFocusOwners{{
     {kDiReduceMotion, SettingId::ReduceMotion},
     {kDiParticleDrift, SettingId::ParticleDrift},
     {kDiHoverTilt, SettingId::HoverTilt},
+    {kReScreenTransitions, SettingId::ScreenTransitions},
     {kAuMusicType, SettingId::MusicType},
     {kAuVolumeSlider, SettingId::Volume},
     {kAuVolumeInput, SettingId::Volume},
@@ -909,7 +910,6 @@ constexpr std::array<BodyFocusOwner, 45> kBodyFocusOwners{{
     {kAuMuteSfx, SettingId::MuteSfx},
     {kAuMuteMusic, SettingId::MuteMusic},
     {kReDealerArrival, SettingId::DealerArrival},
-    {kReScreenTransitions, SettingId::ScreenTransitions},
     {kReDefaultRecapTab, SettingId::DefaultRecapTab},
     {kToShopVisibility, SettingId::ShopVisibility},
     {kToResetTomatoes, SettingId::ResetTomatoes},
@@ -1148,6 +1148,15 @@ void render_display(SettingsModalState& s, ImU32 ring, std::string_view q) {
             on_setting_change(s, SettingId::HoverTilt);
         }
     }
+    // Screen transitions lives in Display (grouped with the other motion toggles; Reduce
+    // Motion also gates it). The value still persists in RecapSettings — only the UI
+    // placement is here.
+    if (setting_visible(SettingId::ScreenTransitions, q)) {
+        if (widget_checkbox(kReScreenTransitions, "Screen transitions",
+                            s.live->recap.transitions_enabled, ring, s.scroll_follow_focus)) {
+            on_setting_change(s, SettingId::ScreenTransitions);
+        }
+    }
     ImGui::Spacing();
 }
 
@@ -1204,12 +1213,6 @@ void render_recap(SettingsModalState& s, ImU32 ring, std::string_view q) {
         if (widget_checkbox(kReDealerArrival, "Dealer arrival animation", r.dealer_arrival_animation, ring,
                             s.scroll_follow_focus)) {
             on_setting_change(s, SettingId::DealerArrival);
-        }
-    }
-    if (setting_visible(SettingId::ScreenTransitions, q)) {
-        if (widget_checkbox(kReScreenTransitions, "Screen transitions", r.transitions_enabled, ring,
-                            s.scroll_follow_focus)) {
-            on_setting_change(s, SettingId::ScreenTransitions);
         }
     }
     if (setting_visible(SettingId::DefaultRecapTab, q)) {

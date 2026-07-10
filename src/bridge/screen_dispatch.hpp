@@ -77,7 +77,20 @@ void set_shop_icon_visible_gate(std::function<bool()> visible);
 void set_offline_hint_gate(std::function<bool()> hint);
 [[nodiscard]] bool offline_hint() noexcept;
 
-// Clear all registrations (screen renderers + overlay). Used by tests.
+// ----- Mode Selection -> Root reverse-morph seam (Zone 07) -----
+//
+// Going Root -> Mode Selection plays the button morph (2x2 grid -> STANDARD + top-right
+// icon cluster). Returning Mode Selection -> Root should play that morph in REVERSE. The
+// morph controller is owned by Zone 07 (ScreensRuntime), but the return-to-root triggers
+// live in two zones — the persistent-cluster Home icon (Zone 11) and Mode Selection's own
+// Escape / Home-key handler (Zone 07). Both call begin_mode_to_root_transition() instead
+// of set_screen(Root); Zone 07 wires set_mode_to_root_transition at install to start the
+// reverse morph (Reduce Motion collapses it to an instant cut). Unwired (native tests /
+// pre-boot) => a plain set_screen(Root), so navigation still works with no morph.
+void set_mode_to_root_transition(std::function<void()> handler);
+void begin_mode_to_root_transition();
+
+// Clear all registrations (screen renderers + overlay + transition seam). Used by tests.
 void reset_screen_dispatch_for_testing() noexcept;
 
 }  // namespace poker_trainer::bridge

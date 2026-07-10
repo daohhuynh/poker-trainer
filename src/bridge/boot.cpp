@@ -7,6 +7,7 @@
 #include "bridge/game_launch.hpp"
 #include "bridge/idbfs_backend.hpp"
 #include "bridge/screen_dispatch.hpp"
+#include "bridge/screen_transition.hpp"
 #include "bridge/sfx_trigger.hpp"
 #include "bridge/main_loop.hpp"
 #include "bridge/persistent_weights_store.hpp"
@@ -304,6 +305,17 @@ void finish_boot_after_persistence() {
     // icon and every screen's focus list omits it (Tab can't land on a hidden icon).
     bridge::set_shop_icon_visible_gate(
         [] { return g_boot.live_settings.tomatoes.shop_button_visible; });
+
+    // Gate the ceremonial fade + the Game <-> Post-Round slides on BOTH the "Screen
+    // transitions" setting (default ON) AND Reduce Motion: either the toggle off OR
+    // Reduce Motion on (in-app or the OS query) makes every screen-to-screen transition
+    // an instant cut (no fade, no slide, no slide SFX). Reduce Motion thus applies to all
+    // screen transitions, alongside the Root <-> Mode button morph it already governs.
+    // Unwired (native tests) => OFF, so those run synchronously.
+    bridge::set_transitions_enabled_gate([] {
+        return g_boot.live_settings.recap.transitions_enabled &&
+               !bridge::effective_reduce_motion();
+    });
 
     // Leave-Site confirmation (Browser Navigation Behavior): arm the browser's native
     // "Leave site?" dialog ONLY while the user is mid-drill — the Game screen with an active

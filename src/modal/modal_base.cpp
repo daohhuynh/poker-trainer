@@ -34,6 +34,7 @@
 #include "bridge/asset_image.hpp"
 #include "bridge/focus_registry.hpp"
 #include "bridge/screen_dispatch.hpp"
+#include "bridge/screen_transition.hpp"
 
 // Zone 11 core: the app-root runtime pointer, the open/close lifecycle (driving the
 // sealed backbone modal stack + focus_manager focus traps), the shared modal shell
@@ -236,12 +237,17 @@ void open_leave_drill_confirm() {
         return;
     }
     // Leave-drill: Yes returns to Mode Selection (NOT Root — the X is for switching
-    // drill modes mid-session). The ceremonial transition is a Z14 seam (instant
-    // cut here). ARCHITECTURE leaves the body text to the visual pass; this is clear,
-    // spec-faithful wording.
+    // drill modes mid-session) via the ~1.5s ceremonial fade (Game -> Mode Selection).
+    // The confirm handler closes this modal first, then runs on_yes, so the Game screen
+    // fades out cleanly and the swap runs at the black midpoint. ARCHITECTURE leaves the
+    // body text to the visual pass; this is clear, spec-faithful wording.
     g_runtime->confirm = ConfirmSpec{
         .body = "Leave this drill? Your progress on this scenario will be lost.",
-        .on_yes = [] { backbone::set_screen(backbone::ScreenId::ModeSelection, std::nullopt); }};
+        .on_yes = [] {
+            bridge::begin_ceremonial_transition([] {
+                backbone::set_screen(backbone::ScreenId::ModeSelection, std::nullopt);
+            });
+        }};
     open_modal(kLeaveDrillConfirmId);
 }
 

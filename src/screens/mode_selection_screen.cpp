@@ -16,6 +16,7 @@
 #include <imgui.h>
 
 #include "bridge/game_launch.hpp"
+#include "bridge/screen_dispatch.hpp"
 #include "theme/theme_tokens.hpp"
 
 #include "modal/modals.hpp"
@@ -79,6 +80,12 @@ void emit_launch(const LaunchRequest& request) {
     // the mode into a concrete seed via its reject loop; Zone 07 never touches the
     // engine.
     bridge::request_game_launch(request.mode, request.config);
+}
+
+void on_mode_selection_escape() {
+    // Return to Root via the reverse button morph (bridge seam -> Zone 07's morph; an
+    // instant cut under Reduce Motion, and a plain set_screen(Root) when unwired).
+    bridge::begin_mode_to_root_transition();
 }
 
 void render_mode_selection_screen() {

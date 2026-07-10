@@ -7,6 +7,7 @@
 #include "bridge/loading_screen.hpp"
 #include "bridge/platform.hpp"
 #include "bridge/screen_dispatch.hpp"
+#include "bridge/screen_transition.hpp"
 
 #include "backbone/animation_clock.hpp"
 #include "backbone/screen_state.hpp"
@@ -41,8 +42,8 @@ void on_tier1_complete(BridgeRuntime& rt) {
         backbone::set_screen(backbone::ScreenId::Root, std::nullopt);
     }
     rt.phase = BootPhase::Running;
-    // SEAM(Z14): the ceremonial transition into Game (shared-scenario path) is
-    // wired by Zone 14; Z05 performs only the state transition here.
+    // The shared-scenario boot path lands directly on Game from the Loading screen — an
+    // instant cut, with no prior in-app screen to ceremonially fade from.
 }
 
 }  // namespace
@@ -99,13 +100,19 @@ void app_frame() {
     } else if (rt.phase == BootPhase::Loading) {
         render_loading_screen();
     } else {
-        const backbone::ScreenId screen = backbone::read_screen_state().current;
-        if (screen == backbone::ScreenId::Error) {
-            render_error_screen();
-        } else {
-            // Zones 07/08/13 render through the dispatch registry; with none
-            // registered, the frame is just the background clear below.
-            render_screen(screen);
+        // A slide (Game <-> Post-Round) renders the outgoing + incoming screens itself
+        // at an animated offset; render_active_slide returns true then. It returns false
+        // when no slide is active OR on the frame the slide finalizes (its screen swap
+        // has just run), so the now-current destination is drawn normally with no
+        // dropped frame. Zones 07/08/13 render through the dispatch registry; with none
+        // registered, the frame is just the background clear below.
+        if (!render_active_slide()) {
+            const backbone::ScreenId screen = backbone::read_screen_state().current;
+            if (screen == backbone::ScreenId::Error) {
+                render_error_screen();
+            } else {
+                render_screen(screen);
+            }
         }
         // Zone 14's tutorial overlay (grey lens + spotlight + callout + skip button,
         // or the first-launch prompt) renders ABOVE the active screen and BELOW the
@@ -115,6 +122,10 @@ void app_frame() {
         // Zone 11's modal + outage-banner overlay renders ABOVE the active screen
         // (a no-op when no modal is open and no banner is showing).
         render_overlay();
+        // The ceremonial fade-to-black renders above EVERY layer (screen, tutorial,
+        // modal) and performs the screen swap at its fully-black midpoint. A no-op
+        // unless a ceremonial transition is active.
+        render_ceremonial_overlay();
     }
 
     ImGui::Render();

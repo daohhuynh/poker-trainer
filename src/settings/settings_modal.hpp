@@ -125,11 +125,11 @@ inline constexpr std::array<backbone::FocusableId, 52> kSettingsFocusOrder{
     // Units
     kUnUnitToggle,
     // Display
-    kDiTheme, kDiReduceMotion, kDiParticleDrift, kDiHoverTilt,
+    kDiTheme, kDiReduceMotion, kDiParticleDrift, kDiHoverTilt, kReScreenTransitions,
     // Audio
     kAuMusicType, kAuVolumeSlider, kAuVolumeInput, kAuMuteAll, kAuMuteSfx, kAuMuteMusic,
     // Recap
-    kReDealerArrival, kReScreenTransitions, kReDefaultRecapTab,
+    kReDealerArrival, kReDefaultRecapTab,
     // Tomatoes
     kToShopVisibility, kToResetTomatoes, kToLeaderboardOptIn,
     // Account

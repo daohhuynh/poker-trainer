@@ -1,5 +1,7 @@
 #include "bridge/game_launch.hpp"
 
+#include "bridge/screen_transition.hpp"
+
 #include "backbone/game_mode.hpp"
 #include "backbone/scenario_events.hpp"
 #include "backbone/screen_state.hpp"
@@ -67,11 +69,6 @@ namespace {
     return engine_state;
 }
 
-// SEAM(Z14): the ceremonial Mode Selection -> Game transition animation. Zone 14
-// wires the fade/slide; Z05 performs only the screen-state transition. No-op
-// until Z14 lands.
-void begin_ceremonial_transition_to_game() noexcept {}
-
 // The single authoritative active scenario, and the live-settings provider used
 // to generate it. Main-thread only (the launch path and consumers all run on the
 // browser main thread); no synchronization needed.
@@ -121,12 +118,40 @@ void do_launch(backbone::GameMode mode,
     const engine::ScenarioId id =
         forced_id.value_or(select_scenario_id(mode, custom, master_rng()));
 
-    set_active_scenario(engine::generate_scenario(id, launch_settings()));
+    // The launch mechanics: generate the scenario once under the live settings, publish
+    // it as the single source of truth, fire ScenarioSpawned (which starts the chip-push
+    // choreography + the Delta Timer), and switch the screen to Game.
+    const auto perform = [id] {
+        set_active_scenario(engine::generate_scenario(id, launch_settings()));
+        backbone::fire_scenario_spawned(backbone::ScenarioSpawnedEvent{id});
+        backbone::set_screen(backbone::ScreenId::Game, id);
+    };
 
-    backbone::fire_scenario_spawned(backbone::ScenarioSpawnedEvent{id});
-
-    backbone::set_screen(backbone::ScreenId::Game, id);
-    begin_ceremonial_transition_to_game();  // SEAM(Z14)
+    // The transition register depends on where the launch comes FROM:
+    //   Post-Round     -> the Z13 Again replay: a 350ms left-to-right slide (SlideOut).
+    //                     The launch runs NOW so the incoming Game renders during the
+    //                     slide, while the outgoing Post-Round keeps rendering off its
+    //                     still-valid snapshot.
+    //   Mode Selection -> committing to a session: the ~1.5s ceremonial fade, with the
+    //                     launch deferred to the black midpoint so the Game (and its
+    //                     chip-push) appear fresh rather than mid-animation behind black.
+    //   otherwise      -> boot's shared-scenario path (from the Loading screen): an
+    //                     instant cut (no meaningful screen to fade from).
+    // When "Screen transitions" is OFF every branch collapses to an instant cut (the
+    // begin_* helpers run their callback synchronously).
+    switch (backbone::read_screen_state().current) {
+        case backbone::ScreenId::PostRound:
+            perform();
+            begin_slide_transition(SlideDirection::PostRoundToGame,
+                                   audio::SfxId::SlideOut, [] {});
+            break;
+        case backbone::ScreenId::ModeSelection:
+            begin_ceremonial_transition(perform);
+            break;
+        default:
+            perform();
+            break;
+    }
 }
 
 }  // namespace

@@ -15,6 +15,7 @@
 
 #include "bridge/frame_tick.hpp"
 #include "bridge/game_launch.hpp"
+#include "bridge/screen_transition.hpp"
 
 namespace poker_trainer::temporal {
 
@@ -72,7 +73,15 @@ void timer_resume() noexcept {
 std::uint64_t timer_elapsed_ms() noexcept { return g_timer.elapsed_ms; }
 
 void timer_update() {
-    g_timer = advance(g_timer, now_ms(), backbone::is_any_modal_open());
+    // Pause the timer while a screen transition animates, exactly as it pauses for an
+    // open modal: input is inert through the fade/slide, so the user must not be counted
+    // for time they cannot act on. This also aligns the timer's active window with the
+    // ceremonial swap / slide completion — scenario_spawned may fire at the swap point
+    // (mid-transition), but no elapsed time accrues until the transition ends and the
+    // scenario is actually interactive.
+    const bool paused =
+        backbone::is_any_modal_open() || bridge::is_screen_transition_active();
+    g_timer = advance(g_timer, now_ms(), paused);
 }
 
 void install_temporal(std::function<settings::Settings()> settings_source) {

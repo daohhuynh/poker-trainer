@@ -26,8 +26,9 @@
 //   Custom    -> draw an Aggressor/Caller side per the split weights, then
 //                accept the next id whose type matches that side
 //
-// The ceremonial Mode Selection -> Game transition animation is Zone 14's; Z05
-// performs only the state transition here (see the SEAM(Z14) stub in the .cpp).
+// The Mode Selection -> Game transition register is chosen by do_launch off the source
+// screen: a ceremonial fade from Mode Selection, the Post-Round -> Game slide on an Again
+// replay, an instant cut on the shared-scenario boot path (see bridge/screen_transition).
 
 namespace poker_trainer::bridge {
 

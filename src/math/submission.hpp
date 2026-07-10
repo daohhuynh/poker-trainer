@@ -35,9 +35,9 @@ engine::GradingResult grade(InterrogatorState& state);
 
 // The Enter submission path (Z09's `on_submit` export). Fires the
 // AnswersSubmitted bus event, then grades and stores. Returns the GradingResult.
-// The Game->Post-Round transition (Z14) and the GradingComplete bus event (needs
-// Z10's elapsed_ms) are integration seams fired by the transition layer, not
-// here -- // SEAM(Z14), // SEAM(Z10).
+// The GradingComplete bus event (needs Z10's elapsed_ms) is fired downstream by the
+// caller; Z13's GradingComplete subscriber then begins the Game->Post-Round slide.
+// Neither is fired here.
 engine::GradingResult on_submit(InterrogatorRuntime& runtime);
 
 }  // namespace poker_trainer::interrogator

@@ -41,7 +41,7 @@ void render_root_dispatch(ScreensRuntime& runtime) {
     }
 
     const std::uint64_t now = backbone::total_ms_since_app_start();
-    if (runtime.morph.active()) {
+    if (runtime.morph.active() && !runtime.morph_to_root) {
         if (bridge::effective_reduce_motion()) {
             // Reduce Motion (in-app or OS): suppress the tween. Draw the end-state
             // (progress == 1, the Mode-Selection layout) for this one frame and commit
@@ -69,8 +69,38 @@ void render_mode_dispatch(ScreensRuntime& runtime, CustomWeightsStore& store) {
         register_mode_selection_focus_list();
         runtime.last_focus_screen = backbone::ScreenId::ModeSelection;
     }
+
+    // Reverse morph (Mode Selection -> Root): the STANDARD button + top-right icon cluster
+    // morph back into the Root 2x2 grid. Reuses the MorphController timeline in reverse —
+    // render_root_morph_frame(t) with t running 1 -> 0 is the exact reverse of the forward
+    // morph. Mirrors render_root_dispatch's forward handling (Reduce Motion draws the Root
+    // end-state for one frame and commits immediately).
+    if (runtime.morph.active() && runtime.morph_to_root) {
+        const std::uint64_t now = backbone::total_ms_since_app_start();
+        const bool reduce = bridge::effective_reduce_motion();
+        const bool complete = reduce || runtime.morph.is_complete(now);
+        const float global_t = complete ? 0.0f : 1.0f - runtime.morph.progress(now);
+        render_root_morph_frame(global_t);
+        if (complete) {
+            runtime.morph.reset();
+            runtime.morph_to_root = false;
+            backbone::set_screen(backbone::ScreenId::Root, std::nullopt);
+        }
+        return;
+    }
+
     render_mode_selection_screen();
     render_custom_popup(runtime.popup, store);  // early-returns while closed
+}
+
+// Start the reverse (Mode Selection -> Root) button morph. MorphController::start debounces
+// a second trigger mid-morph. Reduce Motion is honored by render_mode_dispatch, which
+// commits to Root on the first frame (no visible morph), mirroring the forward path. Wired
+// into the bridge return-to-root seam so the Zone 11 cluster Home icon and Zone 07's Escape
+// both reach it.
+void begin_mode_to_root_morph(ScreensRuntime& runtime) {
+    runtime.morph.start(backbone::total_ms_since_app_start());
+    runtime.morph_to_root = true;
 }
 
 // Per-frame re-entry watcher. Z07's dispatchers run only on Root / Mode, so they
@@ -85,6 +115,15 @@ void watch_screen_for_focus_reentry(ScreensRuntime& runtime) {
     if (current != runtime.observed_screen) {
         runtime.observed_screen = current;
         runtime.last_focus_screen = backbone::ScreenId::Error;  // force re-register on next render
+        // The button morph is only valid while Root (forward) or Mode Selection (reverse)
+        // is current. If we left both some other way — e.g. an instant-cut launch clicked
+        // mid-reverse-morph jumps straight to Game — drop the orphaned morph so a stale
+        // start timestamp can't fire a bogus completion on a later Root/Mode visit.
+        if (runtime.morph.active() && current != backbone::ScreenId::Root &&
+            current != backbone::ScreenId::ModeSelection) {
+            runtime.morph.reset();
+            runtime.morph_to_root = false;
+        }
     }
 }
 
@@ -103,6 +142,12 @@ void install_screens(ScreensRuntime& runtime, CustomWeightsStore& weights_store)
     // Per-frame screen watcher: keeps the once-per-entry focus-registration guard
     // honest across Game / Post-Round visits that replace the base focus context.
     bridge::register_frame_tick([&runtime] { watch_screen_for_focus_reentry(runtime); });
+
+    // Wire the Mode Selection -> Root return so both triggers (Zone 11's cluster Home icon
+    // and Zone 07's Escape / Home-key) play the button morph in reverse. Zone 07 owns the
+    // controller; the bridge seam is the cross-zone indirection (Zone 11 does not depend on
+    // Zone 07). Reduce Motion collapses it to an instant cut inside the reverse render.
+    bridge::set_mode_to_root_transition([&runtime] { begin_mode_to_root_morph(runtime); });
 
     // Event handlers (registered once with the event router).
     install_root_handlers(runtime.morph);

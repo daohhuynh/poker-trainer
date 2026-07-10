@@ -59,10 +59,11 @@ void emit_launch(const LaunchRequest& request);
 
 // ----- Escape behavior --------------------------------------------------------
 //
-// Notes — Escape Key Behavior: on Mode Selection, Escape returns to Root.
-inline void on_mode_selection_escape() noexcept {
-    backbone::set_screen(backbone::ScreenId::Root, std::nullopt);
-}
+// Notes — Escape Key Behavior: on Mode Selection, Escape returns to Root — via the
+// reverse button morph (bridge::begin_mode_to_root_transition). Defined in the .cpp so
+// the bridge include and the morph seam stay out of the header and the unit-test link
+// (mirrors emit_launch).
+void on_mode_selection_escape();
 
 // ----- Focus list -------------------------------------------------------------
 //

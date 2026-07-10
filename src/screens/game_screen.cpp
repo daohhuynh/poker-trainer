@@ -338,8 +338,11 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
     handle_cluster_click();
 
     // 10) Math inputs LAST so they compose on top (Z09 owns them; do not reimplement
-    //    — call render_math_inputs). They are an ImGui window, above the background
-    //    draw list this screen draws into.
+    //    — call render_math_inputs). They are an ImGui window (a separate draw list),
+    //    above the background draw list this screen draws into. During a Game <->
+    //    Post-Round slide the transition module translates this window's draw list by the
+    //    same offset as the background (translate_active_windows), so it slides in lockstep
+    //    rather than popping — no suppression needed.
     interrogator::render_math_inputs(interrogator, scenario);
 }
 

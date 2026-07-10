@@ -172,8 +172,10 @@ void game_render_hook(InterrogatorRuntime& runtime) {
     }
 }
 
-// Submit the gathered answers (on_submit fires the bus events + grades).
-// SEAM(Z14): trigger the Game->Post-Round slide transition here once Z14 owns it.
+// Submit the gathered answers (on_submit fires the bus events + grades). The
+// Game->Post-Round slide is driven by Z13's GradingComplete subscriber
+// (post_round capture_and_enter) — which the bus events fired here reach — not from
+// this function directly.
 // Enter reaches this handler reliably even while a box is active -- the platform
 // gate routes Tab/Enter/Escape through (bridge/input_routing.hpp); per-screen
 // Enter-to-activate handlers for Root / Mode Selection are Zone 07's.

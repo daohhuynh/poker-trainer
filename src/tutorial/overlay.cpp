@@ -479,6 +479,7 @@ void maybe_trigger_prompt(TutorialRuntime& t) {
         return;  // already finished/skipped once -> no prompt
     }
     t.prompt_shown_this_session = true;
+    t.control_index = 0;  // default focus on "Start Tutorial" (control 0; Skip is 1)
     be::set_tutorial_state(be::TutorialState{be::TutorialPhase::Prompt, 0});
 }
 
@@ -785,8 +786,20 @@ bool on_tutorial_key(const be::KeyEvent& e) {
             dismiss_prompt(*t);
             return true;
         }
+        // The prompt is a two-button focus trap (Start Tutorial = 0, Skip = 1). Tab /
+        // Shift-Tab toggle between them; Enter / Space activate the focused one. Without
+        // this the prompt was mouse-only.
+        if (e.code == be::KeyCode::Tab) {
+            be::activate_keyboard_mode();
+            t->control_index = t->control_index == 0 ? 1 : 0;
+            return true;
+        }
         if (e.code == be::KeyCode::Enter || e.code == be::KeyCode::Space) {
-            tutorial_start();
+            if (t->control_index == 1) {
+                dismiss_prompt(*t);  // Skip
+            } else {
+                tutorial_start();    // Start Tutorial
+            }
             return true;
         }
         return true;  // swallow other keys while the prompt is up
@@ -997,7 +1010,9 @@ void render_tutorial_overlay() {
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
     if (ph == be::TutorialPhase::Prompt) {
-        render_prompt(dl, c, kPromptMessage, /*start_focused=*/true, /*skip_focused=*/false);
+        render_prompt(dl, c, kPromptMessage,
+                      /*start_focused=*/t->control_index == 0,
+                      /*skip_focused=*/t->control_index == 1);
         return;
     }
     if (ph != be::TutorialPhase::Active) {

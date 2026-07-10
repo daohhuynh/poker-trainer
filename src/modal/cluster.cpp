@@ -17,6 +17,7 @@
 #include "bridge/ambient.hpp"
 #include "bridge/asset_image.hpp"
 #include "bridge/screen_dispatch.hpp"
+#include "bridge/screen_transition.hpp"
 #include "bridge/tilt_render.hpp"
 
 // Zone 11 — the persistent top-right cluster: rendering (icon glyph on Game /
@@ -242,8 +243,23 @@ void activate_cluster_icon(ClusterIcon icon) {
         case ClusterIcon::Help: open_help_modal(); return;
         case ClusterIcon::Settings: open_settings_modal(); return;
         case ClusterIcon::Home:
-            // Return to Root. SEAM(Z14): the ceremonial transition; instant cut here.
-            backbone::set_screen(backbone::ScreenId::Root, std::nullopt);
+            // On Post-Round the Home icon steps away from a session — a "significant
+            // state change" per the Transitions note — so it fades through the ceremonial
+            // transition. On Mode Selection the Root <-> Mode Selection register is the
+            // crossfade / button morph (governed by Reduce Motion, NOT the Screen-
+            // transitions toggle), so it stays an instant set_screen here, untouched.
+            // (Destination note: ARCHITECTURE says Post-Round Home returns to Mode
+            // Selection, but this handler has always returned to Root; that pre-existing
+            // destination question is out of the transitions scope — only the fade is
+            // added.)
+            if (backbone::read_screen_state().current == backbone::ScreenId::PostRound) {
+                bridge::begin_ceremonial_transition(
+                    [] { backbone::set_screen(backbone::ScreenId::Root, std::nullopt); });
+            } else {
+                // Mode Selection: return to Root via the reverse button morph (Zone 07,
+                // through the bridge seam). Reduce Motion collapses it to an instant cut.
+                bridge::begin_mode_to_root_transition();
+            }
             return;
         case ClusterIcon::Close: open_leave_drill_confirm(); return;
     }
