@@ -507,11 +507,61 @@ if(EMSCRIPTEN)
     # Serve the service worker from the bundle directory so the boot-time
     # navigator.serviceWorker.register('service_worker.js') resolves (a worker
     # only controls pages at or below its own scope).
+    #
+    # The git-tracked source carries a @CACHE_VERSION@ placeholder; the copy
+    # served to browsers must carry a build-unique version so returning users'
+    # stale cache-first assets are evicted on the next visit. The version folds two
+    # content hashes: poker_trainer.wasm (busts on any code change) and a manifest
+    # of the deployed cache-first assets under assets/ (busts when a PNG/audio file
+    # changes even if the wasm did not — same filename, new bytes). Both only exist
+    # / are final after the link, so the substitution runs at POST_BUILD, not
+    # configure time. Emit a tiny -P injector into the (gitignored) build dir at
+    # configure time, then run it after the link: it hashes the freshly-built wasm
+    # and globs assets/ (media only, sorted, each file's content + asset-root path
+    # folded in) for a content-stable, machine-independent version — byte-identical
+    # rebuilds keep the same cache name, so nothing is needlessly evicted — and
+    # substitutes @CACHE_VERSION@ via configure_file. If nothing hashable is found it
+    # falls back to a build timestamp so a version is always produced.
+    file(WRITE ${CMAKE_BINARY_DIR}/inject_sw_version.cmake [=[
+set(_parts "")
+if(EXISTS "${WASM}")
+    file(SHA256 "${WASM}" _wasm_hash)
+    string(APPEND _parts "wasm=${_wasm_hash};")
+endif()
+# Assets a returning user gets cache-first (served same-origin from /assets/...).
+# Media whitelist excludes junk (.DS_Store) that never deploys; sorted for a
+# deterministic manifest; the asset-root-relative path is folded in alongside the
+# content hash so a rename (which changes the cached URL) also bumps the version.
+file(GLOB_RECURSE _assets LIST_DIRECTORIES false
+    "${ASSETS}/*.png" "${ASSETS}/*.jpg" "${ASSETS}/*.jpeg"
+    "${ASSETS}/*.mp3" "${ASSETS}/*.ogg" "${ASSETS}/*.wav")
+list(SORT _assets)
+foreach(_a IN LISTS _assets)
+    file(SHA256 "${_a}" _ah)
+    file(RELATIVE_PATH _rel "${ASSETS}" "${_a}")
+    string(APPEND _parts "${_rel}=${_ah};")
+endforeach()
+if(_parts STREQUAL "")
+    string(TIMESTAMP CACHE_VERSION "%Y%m%d%H%M%S" UTC)
+else()
+    string(SHA256 _combined "${_parts}")
+    string(SUBSTRING "${_combined}" 0 12 CACHE_VERSION)
+endif()
+configure_file("${SRC}" "${OUT}" @ONLY)
+list(LENGTH _assets _asset_count)
+message(STATUS
+    "service_worker.js cache version: poker-trainer-${CACHE_VERSION} "
+    "(wasm + ${_asset_count} assets)")
+]=])
     add_custom_command(TARGET poker_trainer POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${CMAKE_SOURCE_DIR}/src/bridge/service_worker.js
-            $<TARGET_FILE_DIR:poker_trainer>/service_worker.js
-        COMMENT "Copying service_worker.js next to the wasm bundle"
+        COMMAND ${CMAKE_COMMAND}
+            -DWASM=$<TARGET_FILE_DIR:poker_trainer>/poker_trainer.wasm
+            -DASSETS=${CMAKE_SOURCE_DIR}/assets
+            -DSRC=${CMAKE_SOURCE_DIR}/src/bridge/service_worker.js
+            -DOUT=$<TARGET_FILE_DIR:poker_trainer>/service_worker.js
+            -P ${CMAKE_BINARY_DIR}/inject_sw_version.cmake
+        COMMENT "Injecting build-unique cache version into service_worker.js"
+        VERBATIM
     )
 
     # The wasm target emits only poker_trainer.js + .wasm (no .html suffix, so

@@ -3,8 +3,8 @@
 // Versioned runtime cache of fetched static assets (ARCHITECTURE Module 3
 // "Service Worker Caching"): after the first visit, subsequent visits serve
 // cached assets, cutting time-to-interactive for returning users. The cache key
-// is versioned, so bumping CACHE_VERSION on an app update invalidates every
-// stale asset (the activate handler deletes prior caches).
+// is versioned per build (see CACHE_VERSION below), so every app update
+// invalidates every stale asset (the activate handler deletes prior caches).
 //
 // Caching strategy is split by request kind so a fresh build is never masked by
 // a stale cache:
@@ -24,11 +24,18 @@
 // served stale.
 //
 // Registered on boot by Z05 (boot.cpp). The source of record lives under
-// src/bridge/; the build/deploy step copies it next to the app bundle so it is
-// served from the web root (a service worker can only control pages at or below
-// its own scope).
+// src/bridge/; the build step substitutes CACHE_VERSION and copies the result
+// next to the app bundle so it is served from the web root (a service worker can
+// only control pages at or below its own scope).
 
-const CACHE_VERSION = 'poker-trainer-v2';
+// CACHE_VERSION is injected at build time: the CMake POST_BUILD step substitutes
+// the placeholder token below with a content hash folding poker_trainer.wasm and a
+// manifest of the deployed assets/ (see CMakeLists.txt), so any code OR asset
+// change yields a new cache name while byte-identical rebuilds keep the same one
+// (no needless eviction). The git-tracked source keeps the placeholder; the copy
+// served from the web root has the real value. Falls back to a build timestamp if
+// nothing hashable is found.
+const CACHE_VERSION = 'poker-trainer-@CACHE_VERSION@';
 
 self.addEventListener('install', (event) => {
   // Activate the new worker immediately rather than waiting for old tabs.

@@ -123,7 +123,7 @@ void render_training_disclaimer(ImDrawList* dl, const std::array<animations::Rec
     const animations::Rect& last = rects.back();
     ImFont* font = ImGui::GetFont();
     const float size = ImGui::GetFontSize() * 0.8f;  // smaller than the button labels
-    const char* text = "Training tool, no real money.";  // ASCII only (the font has no em dash)
+    const char* text = "Training tool, no real money!!!";  // ASCII only (the font has no em dash)
     const ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
     const float x = last.x + last.w - ts.x;          // right edge aligned with the last icon
     const float y = first.y + first.h + size * 0.35f;  // its own row, just below the buttons
