@@ -1,0 +1,18 @@
+{
+  "cpu": "Apple M4",
+  "arch": "arm64",
+  "os": "macOS 15.6.1 (build 24G90), Darwin 24.6.0",
+  "native_compiler": "Apple clang 17.0.0 (clang-1700.0.13.5), target arm64-apple-darwin24.6.0",
+  "cxx_standard": "C++23 (-std=c++23)",
+  "bench_optimization": "-O2 -DNDEBUG (native benchmark objects; no LTO to preserve the real cross-TU call boundary)",
+  "imgui_version": "1.91.9b (19191)",
+  "clock": "std::chrono::steady_clock; Apple-Silicon monotonic tick ~41.7 ns (24 MHz timebase)",
+  "timing_method": "each sample = mean of an inner batch of 512 calls (sub-tick single calls unresolvable); percentiles over the batch-mean distribution",
+  "wasm_toolchain": "Emscripten 5.0.7, -O3 Release",
+  "measured_functions": {
+    "per_frame_reconcile_entry": "poker_trainer::bridge::begin_focus_reconcile (src/bridge/focus_reconcile.cpp:19)",
+    "pure_reconcile_decision": "poker_trainer::bridge::decide_focus_reconcile (src/bridge/focus_registry.cpp:40)",
+    "focus_state_read": "poker_trainer::bridge::active_focus_or_none (src/bridge/focus_registry.cpp:62)",
+    "focus_state_machine": "poker_trainer::backbone::* (src/backbone/focus_manager.cpp)"
+  }
+}

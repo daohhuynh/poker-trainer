@@ -1,0 +1,18 @@
+{
+  "imgui_version": "1.91.9b",
+  "nav_enable_keyboard": true,
+  "rows": [
+    {"behavior": "fresh_context_no_focus_until_key", "class": "NATIVE-YES", "observed": "NavVisible=false NavId=1242699129 (ConfigNavCursorVisibleAuto default)"},
+    {"behavior": "tab_forward_1_2_3", "class": "NATIVE-YES", "observed": "b0,b1,b2 (submission order)"},
+    {"behavior": "wrap_forward_end_to_start", "class": "NATIVE-YES", "observed": "b2 -> b0 (tabbing wraps via NavTabbingResultFirst)"},
+    {"behavior": "tab_backward_prev", "class": "NATIVE-YES", "observed": "b0 ->(S-Tab) b2 -> b1"},
+    {"behavior": "wrap_backward_start_to_end", "class": "NATIVE-YES", "observed": "b0 ->(S-Tab) b2"},
+    {"behavior": "space_activates", "class": "NATIVE-YES", "observed": "activated=b0"},
+    {"behavior": "enter_activates_generic", "class": "NATIVE-YES", "observed": "activated=b0 (Enter hardcoded to NavActivate/PreferInput)"},
+    {"behavior": "modal_trap_focus_cannot_escape", "class": "NATIVE-YES", "observed": "in_modal=1 focus=m1 (modal is NavWindow; bg not navigable)"},
+    {"behavior": "modal_exit_restores_prior_focus", "class": "NATIVE-YES", "observed": "pre=b0 post=b0 navid=1242699129"},
+    {"behavior": "arrows_adjust_single_stop_group", "class": "NATIVE-EFFORT", "observed": "native arrows = spatial nav between items; a single-tab-stop group with arrow-cycled sub-selection is a custom widget (see NAV_AUDIT.md)"},
+    {"behavior": "game_space_only_enter_reserved", "class": "NATIVE-EFFORT", "observed": "Enter is hardcoded to NavActivate; reserve it via SetKeyOwner(ImGuiKey_Enter) or ImGuiKey ownership so IsKeyPressed(Enter, NoOwner) is false in NavUpdate"},
+    {"behavior": "nonfocus_key_passthrough", "class": "MODEL-DIFF", "observed": "in native, Tab is owned by tabbing nav; 'is this key consumed by the focus layer' is answered by ImGui key-ownership, not an app dispatch return value"}
+  ]
+}

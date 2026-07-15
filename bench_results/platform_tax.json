@@ -1,0 +1,152 @@
+{
+  "src_total_loc": 33780,
+  "classified_loc": 33762,
+  "totals": {
+    "domain": 1240,
+    "tax": 28735,
+    "inherent": 3787
+  },
+  "pct_of_src": {
+    "domain": 3.7,
+    "tax": 85.1,
+    "inherent": 11.2
+  },
+  "domain_to_tax_ratio": 23.2,
+  "substance_to_tax_ratio": 5.7,
+  "tax_breakdown": {
+    "pure_substrate_loc": 17846,
+    "ui_chrome_loc": 10889,
+    "pure_substrate_pct": 52.8,
+    "ui_chrome_pct": 32.2
+  },
+  "zones": [
+    {
+      "zone": "engine",
+      "total": 1675,
+      "domain": 665,
+      "tax": 0,
+      "inherent": 1010,
+      "note": "domain=EV/fold/side-pot/hand-eval math (665); inherent=scenario gen + MT19937_64 determinism + deck (1010)"
+    },
+    {
+      "zone": "math",
+      "total": 1604,
+      "domain": 482,
+      "tax": 1122,
+      "inherent": 0,
+      "note": "domain=submission+tier_flow+interrogator state (482); TAX=input_boxes render 541 + keybinds 427 + bet buttons 154 (browser <input> free)"
+    },
+    {
+      "zone": "temporal",
+      "total": 419,
+      "domain": 93,
+      "tax": 326,
+      "inherent": 0,
+      "note": "domain=target_time calibration (93); TAX=delta_timer + countdown render/pause plumbing (326)"
+    },
+    {
+      "zone": "easter_egg",
+      "total": 64,
+      "domain": 0,
+      "tax": 0,
+      "inherent": 64,
+      "note": "inherent product content"
+    },
+    {
+      "zone": "animations",
+      "total": 401,
+      "domain": 0,
+      "tax": 401,
+      "inherent": 0,
+      "note": "TAX: button morph + chip slide = CSS transitions/animations free"
+    },
+    {
+      "zone": "render",
+      "total": 2039,
+      "domain": 0,
+      "tax": 2039,
+      "inherent": 0,
+      "note": "*TAX (judgment): hand-drawing the poker table/cards/chips/HUD to canvas; a DOM app composites <img>+CSS near-free. Domain is the MATH, not the picture."
+    },
+    {
+      "zone": "theme",
+      "total": 746,
+      "domain": 0,
+      "tax": 746,
+      "inherent": 0,
+      "note": "TAX: token palettes + ImGui restyle = CSS variables free"
+    },
+    {
+      "zone": "assets",
+      "total": 1127,
+      "domain": 0,
+      "tax": 1127,
+      "inherent": 0,
+      "note": "TAX: PNG decode + tiered CDN load + retry = <img>/fetch free"
+    },
+    {
+      "zone": "audio",
+      "total": 1214,
+      "domain": 0,
+      "tax": 1112,
+      "inherent": 102,
+      "note": "TAX=miniaudio/WebAudio plumbing, shuffle, sfx (1112); inherent=choreography sequencing (102)"
+    },
+    {
+      "zone": "persistence",
+      "total": 3605,
+      "domain": 0,
+      "tax": 3426,
+      "inherent": 179,
+      "note": "TAX=IDBFS async flush + serializer + Auth0/Supabase/token + sync queue/backoff (3426); inherent=economy/tomatoes rules (179)"
+    },
+    {
+      "zone": "settings",
+      "total": 3996,
+      "domain": 0,
+      "tax": 3338,
+      "inherent": 658,
+      "note": "TAX=settings_modal 2021 + account_modal 790 + auth_form 246 + fuzzy search 281 UI chrome; inherent=settings semantics + denylist (658)"
+    },
+    {
+      "zone": "modal",
+      "total": 3869,
+      "domain": 0,
+      "tax": 3869,
+      "inherent": 0,
+      "note": "TAX: modal framework, cluster, leaderboard table, shop, offline indicator, outage banner = <dialog>/<table>/native scroll/overlays free"
+    },
+    {
+      "zone": "screens",
+      "total": 3682,
+      "domain": 0,
+      "tax": 3682,
+      "inherent": 0,
+      "note": "*TAX (judgment): root/mode/game/post-round/complete screen layout+render; DOM gives layout/reflow/focus/scroll free"
+    },
+    {
+      "zone": "tutorial",
+      "total": 1970,
+      "domain": 0,
+      "tax": 1098,
+      "inherent": 872,
+      "note": "TAX=overlay lens/spotlight/callout render (1098, a DOM tour lib gives free); inherent=step sequencer + forced settings + content (872)"
+    },
+    {
+      "zone": "bridge",
+      "total": 5889,
+      "domain": 0,
+      "tax": 5378,
+      "inherent": 511,
+      "note": "TAX=boot/main-loop/emscripten glue, gl_renderer, canvas, html_overlay, idbfs, cdn, texture, transitions, focus seam, settings-persist, sfx, ambient, tilt (5378); inherent=game_launch + shared_scenario (511)"
+    },
+    {
+      "zone": "backbone",
+      "total": 1462,
+      "domain": 0,
+      "tax": 1071,
+      "inherent": 391,
+      "note": "TAX=event_router+focus_manager+screen_state+modal_state+animation_clock (1071, DOM events/focus/history/rAF free); inherent=scenario_events bus + game_mode (391)"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "node_count": 16,
+  "edge_count": 10,
+  "is_acyclic": true,
+  "cycle_detected": false,
+  "cyclic_nodes": [],
+  "max_dependency_depth": 3,
+  "topological_order_deps_first": [
+    "src/assets/tier_config.hpp",
+    "src/audio/audio_paths.hpp",
+    "src/backbone/animation_clock.hpp",
+    "src/backbone/modal_state.hpp",
+    "src/engine/scenario_id.hpp",
+    "src/persistence/auth0_config.hpp",
+    "src/persistence/sync_state.hpp",
+    "src/theme/theme_tokens.hpp",
+    "src/assets/asset_paths.hpp",
+    "src/backbone/scenario_events.hpp",
+    "src/backbone/screen_state.hpp",
+    "src/engine/rng_seed.hpp",
+    "src/persistence/persistence_schema.hpp",
+    "src/settings/settings.hpp",
+    "src/backbone/event_router.hpp",
+    "src/backbone/focus_manager.hpp"
+  ],
+  "edges_depends_on": [
+    {
+      "from": "src/backbone/event_router.hpp",
+      "to": "src/backbone/screen_state.hpp"
+    },
+    {
+      "from": "src/backbone/scenario_events.hpp",
+      "to": "src/engine/scenario_id.hpp"
+    },
+    {
+      "from": "src/backbone/screen_state.hpp",
+      "to": "src/engine/scenario_id.hpp"
+    },
+    {
+      "from": "src/backbone/focus_manager.hpp",
+      "to": "src/backbone/event_router.hpp"
+    },
+    {
+      "from": "src/backbone/focus_manager.hpp",
+      "to": "src/backbone/screen_state.hpp"
+    },
+    {
+      "from": "src/engine/rng_seed.hpp",
+      "to": "src/engine/scenario_id.hpp"
+    },
+    {
+      "from": "src/settings/settings.hpp",
+      "to": "src/theme/theme_tokens.hpp"
+    },
+    {
+      "from": "src/assets/asset_paths.hpp",
+      "to": "src/assets/tier_config.hpp"
+    },
+    {
+      "from": "src/persistence/persistence_schema.hpp",
+      "to": "src/engine/scenario_id.hpp"
+    },
+    {
+      "from": "src/persistence/persistence_schema.hpp",
+      "to": "src/persistence/sync_state.hpp"
+    }
+  ],
+  "out_of_set_includes": {}
+}

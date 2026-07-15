@@ -1,0 +1,12 @@
+{
+  "imgui_version": "1.91.9b",
+  "imgui_version_num": 19191,
+  "font_atlas": "512x64",
+  "game_like_frame_ns": {"mean": 15825.996, "median": 15834.000, "p99": 20292.000, "min": 14125.000, "max": 61708.000, "stddev": 1397.388, "n": 20000},
+  "minimal_frame_ns": {"mean": 1055.206, "median": 1042.000, "p99": 1334.000, "n": 20000},
+  "reconcile_steady_ns": 2.5116,
+  "reconcile_pct_of_game_frame": 0.015870,
+  "reconcile_pct_of_minimal_frame": 0.238020,
+  "reconcile_pct_of_16_67ms": 0.000015070,
+  "game_frame_pct_of_16_67ms": 0.0950
+}

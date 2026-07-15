@@ -1,0 +1,26 @@
+{
+  "total": 16,
+  "passed": 16,
+  "executed": 13,
+  "executed_passed": 13,
+  "source_verified": 3,
+  "source_passed": 3,
+  "rows": [
+    {"name": "tab_forward_lands_1_2_3", "category": "traversal", "mode": "executed", "passed": true},
+    {"name": "wrap_forward_end_to_start", "category": "wraparound", "mode": "executed", "passed": true},
+    {"name": "tab_backward_lands_last_then_prev", "category": "traversal", "mode": "executed", "passed": true},
+    {"name": "wrap_backward_start_to_end", "category": "wraparound", "mode": "executed", "passed": true},
+    {"name": "fresh_context_unarmed_no_focus", "category": "traversal", "mode": "executed", "passed": true},
+    {"name": "modal_trap_focus_cannot_escape", "category": "modal-trap", "mode": "executed", "passed": true},
+    {"name": "modal_trap_depth_is_1", "category": "modal-trap", "mode": "executed", "passed": true},
+    {"name": "modal_trap_exit_restores_prior_focus", "category": "modal-trap", "mode": "executed", "passed": true},
+    {"name": "nested_push_pop_restores_each_level", "category": "nested-context", "mode": "executed", "passed": true},
+    {"name": "activation_space_activates", "category": "activation-key", "mode": "executed", "passed": true},
+    {"name": "activation_enter_activates", "category": "activation-key", "mode": "executed", "passed": true},
+    {"name": "activation_arrow_adjusts_not_activates", "category": "activation-key", "mode": "executed", "passed": true},
+    {"name": "activation_tab_not_consumed", "category": "activation-key", "mode": "executed", "passed": true},
+    {"name": "game_cluster_space_only_enter_reserved", "category": "activation-key", "mode": "source", "passed": true},
+    {"name": "generic_screens_space_or_enter", "category": "activation-key", "mode": "source", "passed": true},
+    {"name": "game_enter_reserved_for_math_submit", "category": "activation-key", "mode": "source", "passed": true}
+  ]
+}

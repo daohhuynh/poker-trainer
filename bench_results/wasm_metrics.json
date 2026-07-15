@@ -1,0 +1,40 @@
+{
+  "artifact": "build-wasm/poker_trainer.wasm",
+  "production_url": "https://poker-trainer-pearl.vercel.app/poker_trainer.wasm",
+  "production_identity_matches_local": true,
+  "emscripten_version": "5.0.7",
+  "cmake_build_type": "Release",
+  "optimization": "-O3 (compile and link)",
+  "compile_flags": "-O3 -DNDEBUG -std=c++23 -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Werror",
+  "link_flags": [
+    "-sMIN_WEBGL_VERSION=2", "-sMAX_WEBGL_VERSION=2", "-sFULL_ES3=1",
+    "-sALLOW_MEMORY_GROWTH=1", "-sEXIT_RUNTIME=0", "-sASSERTIONS=1",
+    "-sEXPORTED_RUNTIME_METHODS=HEAPF32,HEAPF64,HEAP8,HEAPU8,HEAP16,HEAPU16,HEAP32,HEAPU32",
+    "-lidbfs.js"
+  ],
+  "no_lto": true,
+  "no_closure_compiler": true,
+  "assertions_enabled": true,
+  "wasm_size_bytes": {
+    "raw_uncompressed": 1449593,
+    "gzip9_local_cli": 568726,
+    "gzip_production_on_wire": 572631,
+    "brotli_production_on_wire": 567597,
+    "brotli_q11_local_static_bestcase": 466431
+  },
+  "wasm_size_kib": {
+    "raw_uncompressed": 1415.6,
+    "gzip9_local_cli": 555.4,
+    "gzip_production_on_wire": 559.2,
+    "brotli_production_on_wire": 554.2,
+    "brotli_q11_local_static_bestcase": 455.5
+  },
+  "js_glue_bytes": {"raw": 158936, "gzip9": 43734},
+  "recorded_figure_477kb_gzipped": {
+    "claim": "477 KB gzipped",
+    "verdict": "mislabeled: not gzip",
+    "true_gzip": "~569 KB / 555 KiB",
+    "closest_match": "static brotli-q11 (466 KB / 455 KiB, best case)",
+    "production_reality": "Vercel serves ~554-559 KiB on the wire (low-quality on-the-fly br/gzip, NOT q11 static precompression)"
+  }
+}

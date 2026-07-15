@@ -1,0 +1,7 @@
+{
+  "real_button_navid": 2820023868,
+  "tab_focus_trace": "real real real real real real ",
+  "distinct_nav_targets": 1,
+  "custom_draw_reachable_by_nav": false,
+  "conclusion": "native nav only focuses ItemAdd'd widgets; custom draw-list controls are unreachable"
+}
