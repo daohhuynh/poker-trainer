@@ -188,22 +188,62 @@ TEST(RootFrogBubble, EveryLineIsShortEnoughToReadAtAGlance) {
 
 // ----- Geometry ----------------------------------------------------------------
 
-TEST(RootFrogGeometry, FrogSitsInTheBottomRightAndInsideTheCanvas) {
+TEST(RootFrogGeometry, FrogInkSitsFlushInTheBottomRightCorner) {
     const an::Rect frog = sc::frog_rect(kCanvas);
-    EXPECT_GT(frog.x, kCanvas.width * 0.5f);
-    EXPECT_GT(frog.y, kCanvas.height * 0.5f);
-    EXPECT_LE(frog.x + frog.w, kCanvas.width);
-    EXPECT_LE(frog.y + frog.h, kCanvas.height);
+    const an::Rect ink = sc::frog_ink_rect(kCanvas);
+    EXPECT_GT(ink.x, kCanvas.width * 0.5f);
+    EXPECT_GT(ink.y, kCanvas.height * 0.5f);
     EXPECT_FLOAT_EQ(frog.w, frog.h);  // the art is square; the rect must be too
+
+    // The visible frog touches the corner. This is the whole point of the layout:
+    // asserting it on the padded rect instead would pass while the frog floated
+    // ~11% of its own side away from both edges, which is the bug this replaced.
+    EXPECT_NEAR(ink.x + ink.w, kCanvas.width, 0.5f);
+    EXPECT_NEAR(ink.y + ink.h, kCanvas.height, 0.5f);
+
+    // The padded rect therefore overhangs, by exactly the art's padding.
+    EXPECT_GT(frog.x + frog.w, kCanvas.width);
+    EXPECT_GT(frog.y + frog.h, kCanvas.height);
+
+    // ...and the ink stays wholly inside it, so drawing and hit-testing the rect
+    // still covers every visible pixel of the frog.
+    EXPECT_GE(ink.x, frog.x);
+    EXPECT_GE(ink.y, frog.y);
+    EXPECT_LE(ink.x + ink.w, frog.x + frog.w);
+    EXPECT_LE(ink.y + ink.h, frog.y + frog.h);
 }
 
-TEST(RootFrogGeometry, BubbleSitsEntirelyLeftOfTheFrog) {
-    const an::Rect frog = sc::frog_rect(kCanvas);
+TEST(RootFrogGeometry, BubbleInkSitsLeftOfTheFrogInkAndStaysOnScreen) {
     const an::Rect bubble = sc::frog_bubble_rect(kCanvas);
-    EXPECT_LT(bubble.x + bubble.w, frog.x);
-    EXPECT_GT(bubble.x, 0.0f);
+    const an::Rect frog_ink = sc::frog_ink_rect(kCanvas);
+    const an::Rect bubble_ink = sc::frog_bubble_ink_rect(kCanvas);
+
+    // Ink vs ink. The padded rects DO overlap now that the bubble has been pulled
+    // in close, so the old rect-vs-rect assertion would fail on a layout that is
+    // visually correct.
+    EXPECT_LE(bubble_ink.x + bubble_ink.w, frog_ink.x);
+    EXPECT_GT(bubble_ink.x, 0.0f);
+    EXPECT_GT(bubble_ink.y, 0.0f);
+    EXPECT_LE(bubble_ink.y + bubble_ink.h, kCanvas.height);
+
+    // Close, though: the gap is a fraction of the frog, not of the canvas. Before
+    // this it was ~0.40 of the frog's ink width and read as disconnected.
+    const float gap = frog_ink.x - (bubble_ink.x + bubble_ink.w);
+    EXPECT_LT(gap, frog_ink.w * 0.25f);
+
     // Holds speech_bubble.png's 3:2 aspect, so the panel is never stretched.
     EXPECT_NEAR(bubble.w / bubble.h, 768.0f / 512.0f, 0.001f);
+}
+
+TEST(RootFrogGeometry, BubbleTailAimsAtTheFrogsFace) {
+    const an::Rect frog_ink = sc::frog_ink_rect(kCanvas);
+    const an::Rect bubble_ink = sc::frog_bubble_ink_rect(kCanvas);
+    // The tail is the bubble's bottom-most ink. It should end level with the
+    // frog's face -- below the top of its head, above its middle -- so the bubble
+    // reads as coming from the frog rather than hovering near it.
+    const float tail_tip_y = bubble_ink.y + bubble_ink.h;
+    EXPECT_GT(tail_tip_y, frog_ink.y);
+    EXPECT_LT(tail_tip_y, frog_ink.y + frog_ink.h * 0.5f);
 }
 
 TEST(RootFrogGeometry, FrogAndBubbleClearTheRootButtonGrid) {
@@ -223,7 +263,20 @@ TEST(RootFrogGeometry, FrogAndBubbleClearTheRootButtonGrid) {
         EXPECT_GT(frog.x, help.x + help.w) << canvas.width << "x" << canvas.height;
         // The bubble may sit within Help's columns; it must never sit within its rows.
         EXPECT_GT(bubble.y, help.y + help.h) << canvas.width << "x" << canvas.height;
-        EXPECT_LE(bubble.y + bubble.h, canvas.height) << canvas.width << "x" << canvas.height;
         EXPECT_GT(bubble.x, 0.0f) << canvas.width << "x" << canvas.height;
+
+        // Checked on ink: the frog's rect now overhangs the canvas by design, so
+        // only its visible bounds have to fit.
+        const an::Rect frog_ink = sc::frog_ink_rect(canvas);
+        const an::Rect bubble_ink = sc::frog_bubble_ink_rect(canvas);
+        EXPECT_NEAR(frog_ink.x + frog_ink.w, canvas.width, 0.5f)
+            << canvas.width << "x" << canvas.height;
+        EXPECT_NEAR(frog_ink.y + frog_ink.h, canvas.height, 0.5f)
+            << canvas.width << "x" << canvas.height;
+        EXPECT_LE(bubble_ink.y + bubble_ink.h, canvas.height)
+            << canvas.width << "x" << canvas.height;
+        EXPECT_GT(bubble_ink.y, 0.0f) << canvas.width << "x" << canvas.height;
+        EXPECT_LE(bubble_ink.x + bubble_ink.w, frog_ink.x)
+            << canvas.width << "x" << canvas.height;
     }
 }

@@ -160,15 +160,30 @@ void advance_frog_bubble(RootFrogState& state, std::uint64_t now_ms) noexcept;
 
 // ----- Geometry ---------------------------------------------------------------
 
-// The frog's rect: a square in the bottom-right, height-relative like the rest of
-// the Root layout, clear of the centre 2x2 grid and of the top-right cluster row
-// the disclaimer hangs from. Drawn AND hit-tested at exactly this rect (no breath,
-// no tilt), so visible == clickable with no tolerance to reason about.
+// The frog's rect: a square in the bottom-right corner, height-relative like the
+// rest of the Root layout, clear of the centre 2x2 grid. Drawn AND hit-tested at
+// exactly this rect (no breath, no tilt), so visible == clickable with no
+// tolerance to reason about.
+//
+// The rect OVERHANGS the canvas's right and bottom edges by the art's transparent
+// padding, so that the frog's ink sits flush in the corner. Callers must not
+// assume it lies inside the viewport; the ink does, which is what matters for
+// both drawing and hit-testing.
 [[nodiscard]] animations::Rect frog_rect(animations::Canvas canvas) noexcept;
 
-// The speech bubble's rect: to the LEFT of the frog, holding speech_bubble.png's
-// 3:2 aspect.
+// The speech bubble's rect: up and to the LEFT of the frog, holding
+// speech_bubble.png's 3:2 aspect. Positioned so the bubble's ink clears the frog's
+// ink by a frog-relative gap and the tail tip aims at the frog's face. Like
+// frog_rect this is a padded rect, so it may overlap frog_rect without the drawn
+// art overlapping at all.
 [[nodiscard]] animations::Rect frog_bubble_rect(animations::Canvas canvas) noexcept;
+
+// The VISIBLE bounds of each: the rects above minus the art's transparent
+// padding. The layout contract is written against these, not against the padded
+// rects — the frog's ink is what sits flush in the corner, and it is the two inks
+// that must never overlap. Exported so that can be asserted rather than assumed.
+[[nodiscard]] animations::Rect frog_ink_rect(animations::Canvas canvas) noexcept;
+[[nodiscard]] animations::Rect frog_bubble_ink_rect(animations::Canvas canvas) noexcept;
 
 // ----- Render -----------------------------------------------------------------
 

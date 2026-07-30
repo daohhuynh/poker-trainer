@@ -36,24 +36,53 @@ namespace ru = render_util;
 // Frog square, as a fraction of canvas height.
 constexpr float kFrogSide = 0.15f;
 
-// Distance from the right / bottom canvas edges. The x margin matches
-// home_icon_rect's, so the frog and the Home icon share a right gutter.
-constexpr float kFrogMarginX = 0.03f;
-constexpr float kFrogMarginY = 0.03f;
+// Both PNGs carry transparent padding, so the drawn rect is materially larger
+// than what a user sees. Spacing them rect-to-rect therefore does not mean what
+// it reads as: the frog's rect alone padded it ~11% of its own side away from
+// each edge. Everything below is anchored on INK instead, measured from the
+// shipped art:
+//
+//   frog_peek.png    512x512, ink bbox 400x391+56+64
+//   speech_bubble.png 768x512, ink bbox 695x481+41+11, oval body bottoming out
+//                     at y~418 with the tail spike running on down to (677, 491)
+//
+// Re-measure with `magick FILE -alpha extract -threshold 1% -format '%@' info:`
+// if either file is redrawn, and update these together.
+constexpr float kFrogInkLeft = 56.0f / 512.0f;
+constexpr float kFrogInkRight = 56.0f / 512.0f;    // (512 - 56 - 400) / 512
+constexpr float kFrogInkTop = 64.0f / 512.0f;
+constexpr float kFrogInkBottom = 57.0f / 512.0f;   // (512 - 64 - 391) / 512
+
+// The bubble's ink edges, as fractions of its drawn rect. Two of these are worth
+// stating outright:
+//
+//   kBubbleInkRight is the OVAL BODY's widest point, not the tail. The tail hangs
+//   BELOW the body and its tip (x 677) sits well inside the body's right edge
+//   (x 736), so anchoring the bubble on its tail would drive the oval through the
+//   frog's head.
+//
+//   kBubbleInkBottom IS the tail tip -- the bottom-most ink in the art -- which is
+//   what the vertical aim below uses.
+constexpr float kBubbleInkLeft = 41.0f / 768.0f;
+constexpr float kBubbleInkRight = 736.0f / 768.0f;
+constexpr float kBubbleInkTop = 11.0f / 512.0f;
+constexpr float kBubbleInkBottom = 492.0f / 512.0f;
 
 // Bubble height as a fraction of canvas height; its width follows the art's
 // aspect so the drawn rect never stretches the panel.
 constexpr float kBubbleHeight = 0.17f;
 constexpr float kBubbleAspect = 768.0f / 512.0f;  // speech_bubble.png w/h
 
-// Horizontal gap between the bubble and the frog, as a fraction of canvas width.
-// Same value the Mode Selection cluster puts between its icons.
-constexpr float kBubbleGap = 0.012f;
+// Gap between the bubble's ink and the frog's ink, as a fraction of the frog's
+// ink width -- frog-relative, not canvas-relative, so the bubble keeps the same
+// visual distance from the frog at every window size instead of drifting away on
+// wide monitors.
+constexpr float kBubbleGap = 0.14f;
 
-// Where the bubble's bottom edge sits, as a fraction down the frog: the tail is
-// a spike off the bubble's bottom-right, so it points down and to the right at
-// the frog's head rather than at its feet.
-constexpr float kBubbleBottomOnFrog = 0.45f;
+// Where the tail tip lands down the frog's ink: the tail is a spike off the
+// bubble's bottom-right, so it points down and to the right at the frog's face
+// rather than at its feet.
+constexpr float kTailAimOnFrog = 0.36f;
 
 // The text-safe interior of speech_bubble.png, in fractions of the drawn rect.
 // These are the numbers the art declares in assets/svg/tier2/speech_bubble.svg
@@ -194,16 +223,39 @@ void advance_frog_bubble(RootFrogState& state, std::uint64_t now_ms) noexcept {
 
 animations::Rect frog_rect(animations::Canvas canvas) noexcept {
     const float side = kFrogSide * canvas.height;
-    return animations::Rect{canvas.width - kFrogMarginX * canvas.width - side,
-                            canvas.height - kFrogMarginY * canvas.height - side, side, side};
+    // The rect deliberately overhangs the right and bottom edges by the art's own
+    // padding, which is what puts the frog's INK flush into the corner. The ink is
+    // wholly on-screen, so the visible frog stays fully clickable; only padding
+    // falls outside.
+    return animations::Rect{canvas.width - side * (1.0f - kFrogInkRight),
+                            canvas.height - side * (1.0f - kFrogInkBottom), side, side};
+}
+
+animations::Rect frog_ink_rect(animations::Canvas canvas) noexcept {
+    const animations::Rect r = frog_rect(canvas);
+    return animations::Rect{r.x + r.w * kFrogInkLeft, r.y + r.h * kFrogInkTop,
+                            r.w * (1.0f - kFrogInkLeft - kFrogInkRight),
+                            r.h * (1.0f - kFrogInkTop - kFrogInkBottom)};
 }
 
 animations::Rect frog_bubble_rect(animations::Canvas canvas) noexcept {
-    const animations::Rect frog = frog_rect(canvas);
+    // Derived from the frog's INK, not its padded rect, and via frog_ink_rect so
+    // there is exactly one place that undoes the art's padding.
+    const animations::Rect ink = frog_ink_rect(canvas);
     const float h = kBubbleHeight * canvas.height;
     const float w = h * kBubbleAspect;
-    return animations::Rect{frog.x - kBubbleGap * canvas.width - w,
-                            frog.y + frog.h * kBubbleBottomOnFrog - h, w, h};
+    // Horizontally the bubble is held off the frog by its ink; vertically the tail
+    // tip is aimed at the frog's face. Both ends of each measurement are ink, so
+    // the constants above mean on screen what they say here.
+    return animations::Rect{ink.x - kBubbleGap * ink.w - w * kBubbleInkRight,
+                            ink.y + kTailAimOnFrog * ink.h - h * kBubbleInkBottom, w, h};
+}
+
+animations::Rect frog_bubble_ink_rect(animations::Canvas canvas) noexcept {
+    const animations::Rect r = frog_bubble_rect(canvas);
+    return animations::Rect{r.x + r.w * kBubbleInkLeft, r.y + r.h * kBubbleInkTop,
+                            r.w * (kBubbleInkRight - kBubbleInkLeft),
+                            r.h * (kBubbleInkBottom - kBubbleInkTop)};
 }
 
 // ----- Render -----------------------------------------------------------------

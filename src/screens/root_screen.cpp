@@ -263,8 +263,12 @@ void install_root_handlers(animations::MorphController& morph, RootFrogState& fr
             // The frog (bottom-right, on a quarter of visits): ribbit + open or swap
             // its speech bubble. Hit-tested at the exact rect render_root_frog draws
             // and only while it is actually showing, so an invisible frog is never
-            // clickable. The ribbit routes through the bridge SFX seam rather than a
-            // direct Zone 03 call — Zone 07 does not depend on the audio zone.
+            // clickable. That rect deliberately overhangs the canvas corner so the
+            // art sits flush in it; the overhanging slice is simply unreachable,
+            // and the visible frog is a strict subset of what remains, so every
+            // drawn pixel stays clickable. The ribbit routes through the bridge SFX
+            // seam rather than a direct Zone 03 call — Zone 07 does not depend on
+            // the audio zone.
             if (frog_showing(frog) && point_in_rect(e.x, e.y, frog_rect(canvas))) {
                 bridge::play_sfx(audio::SfxId::FrogToggle);
                 advance_frog_bubble(frog, backbone::total_ms_since_app_start());
