@@ -98,13 +98,6 @@ OpponentChipState opponent_chip_state(engine::ScenarioType type) noexcept {
                                                 : OpponentChipState::Empty;
 }
 
-int active_opponent_slot() noexcept {
-    // The seat directly across from the hero — slot 4 is the far top-center seat in
-    // seat_spot's rim mapping — so a Caller's pushed chips read straight down toward
-    // the pot.
-    return 4;
-}
-
 void draw_opponent_seats(ImDrawList* dl, const GameLayout& layout,
                          const engine::ScenarioState& scenario,
                          std::span<const Denomination> denom_set, bool cash_mode, bool show_hud) {

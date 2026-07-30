@@ -48,7 +48,14 @@ enum class OpponentChipState : std::uint8_t {
 // scenario. Deterministic (the engine does not name a specific bettor): the seat
 // directly across the oval from the hero, so the push reads clearly toward the
 // pot. Meaningful only for Caller scenarios.
-[[nodiscard]] int active_opponent_slot() noexcept;
+// Header-only so callers that must not link `game` can use it -- Zone 14's tutorial
+// spotlights need this seat to light the pushed-chip corridor, and duplicating the
+// number there is how the Game spotlights drifted out of alignment before.
+[[nodiscard]] constexpr int active_opponent_slot() noexcept {
+    // Slot 4 is the far top-center seat in seat_spot's rim mapping, so a Caller's
+    // pushed chips read straight down toward the pot.
+    return 4;
+}
 
 // ----- Render (game render TU only) -----
 

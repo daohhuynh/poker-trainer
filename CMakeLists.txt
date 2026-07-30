@@ -878,7 +878,8 @@ if(ENABLE_TESTS)
         tests/tutorial/step_sequencer_test.cpp
         tests/tutorial/forced_settings_test.cpp
         tests/tutorial/seed_selection_test.cpp
-    )
+    
+        tests/tutorial/spotlight_test.cpp)
     target_include_directories(tutorial_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/tests

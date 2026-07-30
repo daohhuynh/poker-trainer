@@ -2,6 +2,7 @@
 
 #include "engine/scenario.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <string>
 
@@ -48,6 +49,32 @@ inline constexpr float kReadoutRelSecondary = 0.9f;  // labels: legend values, p
 // top row (legend on the left, board readout in the middle) grows past it and the
 // two run into each other.
 [[nodiscard]] float canvas_ui_scale();
+
+// The same scale for an explicitly-given canvas, header-only so callers that know
+// their canvas but must not link this library can use it. Zone 14's tutorial
+// spotlights are the reason: they resolve against a Canvas handed in by the caller,
+// and `tutorial` deliberately does not link `game`. Without this they would have to
+// re-derive the formula, and a duplicated constant is exactly how the Game-screen
+// spotlights drifted out of alignment with the table in the first place.
+[[nodiscard]] inline float canvas_ui_scale_for(float canvas_w, float canvas_h) noexcept {
+    if (canvas_w <= 0.0f || canvas_h <= 0.0f) {
+        return 1.0f;
+    }
+    return std::min(canvas_w / kReferenceCanvasWidth, canvas_h / kReferenceCanvasHeight);
+}
+
+// Type size and line height for an explicitly-given canvas, header-only for the same
+// reason as canvas_ui_scale_for. These omit the atlas-size floor that the ImGui-facing
+// versions apply, since that needs a live ImGui frame; a spotlight only needs the
+// element's proportions, so a few pixels at very small canvases does not matter.
+[[nodiscard]] inline float readout_font_size_for(float rel, float canvas_w,
+                                                 float canvas_h) noexcept {
+    return kReadoutBaseSize * rel * canvas_ui_scale_for(canvas_w, canvas_h);
+}
+[[nodiscard]] inline float readout_line_height_for(float rel, float canvas_w,
+                                                   float canvas_h) noexcept {
+    return readout_font_size_for(rel, canvas_w, canvas_h) * 1.35f;
+}
 
 // Pixel type size for a readout drawn at `rel` x the body size on the current
 // canvas. Floored at the atlas size: below it the glyphs are downsampled and stop

@@ -26,6 +26,12 @@
 
 #include "bridge/game_launch.hpp"
 #include "math/input_boxes.hpp"
+// Header-only geometry from Zone 08: layout.hpp is entirely inline and only the
+// inline *_for overloads of hud.hpp are used, so no link edge on `game` is added.
+#include "render/hud.hpp"
+#include "render/layout.hpp"
+#include "render/opponents.hpp"
+#include "render/render_constants.hpp"
 #include "math/interrogator.hpp"
 #include "modal/confirm_modal.hpp"
 #include "modal/modals.hpp"
@@ -94,6 +100,156 @@ constexpr std::string_view kPromptMessage =
 
 // ----- Spotlight geometry (Group C) -----
 
+// The Game-screen spotlights below all resolve through render::compute_layout, the
+// same function Zone 08 lays the table out with, so reshaping the table moves them
+// automatically. They used to be hand-copied canvas fractions; when the felt was
+// rebuilt every one of them ended up pointing at empty room.
+//
+// render/layout.hpp and render/hud.hpp are safe to include here even though
+// `tutorial` does not link `game`: the layout helpers are header-only inline, and the
+// only hud entry point used is the inline canvas_ui_scale_for overload.
+
+[[nodiscard]] render::GameLayout game_layout(Canvas c) noexcept {
+    return render::compute_layout(c.width, c.height);
+}
+
+// Pad a rect outward so the lit region comfortably contains its element rather than
+// clipping its edge. Fractions of the canvas, so it holds at any size.
+[[nodiscard]] Rect padded(Rect r, Canvas c, float fx, float fy) noexcept {
+    const float px = c.width * fx;
+    const float py = c.height * fy;
+    return Rect{r.x - px, r.y - py, r.w + 2.0f * px, r.h + 2.0f * py};
+}
+
+// A rect centred on (cx, cy).
+[[nodiscard]] Rect centered_rect(float cx, float cy, float w, float h) noexcept {
+    return Rect{cx - w * 0.5f, cy - h * 0.5f, w, h};
+}
+
+// The top-left denomination legend row: chip disks with their dollar values beneath,
+// anchored at info_anchor (game_screen.cpp draws it there first, before the info
+// lines). Height covers a chip plus its label.
+[[nodiscard]] Rect game_legend_rect(Canvas c) noexcept {
+    const render::GameLayout L = game_layout(c);
+    const float chip = render::kChipRadius * 2.0f * L.chip_scale;
+    const float label = render::readout_line_height_for(render::kReadoutRelSecondary, c.width,
+                                                        c.height);
+    // Five denominations at most, each a chip plus the column pitch.
+    const float w = 5.0f * render::kChipColumnPitch * L.chip_scale;
+    return padded(Rect{L.info_anchor.x, L.info_anchor.y, w, chip + label}, c, 0.006f, 0.008f);
+}
+
+// Pot / Blinds / To Call / Opp Fold: the stacked lines directly under the legend.
+[[nodiscard]] Rect game_info_lines_rect(Canvas c) noexcept {
+    const Rect legend = game_legend_rect(c);
+    const float line = render::readout_line_height_for(render::kReadoutRelPrimary, c.width,
+                                                        c.height);
+    return Rect{legend.x, legend.y + legend.h, legend.w, line * 4.0f};
+}
+
+// The on-felt "Opp fold: X%" readout. game_screen.cpp anchors it at
+// table_center.y - table_ry * 0.62.
+[[nodiscard]] Rect game_table_opp_fold_rect(Canvas c) noexcept {
+    const render::GameLayout L = game_layout(c);
+    const float line = render::readout_line_height_for(render::kReadoutRelPrimary, c.width,
+                                                        c.height);
+    return centered_rect(L.table_center.x, L.table_center.y - L.table_ry * 0.62f,
+                         c.width * 0.22f, line * 2.0f);
+}
+
+// The top-centre board readout: a five-card fan centred on the canvas at
+// kBoardReadoutTopFrac, drawn at kBoardReadoutScale x canvas_ui_scale.
+[[nodiscard]] Rect game_board_readout_rect(Canvas c) noexcept {
+    constexpr float kTopFrac = 0.015f;      // game_screen.cpp kBoardReadoutTopFrac
+    constexpr float kReadoutScale = 2.1f;   // game_screen.cpp kBoardReadoutScale
+    const float s = kReadoutScale * render::canvas_ui_scale_for(c.width, c.height);
+    // Widest case is the full five-card board; a shorter board sits inside this.
+    const float w = render::kCardFanStep * s * 4.0f + render::kCardWidth * s;
+    const float h = render::kCardHeight * s;
+    return padded(Rect{c.width * 0.5f - w * 0.5f, c.height * kTopFrac, w, h}, c, 0.006f, 0.008f);
+}
+
+// The hero's two hole cards, drawn as a fan above the hero seat (slot 0).
+[[nodiscard]] Rect game_hole_cards_rect(Canvas c) noexcept {
+    const render::GameLayout L = game_layout(c);
+    const render::SeatSpot hero = render::seat_spot(L, 0);
+    const float s = hero.scale;
+    const float w = render::kCardFanStep * s + render::kCardWidth * s;
+    const float h = render::kCardHeight * s;
+    // game_screen draws the fan with its BOTTOM on the seat point, label below.
+    return padded(Rect{hero.pos.x - w * 0.5f, hero.pos.y - h, w, h}, c, 0.008f, 0.010f);
+}
+
+// The five opponent seats: the bounding box of their seat points, grown to take in
+// each seat's chip cluster above it and its position letter below.
+[[nodiscard]] Rect game_opponent_ring_rect(Canvas c) noexcept {
+    const render::GameLayout L = game_layout(c);
+    float min_x = c.width;
+    float max_x = 0.0f;
+    float min_y = c.height;
+    float max_y = 0.0f;
+    for (int slot = 1; slot <= 5; ++slot) {
+        const render::SeatSpot s = render::seat_spot(L, slot);
+        min_x = std::min(min_x, s.pos.x);
+        max_x = std::max(max_x, s.pos.x);
+        min_y = std::min(min_y, s.pos.y);
+        max_y = std::max(max_y, s.pos.y);
+    }
+    // Above a seat point sits its chip stack and the amount over it; below, the
+    // position letter. Both scale with the felt, so measure them the same way.
+    const float above = (render::kMaxChipsPerColumn * render::kChipStackStep * 0.4f +
+                         render::kChipRadius) * L.chip_scale +
+                        render::readout_line_height_for(render::kReadoutRelPrimary, c.width,
+                                                        c.height);
+    const float below = render::kChipRadius * L.chip_scale +
+                        render::readout_line_height_for(render::kReadoutRelSecondary, c.width,
+                                                        c.height);
+    const float side = render::kChipColumnPitch * 2.0f * L.chip_scale;
+    return Rect{min_x - side, min_y - above, (max_x - min_x) + 2.0f * side,
+                (max_y - min_y) + above + below};
+}
+
+// The corridor between the active opponent and the pot: where a Caller's pushed
+// chips rest, and where an Aggressor's conspicuously-empty chip area is. Both
+// spotlights point here. game_screen lerps the rest position 0.55 of the way from
+// the seat toward the pot.
+[[nodiscard]] Rect game_pushed_chips_rect(Canvas c) noexcept {
+    const render::GameLayout L = game_layout(c);
+    const render::SeatSpot active = render::seat_spot(L, render::active_opponent_slot());
+    const float fx = active.pos.x + (L.pot.x - active.pos.x) * 0.55f;
+    const float fy = active.pos.y + (L.pot.y - active.pos.y) * 0.55f;
+    const float span = render::kChipColumnPitch * 5.0f * L.chip_scale * active.scale;
+    const float tall = (render::kMaxChipsPerColumn * render::kChipStackStep * 0.4f +
+                        render::kChipRadius * 2.0f) * L.chip_scale * active.scale;
+    return centered_rect(fx, fy, span, tall);
+}
+
+// Zone 09's math input column. input_boxes.cpp anchors the window's LEFT-MIDDLE at
+// (0.02w, 0.5h) -- the same left margin as Z08's info column above it -- and lets
+// ImGui auto-size it, so the panel grows up and down about the vertical centre. Its
+// width is content-driven (the four Bet Size buttons are fixed-pixel), so this takes
+// the wider of that pixel floor and a canvas fraction rather than assuming either.
+[[nodiscard]] Rect game_math_column_rect(Canvas c) noexcept {
+    const render::GameLayout L = game_layout(c);
+    constexpr float kBetButtonRowPx = 300.0f;  // the fixed-pixel content floor
+    const float w = std::max(kBetButtonRowPx, c.width * 0.18f);
+    // Header line, three label+input pairs, and the bet-size row.
+    const float line = render::readout_line_height_for(render::kReadoutRelPrimary, c.width,
+                                                       c.height);
+    const float h = std::min(line * 10.0f, c.height * 0.55f);
+    return Rect{L.info_anchor.x, c.height * 0.5f - h * 0.5f, w, h};
+}
+
+// The persistent top-right cluster, mirroring game_cluster_rects: four square icons
+// from cluster_anchor, each layout.w * 0.024 with a 35% gap.
+[[nodiscard]] Rect game_cluster_rect(Canvas c) noexcept {
+    const render::GameLayout L = game_layout(c);
+    const float box = L.w * 0.024f;
+    const float gap = box * 0.35f;
+    const float w = 4.0f * box + 3.0f * gap;
+    return padded(Rect{L.cluster_anchor.x, L.cluster_anchor.y, w, box}, c, 0.005f, 0.008f);
+}
+
 // The Post-Round Again button rect, replicated EXACTLY from post_round_screen.cpp's
 // layout so the spotlight + click interception land on the real button.
 [[nodiscard]] Rect again_button_rect(Canvas c) noexcept {
@@ -129,7 +285,7 @@ constexpr std::string_view kPromptMessage =
 // layout helpers; the Game / Post-Round rects mirror render::compute_layout /
 // post_round_screen::compute_layout (the same hand-replicated pattern as
 // again_button_rect), so the spotlights land on the real elements (Group C).
-[[nodiscard]] std::optional<Rect> resolve_spotlight(SpotTarget target, Canvas c) {
+[[nodiscard]] std::optional<Rect> resolve_spotlight_impl(SpotTarget target, Canvas c) {
     namespace an = animations;
     const float w = c.width;
     const float h = c.height;
@@ -161,21 +317,24 @@ constexpr std::string_view kPromptMessage =
         case SpotTarget::ModeCustom: return an::mode_middle_button_rect(2, c);
         case SpotTarget::ModeStandard: return an::standard_button_rect(c);
 
-        // Game table tour -- aligned to render::compute_layout (table centered at
-        // 0.50w/0.58h, near rim ~0.80h, info column top-left, dealer right, cluster
-        // top-right).
-        case SpotTarget::GameChipLegend: return region(0.015f, 0.02f, 0.20f, 0.07f);
-        case SpotTarget::GamePotBlinds: return region(0.015f, 0.10f, 0.20f, 0.13f);
-        // The on-felt "Opp fold: X%" readout: centered above the community cards, at
-        // table_center.y - table_ry*0.62 (render::compute_layout: center 0.50/0.58,
-        // ry 0.22 -> ~0.44h), the same value the top-left readout shows (the given F).
-        case SpotTarget::GameOppFold: return region(0.37f, 0.41f, 0.26f, 0.06f);
-        case SpotTarget::GameCommunityCards: return region(0.34f, 0.45f, 0.32f, 0.16f);
-        case SpotTarget::GameHoleCards: return region(0.40f, 0.66f, 0.20f, 0.21f);
-        case SpotTarget::GameOpponents: return region(0.08f, 0.28f, 0.84f, 0.26f);
-        case SpotTarget::GamePushedChips: return region(0.38f, 0.42f, 0.24f, 0.15f);
-        case SpotTarget::GameClusterX: return region(0.85f, 0.025f, 0.135f, 0.05f);
-        case SpotTarget::GameOppEmptyChips: return region(0.38f, 0.42f, 0.24f, 0.15f);
+        // Game table tour. These DERIVE from render::compute_layout and its seat
+        // helpers rather than restating them as canvas fractions. The fractions they
+        // replaced were written against an older, differently-shaped table and silently
+        // went stale the moment it was reshaped -- which is the whole bug. Anything
+        // added here must come off the layout too, or it will drift the same way.
+        case SpotTarget::GameChipLegend: return game_legend_rect(c);
+        case SpotTarget::GamePotBlinds: return game_info_lines_rect(c);
+        case SpotTarget::GameOppFold: return game_table_opp_fold_rect(c);
+        // The board is read from the top-centre readout -- it is deliberately ~2x the
+        // on-felt cards, which are largely cosmetic -- so that is what gets lit. The
+        // two are at opposite ends of the screen; spanning both would light most of the
+        // canvas and defeat the spotlight.
+        case SpotTarget::GameCommunityCards: return game_board_readout_rect(c);
+        case SpotTarget::GameHoleCards: return game_hole_cards_rect(c);
+        case SpotTarget::GameOpponents: return game_opponent_ring_rect(c);
+        case SpotTarget::GamePushedChips: return game_pushed_chips_rect(c);
+        case SpotTarget::GameClusterX: return game_cluster_rect(c);
+        case SpotTarget::GameOppEmptyChips: return game_pushed_chips_rect(c);
 
         // Game math inputs -- the LEFT-CENTER input column where render_math_inputs
         // actually draws (window anchored at 0.04w, vertically centered), NOT the old
@@ -188,7 +347,7 @@ constexpr std::string_view kPromptMessage =
         case SpotTarget::GameMathFold:
         case SpotTarget::GameMathTierEv:
         case SpotTarget::GameMathBetSize:
-            return region(0.02f, 0.27f, 0.22f, 0.46f);
+            return game_math_column_rect(c);
 
         // Post-Round -- mirror compute_layout. The recap rows / tier tabs / summary all
         // spotlight the whole stat box so it reads at full brightness (Group C).
@@ -203,6 +362,11 @@ constexpr std::string_view kPromptMessage =
         case SpotTarget::PostAgain: return again_button_rect(c);
     }
     return std::nullopt;
+}
+
+// Internal alias: everything in this TU already calls resolve_spotlight.
+[[nodiscard]] std::optional<Rect> resolve_spotlight(SpotTarget target, Canvas c) {
+    return resolve_spotlight_impl(target, c);
 }
 
 [[nodiscard]] const char* bet_tier_name(engine::BetTier t) noexcept {
@@ -843,6 +1007,10 @@ bool on_tutorial_key(const be::KeyEvent& e) {
 }
 
 }  // namespace
+
+std::optional<animations::Rect> spotlight_rect(SpotTarget target, animations::Canvas c) {
+    return resolve_spotlight_impl(target, c);
+}
 
 // ----- Public API -----
 

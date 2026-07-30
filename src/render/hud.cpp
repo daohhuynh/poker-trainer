@@ -39,10 +39,7 @@ void centered_text_at(ImDrawList* dl, float cx, float y, float px, theme::ColorT
 
 float canvas_ui_scale() {
     const ImVec2 canvas = ImGui::GetMainViewport()->Size;
-    if (canvas.x <= 0.0f || canvas.y <= 0.0f) {
-        return 1.0f;
-    }
-    return std::min(canvas.x / kReferenceCanvasWidth, canvas.y / kReferenceCanvasHeight);
+    return canvas_ui_scale_for(canvas.x, canvas.y);
 }
 
 float readout_font_size(float rel) {
