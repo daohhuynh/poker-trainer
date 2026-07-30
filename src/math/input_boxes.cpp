@@ -272,6 +272,11 @@ void focus_box_on_click(const NumericBox& box) noexcept {
 
 namespace {
 
+// Corner radius of the column's backing panel. Matches the other modal-look
+// surfaces in the app (the Post-Round stat modal, the tutorial callout) so the
+// interrogator reads as the same family of UI chrome.
+inline constexpr float kPanelRounding = 8.0f;
+
 // Draw one labeled numeric box. The box fill uses bg_input, its border
 // border_default, the text text_input; when keyboard-focused, the shared substrate
 // overlays a 2px border_focus ring (Visual State — Numeric Boxes). The substrate
@@ -385,9 +390,21 @@ void render_math_inputs(InterrogatorRuntime& runtime, const engine::ScenarioStat
     ImGui::SetNextWindowPos(ImVec2{vp->Pos.x + vp->Size.x * 0.04f, vp->Pos.y + vp->Size.y * 0.5f},
                             ImGuiCond_Always, ImVec2{0.0f, 0.5f});
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBackground |
-                                   ImGuiWindowFlags_NoSavedSettings |
+                                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                                    ImGuiWindowFlags_AlwaysAutoResize;
+    // The column sits over the photographic room background, where the text_secondary
+    // labels (tier indicator, "Breakeven Fold %", "EV", "Bet Size") wash out against the
+    // bright painting behind them -- the boxes themselves stayed legible only because
+    // they carry their own bg_input fill. Back the whole column with the modal surface
+    // (opaque bg_modal + a border_default outline + modal rounding) so it reads as UI
+    // rather than text on a photograph. The panel IS this window, so AlwaysAutoResize
+    // sizes it from the rows it contains and the two can never drift apart.
+    const float panel_pad = ImGui::GetTextLineHeight() * 0.9f;
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, theme::get_color(theme::ColorToken::BgModalSurface));
+    ImGui::PushStyleColor(ImGuiCol_Border, theme::get_color(theme::ColorToken::BorderDefault));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{panel_pad, panel_pad});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, kPanelRounding);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
     if (ImGui::Begin("##math_inputs", nullptr, flags)) {
         // Multi-tier Aggressor: one tier per screen. Lead with the fixed-size
         // indicator ("Tier 2 of 4 - Bet: 1/2 Pot") so the user knows which size
@@ -429,6 +446,8 @@ void render_math_inputs(InterrogatorRuntime& runtime, const engine::ScenarioStat
         }
     }
     ImGui::End();
+    ImGui::PopStyleVar(3);
+    ImGui::PopStyleColor(2);
 
     // Record the element ImGui is now reconciled to (after any click this frame
     // moved both the outline and ImGui's text focus together), so the next frame

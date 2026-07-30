@@ -445,9 +445,12 @@ float render_stat_modal(ImDrawList* dl, const engine::ScenarioState& scenario,
     const float alpha = params.alpha;
     const float width = br.x - tl.x;
 
-    // Translucent panel (bg_modal_translucent already encodes the 65% base opacity;
-    // the fade alpha multiplies it).
-    dl->AddRectFilled(tl, br, token_alpha_u32(theme::ColorToken::BgModalTranslucent, alpha), 8.0f);
+    // Opaque panel, matching every other modal in the app. ARCHITECTURE specifies
+    // bg_modal_translucent (65%) here, but over the photographic room background the
+    // recap rows were unreadable through it, so the user overrode the spec in favour of
+    // the solid bg_modal fill -- including where it covers part of the dealer, which is
+    // intended. Only the arrival-fade alpha modulates it now.
+    dl->AddRectFilled(tl, br, token_alpha_u32(theme::ColorToken::BgModalSurface, alpha), 8.0f);
 
     const float pad = width * 0.05f;
     const bool tabbed = has_tier_tabs(scenario);
