@@ -504,6 +504,45 @@ if(EMSCRIPTEN)
         "-lidbfs.js"  # IDBFS filesystem backend for durable guest-mode persistence
     )
 
+    # Deploy the asset tree into the bundle directory. assets/ in the repo is the
+    # single source of truth; the bundle copy is derived and is never a place to
+    # hand-place files. Nothing in the link step emits assets, so without this the
+    # build succeeds and every same-origin /assets/... fetch 404s at runtime — a
+    # failure invisible until the app is opened in a browser.
+    #
+    # Same -P injector idiom as the service-worker step below: emit the script at
+    # configure time, run it after the link. The destination is cleared first so a
+    # rename or deletion under assets/ cannot leave a stale file serving at its old
+    # URL. .DS_Store is excluded to match the media whitelist the cache-version
+    # manifest already applies — macOS junk must not reach the CDN. An empty asset
+    # tree is a hard error, not a warning: shipping a zero-asset bundle is the exact
+    # silent failure this step exists to prevent.
+    file(WRITE ${CMAKE_BINARY_DIR}/deploy_assets.cmake [=[
+if(NOT IS_DIRECTORY "${SOURCE}")
+    message(FATAL_ERROR "Asset source tree not found: ${SOURCE}")
+endif()
+file(GLOB_RECURSE _media LIST_DIRECTORIES false
+    "${SOURCE}/*.png" "${SOURCE}/*.jpg" "${SOURCE}/*.jpeg"
+    "${SOURCE}/*.mp3" "${SOURCE}/*.ogg" "${SOURCE}/*.wav")
+list(LENGTH _media _media_count)
+if(_media_count EQUAL 0)
+    message(FATAL_ERROR
+        "No deployable media found under ${SOURCE}. Refusing to ship a zero-asset "
+        "bundle: every /assets/... fetch would 404 at runtime.")
+endif()
+file(REMOVE_RECURSE "${DEST}")
+file(COPY "${SOURCE}/" DESTINATION "${DEST}" PATTERN ".DS_Store" EXCLUDE)
+message(STATUS "Deployed ${_media_count} assets to ${DEST}")
+]=])
+    add_custom_command(TARGET poker_trainer POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE=${CMAKE_SOURCE_DIR}/assets
+            -DDEST=$<TARGET_FILE_DIR:poker_trainer>/assets
+            -P ${CMAKE_BINARY_DIR}/deploy_assets.cmake
+        COMMENT "Deploying assets/ into the wasm bundle"
+        VERBATIM
+    )
+
     # Serve the service worker from the bundle directory so the boot-time
     # navigator.serviceWorker.register('service_worker.js') resolves (a worker
     # only controls pages at or below its own scope).
