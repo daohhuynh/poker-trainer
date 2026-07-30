@@ -135,15 +135,23 @@ AmbientParticle ambient_particle_at(int index, std::uint64_t ms, float w, float 
     const float depth = hash01(index, 7);                       // 0..1: near←→far
 
     // Rise (wrapping so motes recycle) with a gentle sway; deeper motes are smaller and
-    // fainter. Kept subtle: radius ~1.4–3.4 px, alpha ~0.035–0.085 before the theme alpha.
+    // fainter. Radius ~1.8–4.0 px, alpha ~0.09–0.25 before the theme alpha.
+    //
+    // The alphas are set against a PHOTOGRAPHIC backdrop, not the flat wash the screens
+    // used to draw. The room backgrounds carry a median local (9x9 px) luminance
+    // deviation of ~5.5/255, so the previous 0.035–0.085 band — which lands a peak
+    // luminance delta of only ~3–7 against the default palette's warm-bronze accent —
+    // sat at or below the backdrop's own mottling and read as part of the photo rather
+    // than as drifting motes. These values put the near motes ~4x above that floor while
+    // the far ones stay a bare hint, so the field still reads as atmosphere.
     const float ny = wrap01(base_y - rise * t);
     const float nx = wrap01(base_x + sway_amp * std::sin(2.0f * kPi * sway_hz * t + phase));
 
     AmbientParticle p{};
     p.x = nx * w;
     p.y = ny * h;
-    p.radius = 1.4f + 2.0f * depth;
-    p.alpha = 0.035f + 0.050f * depth;
+    p.radius = 1.8f + 2.2f * depth;
+    p.alpha = 0.09f + 0.16f * depth;
     return p;
 }
 

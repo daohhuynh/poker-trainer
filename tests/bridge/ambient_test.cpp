@@ -64,12 +64,20 @@ TEST(AmbientParticles, StayWithinCanvasBounds) {
 
 TEST(AmbientParticles, AreSubtleAndSoft) {
     // Small radii and faint alphas — the "atmosphere you feel more than see" bar.
+    //
+    // The alpha ceiling was 0.1 while the screens drew a flat colour wash behind the
+    // motes. The room backgrounds are now photographs, whose own median local (9x9 px)
+    // luminance deviation is ~5.5/255 — so an alpha under 0.1 puts a mote at or below
+    // the backdrop's own mottling and the drift becomes genuinely invisible rather than
+    // merely subtle. The bar the name describes is unchanged; the number that expresses
+    // it had to move with the backdrop. Kept well under 0.3 so the motes stay atmosphere
+    // and never read as foreground specks.
     for (int i = 0; i < pt::kAmbientParticleCount; ++i) {
         const pt::AmbientParticle p = pt::ambient_particle_at(i, 1234, 1000.0f, 1000.0f);
         EXPECT_GT(p.radius, 0.0f);
         EXPECT_LE(p.radius, 4.0f);
         EXPECT_GT(p.alpha, 0.0f);
-        EXPECT_LE(p.alpha, 0.1f);
+        EXPECT_LE(p.alpha, 0.3f);
     }
 }
 
