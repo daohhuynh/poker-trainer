@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Frog dealer - base (front-facing, no expression)</title>
+  <desc>Easter-egg dealer. Shares the golden monocle and formal collar/bow tie with the Butler.
+Overlay anchor points in this coordinate space:
+  cheeks (blush overlay)  : circles centred (314, 450) and (710, 450)
+  mouth  (tongue overlay) : cubic (318,516) C (364,612) (660,612) (706,516); lowest point (512, 588)
+  tongue emerges from the mouth sub-curve t=0.38..0.62:
+    (451.30, 583.86) C (490.61, 589.39) (533.39, 589.39) (572.70, 583.86)</desc>
+
+  <!-- ================= BODY (behind head) ================= -->
+  <g id="body">
+    <!-- dealer jacket. Top boundary is a shallow arc that stays tucked
+         behind the head's jawline at every x, so no seam can open up. -->
+    <path d="M 130 1024
+             C 132 952, 142 886, 164 812
+             C 196 706, 258 636, 312 606
+             Q 512 700 712 606
+             C 766 636, 828 706, 860 812
+             C 882 886, 892 952, 894 1024 Z"
+          fill="#342620" stroke="#1E1512" stroke-width="6" stroke-opacity="0.5"/>
+
+    <!-- shoulder rim light -->
+    <path d="M 320 626 C 268 656, 212 720, 182 812" fill="none"
+          stroke="#47342B" stroke-width="22" stroke-opacity="0.55" stroke-linecap="round"/>
+    <path d="M 704 626 C 756 656, 812 720, 842 812" fill="none"
+          stroke="#47342B" stroke-width="22" stroke-opacity="0.55" stroke-linecap="round"/>
+
+    <!-- shirt front -->
+    <path d="M 512 686 L 406 756 L 378 1024 L 646 1024 L 618 756 Z" fill="#E4D9C4"/>
+    <path d="M 512 686 L 618 756 L 646 1024 L 512 1024 Z" fill="#CFC2AA" opacity="0.3"/>
+    <path d="M 512 766 L 512 1024" fill="none" stroke="#C8BAA1" stroke-width="4" stroke-opacity="0.75"/>
+    <circle cx="512" cy="872" r="10" fill="#DED3BC" stroke="#B4A68B" stroke-width="3"/>
+    <circle cx="512" cy="968" r="10" fill="#DED3BC" stroke="#B4A68B" stroke-width="3"/>
+
+    <!-- lapels -->
+    <path d="M 512 686 L 406 756 L 380 1024 L 318 1024 L 348 768 Z" fill="#45332A"/>
+    <path d="M 512 686 L 618 756 L 644 1024 L 706 1024 L 676 768 Z" fill="#45332A"/>
+    <path d="M 348 768 L 512 686 L 676 768" fill="none"
+          stroke="#57402F" stroke-width="8" stroke-opacity="0.75" stroke-linejoin="round"/>
+
+    <!-- contact shadow cast by the head onto the collar (layered, no filter) -->
+    <ellipse cx="512" cy="696" rx="208" ry="52" fill="#16110D" opacity="0.10"/>
+    <ellipse cx="512" cy="692" rx="178" ry="42" fill="#16110D" opacity="0.10"/>
+    <ellipse cx="512" cy="688" rx="146" ry="32" fill="#16110D" opacity="0.11"/>
+
+    <!-- wing collar -->
+    <path d="M 512 684 L 428 720 L 464 780 L 512 728 Z" fill="#F2E9D6" stroke="#C2B49B" stroke-width="4"/>
+    <path d="M 512 684 L 596 720 L 560 780 L 512 728 Z" fill="#F2E9D6" stroke="#C2B49B" stroke-width="4"/>
+
+    <!-- bow tie -->
+    <path d="M 506 740 L 418 702 C 400 695, 388 709, 388 740
+             C 388 771, 400 785, 418 778 L 506 740 Z" fill="#241A16"/>
+    <path d="M 518 740 L 606 702 C 624 695, 636 709, 636 740
+             C 636 771, 624 785, 606 778 L 518 740 Z" fill="#241A16"/>
+    <path d="M 506 740 L 418 702 C 402 696, 390 707, 389 730 L 506 740 Z" fill="#3E2C23" opacity="0.8"/>
+    <path d="M 518 740 L 606 702 C 622 696, 634 707, 635 730 L 518 740 Z" fill="#3E2C23" opacity="0.8"/>
+    <rect x="492" y="714" width="40" height="52" rx="13" fill="#2E211B"/>
+    <rect x="492" y="732" width="40" height="11" fill="#A87B4A" opacity="0.85"/>
+  </g>
+
+  <!-- ================= HEAD ================= -->
+  <g id="head">
+    <path d="M 512 204
+             C 381 204, 253 274, 231 415
+             C 215 506, 264 607, 368 647
+             C 415 665, 462 674, 512 674
+             C 562 674, 609 665, 656 647
+             C 760 607, 809 506, 793 415
+             C 771 274, 643 204, 512 204 Z"
+          fill="#578A47" stroke="#2E4A2C" stroke-width="7" stroke-opacity="0.55"/>
+
+    <!-- dorsal (upper head) shading -->
+    <path d="M 512 218
+             C 388 218, 267 285, 246 418
+             C 321 384, 411 370, 512 370
+             C 613 370, 703 384, 778 418
+             C 757 285, 636 218, 512 218 Z"
+          fill="#497A3B" opacity="0.9"/>
+
+    <!-- dorsal markings -->
+    <ellipse cx="512" cy="258" rx="31" ry="19" fill="#3F6637" opacity="0.26"/>
+    <ellipse cx="512" cy="330" rx="22" ry="14" fill="#3F6637" opacity="0.22"/>
+    <ellipse cx="286" cy="372" rx="24" ry="15" fill="#3F6637" opacity="0.24"/>
+    <ellipse cx="738" cy="372" rx="24" ry="15" fill="#3F6637" opacity="0.24"/>
+
+    <!-- muzzle / lower face -->
+    <path d="M 512 380
+             C 386 380, 278 415, 247 483
+             C 233 562, 310 631, 397 656
+             C 433 667, 472 672, 512 672
+             C 552 672, 591 667, 627 656
+             C 714 631, 791 562, 777 483
+             C 746 415, 638 380, 512 380 Z"
+          fill="#6B9E55" opacity="0.9"/>
+
+    <!-- chin / throat highlight -->
+    <path d="M 512 598
+             C 454 598, 410 618, 400 644
+             C 434 664, 470 670, 512 670
+             C 554 670, 590 664, 624 644
+             C 614 618, 570 598, 512 598 Z"
+          fill="#86B461" opacity="0.42"/>
+
+    <!-- speckles -->
+    <circle cx="296" cy="552" r="8" fill="#86B461" opacity="0.45"/>
+    <circle cx="332" cy="580" r="6" fill="#86B461" opacity="0.4"/>
+    <circle cx="728" cy="552" r="8" fill="#86B461" opacity="0.45"/>
+    <circle cx="692" cy="580" r="6" fill="#86B461" opacity="0.4"/>
+
+    <!-- nostrils -->
+    <ellipse cx="480" cy="430" rx="12" ry="8" fill="#3B5F34" opacity="0.7"/>
+    <ellipse cx="544" cy="430" rx="12" ry="8" fill="#3B5F34" opacity="0.7"/>
+
+    <!-- MOUTH: anchor curve for the fail overlay's tongue -->
+    <path d="M 318 516 C 364 612, 660 612, 706 516" fill="none"
+          stroke="#2E4A2C" stroke-width="11" stroke-linecap="round"/>
+    <!-- lower lip highlight (central sub-curve, offset down 14) -->
+    <path d="M 391.6 584 C 461.4 608, 562.6 608, 632.4 584" fill="none"
+          stroke="#8CBB6B" stroke-width="9" stroke-opacity="0.4" stroke-linecap="round"/>
+  </g>
+
+  <!-- ================= EYES ================= -->
+  <g id="eyes">
+    <!-- domes -->
+    <circle cx="372" cy="262" r="95" fill="#6B9E55" stroke="#3E6438" stroke-width="6" stroke-opacity="0.5"/>
+    <circle cx="652" cy="262" r="95" fill="#6B9E55" stroke="#3E6438" stroke-width="6" stroke-opacity="0.5"/>
+    <path d="M 372 167 C 424 167, 462 196, 466 232 C 438 208, 406 198, 372 198
+             C 338 198, 306 208, 278 232 C 282 196, 320 167, 372 167 Z"
+          fill="#7DAF63" opacity="0.55"/>
+    <path d="M 652 167 C 704 167, 742 196, 746 232 C 718 208, 686 198, 652 198
+             C 618 198, 586 208, 558 232 C 562 196, 600 167, 652 167 Z"
+          fill="#7DAF63" opacity="0.55"/>
+
+    <!-- left eye -->
+    <path d="M 307 280 C 310 236, 348 213, 372 213
+             C 395 213, 433 236, 436 280
+             C 433 319, 399 334, 372 334
+             C 345 334, 310 319, 307 280 Z"
+          fill="#F1E7D5" stroke="#2E4A2C" stroke-width="8" stroke-opacity="0.8"/>
+    <path d="M 318 268 C 326 232, 420 232, 428 268" fill="none"
+          stroke="#C4AE88" stroke-width="14" stroke-opacity="0.35" stroke-linecap="round"/>
+    <circle cx="372" cy="280" r="41" fill="#D6A143" stroke="#8E6430" stroke-width="4"/>
+    <circle cx="372" cy="281" r="21" fill="#17110E"/>
+    <circle cx="357" cy="263" r="12" fill="#FFF7E6" opacity="0.92"/>
+    <circle cx="386" cy="298" r="5" fill="#FFF7E6" opacity="0.5"/>
+
+    <!-- right eye -->
+    <path d="M 717 280 C 714 236, 676 213, 652 213
+             C 629 213, 591 236, 588 280
+             C 591 319, 625 334, 652 334
+             C 679 334, 714 319, 717 280 Z"
+          fill="#F1E7D5" stroke="#2E4A2C" stroke-width="8" stroke-opacity="0.8"/>
+    <path d="M 596 268 C 604 232, 698 232, 706 268" fill="none"
+          stroke="#C4AE88" stroke-width="14" stroke-opacity="0.35" stroke-linecap="round"/>
+    <circle cx="652" cy="280" r="41" fill="#D6A143" stroke="#8E6430" stroke-width="4"/>
+    <circle cx="652" cy="281" r="21" fill="#17110E"/>
+    <circle cx="637" cy="263" r="12" fill="#FFF7E6" opacity="0.92"/>
+    <circle cx="666" cy="298" r="5" fill="#FFF7E6" opacity="0.5"/>
+  </g>
+
+  <!-- ================= GOLDEN MONOCLE (shared identity marker with the Butler) =================
+       Worn on the viewer's-right eye with a chain down to the lapel, matching
+       butler_neutral.svg. Glint stays upper-left on both eyes: one light source. -->
+  <g id="monocle">
+    <path d="M 722 342
+             C 776 392, 800 470, 786 540
+             C 776 596, 754 634, 730 654" fill="none"
+          stroke="#B8873A" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 722 342
+             C 776 392, 800 470, 786 540
+             C 776 596, 754 634, 730 654" fill="none"
+          stroke="#E9C070" stroke-width="2" stroke-opacity="0.55" stroke-linecap="round"/>
+    <circle cx="730" cy="658" r="9" fill="#D9A441"/>
+
+    <circle cx="652" cy="276" r="82" fill="#EFB42E" opacity="0.06"/>
+    <path d="M 601 222 C 583 244, 574 272, 578 296 C 591 272, 608 244, 628 226 Z"
+          fill="#FFF6E0" opacity="0.18"/>
+    <circle cx="652" cy="276" r="88" fill="none" stroke="#D9A441" stroke-width="11"/>
+    <circle cx="652" cy="276" r="80" fill="none" stroke="#8E6430" stroke-width="3" stroke-opacity="0.5"/>
+    <circle cx="652" cy="276" r="96" fill="none" stroke="#6E4E2C" stroke-width="3" stroke-opacity="0.35"/>
+  </g>
+</svg>

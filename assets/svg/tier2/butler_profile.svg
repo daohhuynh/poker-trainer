@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1280" viewBox="0 0 1024 1280">
+  <!-- Butler dealer, side profile, facing LEFT toward the table, mid-deal.
+       Palette, shading method, monocle geometry, collar/bowtie/waistcoat
+       construction all lifted from tier1/butler_neutral.svg: same man, side on.
+       Faceless per spec: no eye, no mouth, and no nose drawn as a feature.
+       The nose exists ONLY as a step in the head's outline. -->
+  <defs>
+    <clipPath id="head_clip_p">
+      <path d="M686 154 C748 154 798 184 814 226 C828 260 830 300 826 342 C822 386 810 424 790 448 C774 468 752 478 724 478 C700 478 668 480 640 484 C614 488 588 482 570 470 C558 462 552 456 554 448 C556 440 564 434 570 429 C578 424 562 419 558 412 C554 406 562 402 566 398 C570 394 560 390 556 386 C551 381 556 375 562 372 C550 366 520 354 508 348 C502 345 508 338 516 332 C528 322 536 316 542 308 C550 300 558 298 564 294 C558 286 534 282 538 272 C541 256 545 246 550 234 C566 194 620 154 686 154 Z"/>
+    </clipPath>
+    <clipPath id="torso_clip_p">
+      <path d="M596 668 C618 640 646 622 682 616 C736 608 792 620 830 644 C866 668 888 728 900 808 C912 894 920 1000 926 1104 C932 1188 938 1242 942 1280 L516 1280 C514 1198 516 1112 522 1030 C528 946 522 862 534 786 C544 716 568 682 596 668 Z"/>
+    </clipPath>
+    <clipPath id="hair_clip_p">
+      <path d="M550 234 C592 238 628 254 654 276 C666 286 674 296 678 310 C682 332 684 354 682 374 C690 376 696 370 698 358 C701 338 706 320 716 310 C730 300 754 300 770 316 C786 332 794 380 796 424 C797 442 794 460 788 472 C806 448 818 410 826 342 C830 300 828 260 814 226 C798 184 748 154 686 154 C620 154 566 194 550 234 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- ================= FAR ARM (hangs at his side, behind the torso) ================= -->
+  <g id="arm_far_p">
+    <path d="M828 654 C868 686 890 752 900 832 C910 914 910 1000 902 1068 L946 1074 C956 984 952 866 934 780 C914 682 880 640 836 630 Z" fill="#181110"/>
+  </g>
+
+  <!-- ================= NECK =================
+       Deliberately short and thick. The jaw overlaps its top edge and the wing
+       collar swallows its base, so only a stout run of throat is bare. -->
+  <g id="neck_p">
+    <path d="M616 442 C606 494 602 556 602 618 L790 622 C788 556 782 496 772 438 C726 470 664 474 616 442 Z" fill="#C8996C"/>
+    <path d="M616 442 C608 482 604 520 603 556 C650 582 726 580 784 552 C782 512 778 476 772 438 C726 470 664 474 616 442 Z" fill="#7A5330" opacity="0.46"/>
+    <path d="M700 440 C736 452 762 450 782 440 C790 490 792 546 790 600 L716 596 C726 546 720 486 700 440 Z" fill="#6B4526" opacity="0.34"/>
+    <path d="M616 442 C606 494 602 556 602 618 L638 620 C632 556 632 494 640 446 Z" fill="#E8C49C" opacity="0.16"/>
+    <!-- sternocleidomastoid: the one line that makes a neck read as a neck -->
+    <path d="M708 474 C694 520 668 560 630 588" fill="none" stroke="#8A5F38" stroke-width="7" stroke-linecap="round" opacity="0.32"/>
+  </g>
+
+  <!-- ================= TORSO (tailcoat body) ================= -->
+  <g id="torso_p">
+    <path d="M596 668 C618 640 646 622 682 616 C736 608 792 620 830 644 C866 668 888 728 900 808 C912 894 920 1000 926 1104 C932 1188 938 1242 942 1280 L516 1280 C514 1198 516 1112 522 1030 C528 946 522 862 534 786 C544 716 568 682 596 668 Z" fill="#241A16"/>
+    <g clip-path="url(#torso_clip_p)">
+      <path d="M852 664 C892 758 910 902 908 1040 C906 1132 912 1226 918 1300 L1030 1300 L1030 626 Z" fill="#120C0A" opacity="0.46"/>
+      <path d="M576 668 C542 712 526 782 524 856 L466 856 L466 626 Z" fill="#5C4436" opacity="0.22"/>
+      <path d="M768 618 C748 718 744 872 752 1006 C758 1100 762 1204 760 1300 L812 1300 C812 1192 806 1078 800 998 C790 866 792 716 810 624 Z" fill="#120C0A" opacity="0.20"/>
+      <!-- tailcoat waist seam + the two back buttons -->
+      <path d="M522 1004 C632 1040 800 1044 926 1014 L930 1062 C802 1092 632 1088 524 1052 Z" fill="#120C0A" opacity="0.26"/>
+      <circle cx="892" cy="1030" r="11" fill="#3A2C25"/>
+      <circle cx="892" cy="1030" r="4.5" fill="#1A1210"/>
+      <!-- tail panel behind the leg line -->
+      <path d="M872 1074 C892 1140 900 1216 902 1300 L960 1300 L950 1060 Z" fill="#120C0A" opacity="0.3"/>
+    </g>
+    <path d="M534 786 C522 862 528 946 522 1030 C516 1112 514 1198 516 1280" fill="none" stroke="#5C4436" stroke-width="5" opacity="0.26"/>
+  </g>
+
+  <!-- ================= SHIRT / WAISTCOAT / LAPEL FRONT STRIP =================
+       Clipped to the torso so no highlight can float free of the coat edge. -->
+  <g id="front_strip_p" clip-path="url(#torso_clip_p)">
+    <path d="M614 648 C584 676 552 720 526 796 C518 832 514 864 512 898 L592 898 C592 834 596 762 600 704 C604 672 610 656 614 648 Z" fill="#EDE3D3"/>
+    <path d="M576 668 C562 714 562 806 566 898 L592 898 C592 834 596 762 600 704 C604 672 610 656 614 648 Z" fill="#CBBCA6" opacity="0.5"/>
+    <path d="M530 786 C518 848 512 916 512 974 C512 1006 514 1028 518 1046 C542 1032 566 1020 590 1012 C594 944 600 872 608 810 C586 816 552 804 530 786 Z" fill="#3B241A"/>
+    <path d="M568 802 C562 870 562 950 568 1022 C576 1018 584 1015 590 1012 C594 944 600 872 608 810 C594 813 580 810 568 802 Z" fill="#2A1710" opacity="0.6"/>
+    <path d="M532 796 C528 846 524 900 524 948" fill="none" stroke="#54341F" stroke-width="5" opacity="0.5"/>
+    <circle cx="550" cy="876" r="10" fill="#A87B4A"/>
+    <circle cx="550" cy="876" r="4" fill="#6E4E2C"/>
+    <circle cx="555" cy="932" r="10" fill="#A87B4A"/>
+    <circle cx="555" cy="932" r="4" fill="#6E4E2C"/>
+    <circle cx="560" cy="988" r="10" fill="#A87B4A"/>
+    <circle cx="560" cy="988" r="4" fill="#6E4E2C"/>
+    <!-- peaked lapel: mid value that keeps the bright strip off the coat mass -->
+    <path d="M652 634 C630 648 612 668 600 694 C592 714 586 732 584 750 C578 760 574 768 572 778 C586 792 596 818 604 850 C614 896 622 954 628 1010 C630 1032 632 1046 634 1056 L698 1030 C688 942 674 834 664 748 C658 690 654 656 652 634 Z" fill="#33261F"/>
+    <path d="M652 634 C636 644 622 660 612 680 C622 752 638 880 648 992 C650 1014 652 1032 653 1044 L672 1036 C664 944 656 830 654 748 C652 690 650 656 652 634 Z" fill="#5C4436" opacity="0.15"/>
+    <path d="M584 750 C578 760 574 768 572 778 C586 792 596 818 604 850" fill="none" stroke="#5C4436" stroke-width="4" opacity="0.28"/>
+  </g>
+
+  <!-- ================= WING COLLAR ================= -->
+  <g id="collar_p">
+    <path d="M594 566 C610 540 644 522 688 520 C732 518 768 530 786 552 L792 626 C766 600 730 588 690 590 C650 592 614 608 590 632 Z" fill="#EDE3D3"/>
+    <path d="M688 520 C732 518 768 530 786 552 L792 626 C766 600 730 588 690 590 Z" fill="#CBBCA6" opacity="0.44"/>
+    <path d="M598 578 L624 572 L618 648 L590 634 Z" fill="#EDE3D3"/>
+    <path d="M598 578 L610 575 L606 644 L590 634 Z" fill="#D8CBB7"/>
+  </g>
+
+  <!-- ================= BOW TIE (profile) ================= -->
+  <g id="bowtie_p">
+    <path d="M616 604 C594 592 566 596 555 611 C545 625 550 646 567 655 C585 665 610 660 622 649 Z" fill="#1A1210"/>
+    <path d="M616 604 C594 592 566 596 555 611 C550 618 548 626 550 634 C567 619 592 615 618 618 Z" fill="#3A2C25" opacity="0.6"/>
+    <path d="M622 596 C637 593 649 607 649 628 C649 649 637 662 622 658 C614 649 612 603 622 596 Z" fill="#241A16"/>
+    <path d="M622 596 C633 594 642 602 646 615 C635 611 627 611 620 615 Z" fill="#3A2C25" opacity="0.5"/>
+  </g>
+
+  <!-- ================= CAST SHADOW OF THE DEALING ARM =================
+       Painted on the coat before the sleeve so the arm reads as its own volume
+       in front of the body rather than merging into one dark mass. -->
+  <g clip-path="url(#torso_clip_p)">
+    <path d="M540 866 C592 860 640 842 684 806 C738 762 790 700 818 656 L868 700 C834 754 782 810 724 852 C664 896 596 916 540 920 Z" fill="#120C0A" opacity="0.40"/>
+  </g>
+
+  <!-- ================= NEAR ARM: extended, dealing =================
+       Elbow tucked in, forearm level: a controlled push, not a lunge. -->
+  <g id="arm_near_p">
+    <path d="M700 630 C662 654 620 700 582 762 C550 772 452 790 330 814 C308 818 290 818 280 828 C268 840 268 874 282 888 C292 898 320 898 350 894 C452 882 558 864 610 852 C638 844 672 812 710 770 C748 728 790 686 818 664 C834 652 832 632 812 624 C778 610 726 614 700 630 Z" fill="#241A16"/>
+    <path d="M700 630 C662 654 620 700 582 762 C550 772 452 790 330 814 L326 838 C452 814 554 796 592 786 C628 726 666 682 704 656 C734 636 780 626 812 624 C778 610 726 614 700 630 Z" fill="#5C4436" opacity="0.26"/>
+    <path d="M610 852 C638 844 672 812 710 770 C748 728 790 686 818 664" fill="none" stroke="#120C0A" stroke-width="9" opacity="0.6"/>
+    <path d="M350 894 C452 882 558 864 610 852" fill="none" stroke="#120C0A" stroke-width="6" opacity="0.28"/>
+    <path d="M806 636 C776 654 748 682 728 714" fill="none" stroke="#120C0A" stroke-width="6" opacity="0.38"/>
+    <path d="M336 818 L342 888 L300 890 L296 824 Z" fill="#120C0A" opacity="0.5"/>
+  </g>
+
+  <!-- ================= SHIRT CUFF ================= -->
+  <g id="cuff_p">
+    <path d="M300 822 C288 823 280 828 278 836 L280 880 C282 888 290 892 302 892 L306 890 L302 824 Z" fill="#EDE3D3"/>
+    <path d="M292 826 C284 830 280 834 279 842 L281 878 C283 886 288 890 296 891 Z" fill="#CBBCA6" opacity="0.55"/>
+  </g>
+
+  <!-- ================= GLOVED DEALING HAND ================= -->
+  <g id="glove_p">
+    <path d="M284 814 C252 806 216 806 194 814 C174 821 162 834 166 850 C170 866 190 880 214 888 C240 896 266 898 278 894 C286 891 288 878 288 862 C288 838 288 822 284 814 Z" fill="#EDE3D3"/>
+    <path d="M262 810 C276 812 284 812 284 814 C288 822 288 838 288 862 C288 878 286 891 278 894 C272 896 264 896 254 895 C266 886 272 866 270 846 C268 828 266 816 262 810 Z" fill="#C6B6A0" opacity="0.42"/>
+    <path d="M196 828 C224 822 254 822 276 826" fill="none" stroke="#C6B6A0" stroke-width="5" stroke-linecap="round"/>
+    <path d="M176 852 C208 846 246 846 276 850" fill="none" stroke="#C6B6A0" stroke-width="5" stroke-linecap="round"/>
+    <path d="M192 876 C220 876 250 878 274 878" fill="none" stroke="#C6B6A0" stroke-width="5" stroke-linecap="round"/>
+    <path d="M194 814 C214 809 238 808 258 810" fill="none" stroke="#B7A68F" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
+  </g>
+
+  <!-- ================= HEAD =================
+       Outline landmarks, front edge from the top down:
+         forehead recedes -> BROW RIDGE steps out (y272) -> nasion dips back in
+         (y294) -> NOSE runs out to a tip at x508 -> steps back to the nose base
+         -> lip ripple -> CHIN steps out (y448) -> under-chin cuts back ->
+         JAWLINE runs to the gonion (x748) -> up the ramus behind the ear.
+       Not one of these is drawn on the face; they are outline only. -->
+  <g id="head_p">
+    <path d="M686 154 C748 154 798 184 814 226 C828 260 830 300 826 342 C822 386 810 424 790 448 C774 468 752 478 724 478 C700 478 668 480 640 484 C614 488 588 482 570 470 C558 462 552 456 554 448 C556 440 564 434 570 429 C578 424 562 419 558 412 C554 406 562 402 566 398 C570 394 560 390 556 386 C551 381 556 375 562 372 C550 366 520 354 508 348 C502 345 508 338 516 332 C528 322 536 316 542 308 C550 300 558 298 564 294 C558 286 534 282 538 272 C541 256 545 246 550 234 C566 194 620 154 686 154 Z" fill="#C8996C"/>
+    <g clip-path="url(#head_clip_p)">
+      <!-- back of the skull turns away from the light -->
+      <path d="M738 120 C778 218 788 366 758 512 L880 512 L880 120 Z" fill="#8A5F38" opacity="0.19"/>
+      <!-- light plane down the face front; its boundary sits on the cheek, far
+           from the nose, so it can never read as a drawn feature -->
+      <path d="M470 120 L470 516 C554 498 594 458 590 392 C586 330 586 264 602 204 C608 176 616 148 624 120 Z" fill="#E8C49C" opacity="0.20"/>
+      <ellipse cx="636" cy="330" rx="58" ry="80" fill="#DDB68D" opacity="0.10"/>
+      <ellipse cx="612" cy="414" rx="44" ry="30" fill="#DDB68D" opacity="0.09"/>
+      <ellipse cx="604" cy="252" rx="50" ry="32" fill="#A87B4A" opacity="0.07"/>
+      <!-- cheekbone into jaw plane -->
+      <path d="M580 344 C612 358 656 358 688 344 C682 392 636 414 592 402 C580 388 578 364 580 344 Z" fill="#A87B4A" opacity="0.09"/>
+      <!-- under-jaw core shadow: what separates the head from the neck -->
+      <ellipse cx="662" cy="492" rx="132" ry="40" fill="#8A5F38" opacity="0.28"/>
+      <path d="M566 466 C614 492 700 494 764 470 L772 524 L540 524 Z" fill="#7A5330" opacity="0.16"/>
+    </g>
+  </g>
+
+  <!-- ================= EAR ================= -->
+  <g id="ear_p">
+    <path d="M700 314 C692 336 690 364 696 386 C701 400 713 406 724 401 C738 394 749 372 752 344 C755 318 746 302 728 299 C714 297 705 304 700 314 Z" fill="#BE8D60"/>
+    <path d="M708 326 C701 346 701 368 707 382 C713 392 722 392 730 382 C740 370 744 344 740 329 C736 317 726 313 718 317 C713 319 710 322 708 326 Z" fill="#A87B4A" opacity="0.45"/>
+    <path d="M716 333 C726 341 728 368 718 382" fill="none" stroke="#7A5330" stroke-width="7" stroke-linecap="round" opacity="0.55"/>
+  </g>
+
+  <!-- ================= HAIR (crown, back of the skull, one sideburn) ================= -->
+  <g id="hair_p">
+    <path d="M550 234 C592 238 628 254 654 276 C666 286 674 296 678 310 C682 332 684 354 682 374 C690 376 696 370 698 358 C701 338 706 320 716 310 C730 300 754 300 770 316 C786 332 794 380 796 424 C797 442 794 460 788 472 C806 448 818 410 826 342 C830 300 828 260 814 226 C798 184 748 154 686 154 C620 154 566 194 550 234 Z" fill="#17100E"/>
+    <g clip-path="url(#hair_clip_p)">
+      <path d="M550 234 C566 194 620 154 686 154 C640 174 604 204 584 238 C574 254 568 268 566 284 C556 268 546 250 550 234 Z" fill="#3B241A" opacity="0.42"/>
+      <path d="M594 188 C638 156 696 156 738 188 C758 204 770 226 776 250 C758 222 732 204 702 196 C664 186 624 182 594 188 Z" fill="#3B241A" opacity="0.40"/>
+      <path d="M610 224 C650 198 706 206 740 238" fill="none" stroke="#3B241A" stroke-width="7" stroke-linecap="round" opacity="0.28"/>
+      <path d="M800 290 C806 342 798 400 782 438" fill="none" stroke="#3B241A" stroke-width="9" stroke-linecap="round" opacity="0.22"/>
+      <path d="M672 304 C678 332 680 354 678 374" fill="none" stroke="#3B241A" stroke-width="6" stroke-linecap="round" opacity="0.32"/>
+    </g>
+  </g>
+
+  <!-- ================= MUSTACHE =================
+       The near blade seen almost end-on. Blunt and thick at the philtrum where
+       it overhangs the lip plane, tapering to a sharp waxed point back on the
+       cheek. Asymmetric and level-axised on purpose: a lens shape here would
+       read as a smiling mouth, and the spec renders no mouth. -->
+  <g id="mustache_p">
+    <path d="M558 374 C540 366 522 367 516 376 C510 385 514 398 524 405 C534 411 548 413 562 412 C590 410 622 400 644 388 C652 384 650 378 642 379 C618 384 586 383 566 377 C562 375 560 374 558 374 Z" fill="#17100E"/>
+    <path d="M558 374 C540 366 522 367 516 376 C513 381 514 388 518 394 C536 400 572 400 602 394 C620 390 634 385 642 379 C618 384 586 383 566 377 C562 375 560 374 558 374 Z" fill="#3B241A" opacity="0.7"/>
+    <path d="M528 404 C548 411 576 410 602 403" fill="none" stroke="#3B241A" stroke-width="3" stroke-linecap="round" opacity="0.4"/>
+    <path d="M556 373 C554 383 554 396 558 407" fill="none" stroke="#3B241A" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+  </g>
+
+  <!-- ================= MONOCLE =================
+       Foreshortened to a narrow lens and EMPTY: no eye is drawn behind it.
+       The chain hangs clear of the jaw and clips to the lapel, matching the
+       front view so the two assets read as one wardrobe. -->
+  <g id="monocle_chain_p">
+    <path d="M574 346 C560 392 550 438 548 494 C546 550 552 606 570 646 C576 660 584 676 592 690" fill="none" stroke="#A87B4A" stroke-width="6" stroke-linecap="round"/>
+    <path d="M574 346 C560 392 550 438 548 494 C547 526 550 554 556 580" fill="none" stroke="#D9A441" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+    <circle cx="598" cy="698" r="10" fill="#A87B4A"/>
+    <circle cx="598" cy="698" r="4" fill="#6E4E2C"/>
+  </g>
+  <g id="monocle_p" transform="rotate(4 574 304)">
+    <ellipse cx="574" cy="304" rx="16" ry="36" fill="#EFB42E" opacity="0.10"/>
+    <path d="M562 283 C567 275 574 271 580 273 C571 282 566 293 564 307 C561 298 560 289 562 283 Z" fill="#EDE3D3" opacity="0.20"/>
+    <path d="M566 335 C570 343 576 348 582 350 C574 352 567 347 563 342 Z" fill="#EDE3D3" opacity="0.12"/>
+    <ellipse cx="574" cy="304" rx="16" ry="36" fill="none" stroke="#6E4E2C" stroke-width="3" opacity="0.5"/>
+    <ellipse cx="574" cy="304" rx="21" ry="41" fill="none" stroke="#D9A441" stroke-width="10"/>
+    <path d="M562 275 C566 269 572 265 578 264" fill="none" stroke="#F0CE7E" stroke-width="6" stroke-linecap="round" opacity="0.8"/>
+    <path d="M553 298 C554 289 557 281 561 274" fill="none" stroke="#F0CE7E" stroke-width="4" stroke-linecap="round" opacity="0.5"/>
+    <path d="M591 330 C589 338 584 344 578 348" fill="none" stroke="#6E4E2C" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+    <circle cx="576" cy="344" r="9" fill="#A87B4A"/>
+    <circle cx="576" cy="344" r="3.5" fill="#6E4E2C"/>
+  </g>
+
+  <!-- ================= EYEBROW (one, riding the brow ridge) ================= -->
+  <g id="eyebrow_p">
+    <path d="M538 264 C550 252 574 244 598 245 C609 246 611 258 602 261 C580 262 558 269 546 278 C538 283 531 272 538 264 Z" fill="#17100E"/>
+  </g>
+</svg>

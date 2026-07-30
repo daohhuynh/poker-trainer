@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin.
+       tomato is the in-app currency icon, so it is the one full-colour glyph in
+       the set: filled flat shapes rather than the 16px monoline used elsewhere.
+       Shading is two crisp crescents that hug the silhouette (light from the
+       upper left), not soft blobs - no filter primitives are used anywhere. -->
+  <title>tomato</title>
+  <defs>
+    <clipPath id="tomato-body-clip">
+      <path d="M 128 82 C 178 74 218 106 218 152 C 218 198 176 226 128 226 C 80 226 38 198 38 152 C 38 106 78 74 128 82 Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- fruit -->
+  <path d="M 128 82 C 178 74 218 106 218 152 C 218 198 176 226 128 226 C 80 226 38 198 38 152 C 38 106 78 74 128 82 Z" fill="#C0392B"/>
+
+  <!-- restrained shading, clipped to the fruit silhouette -->
+  <g clip-path="url(#tomato-body-clip)">
+    <circle cx="6" cy="22" r="140" fill="#E0715C" opacity="0.30"/>
+    <circle cx="224" cy="246" r="122" fill="#8E2A20" opacity="0.20"/>
+    <ellipse cx="78" cy="116" rx="26" ry="12" fill="#EE9080" opacity="0.50" transform="rotate(-40 78 116)"/>
+  </g>
+
+  <!-- calyx: six sepals lying on the shoulders of the fruit -->
+  <path d="M 157 64.4 L 145.3 86.5 L 186 92 L 145.3 97.5 L 157 119.6 L 128 103 L 99 119.6 L 110.7 97.5 L 70 92 L 110.7 86.5 L 99 64.4 L 128 81 Z" fill="#6BA257"/>
+  <!-- stem, drawn over the calyx so its cap reads as the stem knot -->
+  <path d="M 128 94 L 128 42" fill="none" stroke="#55813F" stroke-width="20" stroke-linecap="round"/>
+</svg>

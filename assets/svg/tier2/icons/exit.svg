@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin, 16px monoline stroke, #EDE3D3 -->
+  <title>exit</title>
+  <g fill="none" stroke="#EDE3D3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <!-- door, open on the side the arrow leaves through -->
+    <path d="M 116 40 L 40 40 L 40 216 L 116 216"/>
+    <!-- arrow leaving -->
+    <path d="M 116 128 L 216 128"/>
+    <path d="M 172 84 L 216 128 L 172 172"/>
+  </g>
+</svg>

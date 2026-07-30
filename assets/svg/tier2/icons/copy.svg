@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin, 16px monoline stroke, #EDE3D3 -->
+  <title>copy</title>
+  <g fill="none" stroke="#EDE3D3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <!-- back sheet: only the part not occluded by the front sheet is drawn -->
+    <path d="M 160 96 L 160 52 A 20 20 0 0 0 140 32 L 52 32 A 20 20 0 0 0 32 52 L 32 140 A 20 20 0 0 0 52 160 L 96 160"/>
+    <!-- front sheet, drawn last so it caps the back sheet's open ends -->
+    <rect x="96" y="96" width="128" height="128" rx="20"/>
+  </g>
+</svg>

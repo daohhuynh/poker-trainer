@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin, 16px monoline stroke, #EDE3D3 -->
+  <title>close</title>
+  <!-- an X on the diagonal reads optically larger than a square glyph, so it is
+       held to a 168px box rather than the full 208px safe area -->
+  <g fill="none" stroke="#EDE3D3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 52 52 L 204 204"/>
+    <path d="M 204 52 L 52 204"/>
+  </g>
+</svg>

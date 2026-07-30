@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin, 16px monoline stroke, #EDE3D3 -->
+  <title>warning</title>
+  <g fill="none" stroke="#EDE3D3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 128 48 L 222 206 L 34 206 Z"/>
+    <path d="M 128 104 L 128 148"/>
+  </g>
+  <!-- the dot is a solid shape, so it is filled rather than stroked -->
+  <circle cx="128" cy="178" r="8" fill="#EDE3D3"/>
+</svg>

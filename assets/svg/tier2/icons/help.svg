@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin, 16px monoline stroke, #EDE3D3 -->
+  <title>help</title>
+  <g fill="none" stroke="#EDE3D3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="128" cy="128" r="88"/>
+    <!-- question hook: 225-degree bowl falling into a vertical stem -->
+    <path d="M 98 98 A 30 30 0 1 1 149.2 119.2 C 140 132 128 138 128 156"/>
+  </g>
+  <!-- the dot is a solid shape, so it is filled rather than stroked -->
+  <circle cx="128" cy="186" r="8" fill="#EDE3D3"/>
+</svg>

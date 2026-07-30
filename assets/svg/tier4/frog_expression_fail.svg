@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Frog dealer - fail expression overlay (tongue out)</title>
+  <desc>Transparent overlay for frog_base.svg. Contains ONLY the protruding tongue.
+Same 1024x1024 coordinate space as the base, composited at identical size with
+zero offset.
+
+The tongue's top edge is the exact sub-curve t=0.38..0.62 of the base's mouth
+cubic (318,516) C (364,612) (660,612) (706,516), i.e.
+  (451.30, 583.86) C (490.61, 589.39) (533.39, 589.39) (572.70, 583.86)
+so the root seats on the mouth line instead of floating near it. Base width
+121px against a 600px-wide head. The tongue droops to y=722, clearing the
+base's chin (y=674) by ~48px, and leans ~16px right of centre for the mocking,
+lopsided read.</desc>
+
+  <g id="tongue">
+    <!-- tongue body -->
+    <path d="M 451.30 583.86
+             C 490.61 589.39, 533.39 589.39, 572.70 583.86
+             C 590 616, 588 670, 570 700
+             C 552 726, 506 728, 486 702
+             C 466 674, 450 618, 451.30 583.86 Z"
+          fill="#C86C77" stroke="#96505A" stroke-width="5" stroke-opacity="0.5"/>
+
+    <!-- shading down the far edge -->
+    <path d="M 566 602
+             C 584 634, 582 676, 564 702
+             C 556 714, 542 722, 530 726
+             C 552 706, 566 674, 568 640
+             C 569 622, 568 612, 566 602 Z"
+          fill="#9E4E5B" opacity="0.32"/>
+
+    <!-- wet highlight -->
+    <path d="M 478 604
+             C 466 632, 468 668, 478 692
+             C 490 676, 492 636, 487 606 Z"
+          fill="#E7A9AE" opacity="0.42"/>
+
+    <!-- centre groove -->
+    <path d="M 518 616 C 526 646, 524 680, 516 706" fill="none"
+          stroke="#9C525C" stroke-width="7" stroke-opacity="0.38" stroke-linecap="round"/>
+
+    <!-- shadow the mouth casts onto the root of the tongue -->
+    <path d="M 451.30 583.86
+             C 490.61 589.39, 533.39 589.39, 572.70 583.86
+             C 576 604, 550 620, 512 620
+             C 474 620, 448 604, 451.30 583.86 Z"
+          fill="#4A1E1D" opacity="0.5"/>
+  </g>
+</svg>

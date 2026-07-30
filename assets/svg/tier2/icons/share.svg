@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin, 16px monoline stroke, #EDE3D3 -->
+  <title>share</title>
+  <g fill="none" stroke="#EDE3D3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <!-- connectors first, so the nodes sit on top of the line ends -->
+    <path d="M 96 112 L 160 78"/>
+    <path d="M 96 144 L 160 178"/>
+    <circle cx="66" cy="128" r="26"/>
+    <circle cx="190" cy="62" r="26"/>
+    <circle cx="190" cy="194" r="26"/>
+  </g>
+</svg>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Frog dealer - pass expression overlay (blush)</title>
+  <desc>Transparent overlay for frog_base.svg. Contains ONLY the two light-pink cheek
+circles. Same 1024x1024 coordinate space as the base, composited at identical
+size with zero offset. Cheek centres: (314, 450) and (710, 450), outer r=58.
+A stack of concentric circles at 0.09 opacity fakes a soft radial falloff
+without a blur filter; peak alpha at the centre is ~0.68.</desc>
+
+  <g id="blush-left" fill="#EC9BA4" opacity="1">
+    <circle cx="314" cy="450" r="58" opacity="0.09"/>
+    <circle cx="314" cy="450" r="54" opacity="0.09"/>
+    <circle cx="314" cy="450" r="50" opacity="0.09"/>
+    <circle cx="314" cy="450" r="46" opacity="0.09"/>
+    <circle cx="314" cy="450" r="42" opacity="0.09"/>
+    <circle cx="314" cy="450" r="38" opacity="0.09"/>
+    <circle cx="314" cy="450" r="34" opacity="0.09"/>
+    <circle cx="314" cy="450" r="30" opacity="0.09"/>
+    <circle cx="314" cy="450" r="26" opacity="0.09"/>
+    <circle cx="314" cy="450" r="22" opacity="0.09"/>
+    <circle cx="314" cy="450" r="18" opacity="0.09"/>
+    <circle cx="314" cy="450" r="14" opacity="0.09"/>
+  </g>
+
+  <g id="blush-right" fill="#EC9BA4" opacity="1">
+    <circle cx="710" cy="450" r="58" opacity="0.09"/>
+    <circle cx="710" cy="450" r="54" opacity="0.09"/>
+    <circle cx="710" cy="450" r="50" opacity="0.09"/>
+    <circle cx="710" cy="450" r="46" opacity="0.09"/>
+    <circle cx="710" cy="450" r="42" opacity="0.09"/>
+    <circle cx="710" cy="450" r="38" opacity="0.09"/>
+    <circle cx="710" cy="450" r="34" opacity="0.09"/>
+    <circle cx="710" cy="450" r="30" opacity="0.09"/>
+    <circle cx="710" cy="450" r="26" opacity="0.09"/>
+    <circle cx="710" cy="450" r="22" opacity="0.09"/>
+    <circle cx="710" cy="450" r="18" opacity="0.09"/>
+    <circle cx="710" cy="450" r="14" opacity="0.09"/>
+  </g>
+</svg>

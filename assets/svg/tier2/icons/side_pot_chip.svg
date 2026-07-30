@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin, 16px monoline stroke, #EDE3D3 -->
+  <title>side_pot_chip</title>
+  <g fill="none" stroke="#EDE3D3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <!-- three chips seen slightly from the side. The ellipses are deliberately
+         very flat and the stack much wider than tall, so it reads as discs
+         rather than as a database cylinder. -->
+    <ellipse cx="128" cy="83" rx="88" ry="19"/>
+    <path d="M 40 113 A 88 19 0 0 0 216 113"/>
+    <path d="M 40 143 A 88 19 0 0 0 216 143"/>
+    <path d="M 40 83 L 40 173 A 88 19 0 0 0 216 173 L 216 83"/>
+  </g>
+</svg>

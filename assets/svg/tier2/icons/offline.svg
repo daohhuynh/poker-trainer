@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin, 16px monoline stroke, #EDE3D3 -->
+  <title>offline</title>
+  <g fill="none" stroke="#EDE3D3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <!-- cloud: outline traced across three bumps (r34 at x78, r48 at x128,
+         r36 at x176) sitting on a flat base at y=184 -->
+    <path d="M 78 184 A 34 34 0 1 1 80.2 116.1 A 48 48 0 0 1 175.3 112.0 A 36 36 0 1 1 176 184 Z"/>
+    <!-- slash. Steeper than 45deg on purpose: a 45deg slash runs almost tangent
+         to the cloud's flat base and the two strokes merge into a wedge at
+         small sizes. This angle crosses the base head-on. -->
+    <path d="M 76 36 L 180 220"/>
+  </g>
+</svg>

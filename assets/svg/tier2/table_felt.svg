@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="1152" viewBox="0 0 2048 1152">
+  <title>Poker table felt</title>
+  <!-- contact shadow: stacked rings rather than a blur filter -->
+  <ellipse cx="1024.0" cy="584.0" rx="1008.0" ry="572.0" fill="#0A0605" opacity="0.075"/>
+  <ellipse cx="1024.0" cy="584.0" rx="1003.5" ry="567.5" fill="#0A0605" opacity="0.075"/>
+  <ellipse cx="1024.0" cy="584.0" rx="999.0" ry="563.0" fill="#0A0605" opacity="0.075"/>
+  <ellipse cx="1024.0" cy="584.0" rx="994.5" ry="558.5" fill="#0A0605" opacity="0.075"/>
+  <ellipse cx="1024.0" cy="584.0" rx="990.0" ry="554.0" fill="#0A0605" opacity="0.075"/>
+  <ellipse cx="1024.0" cy="584.0" rx="985.5" ry="549.5" fill="#0A0605" opacity="0.075"/>
+  <ellipse cx="1024.0" cy="584.0" rx="981.0" ry="545.0" fill="#0A0605" opacity="0.075"/>
+  <ellipse cx="1024.0" cy="584.0" rx="976.5" ry="540.5" fill="#0A0605" opacity="0.075"/>
+
+  <!-- rail: dark lip, wood surround, padded leather armrest -->
+  <ellipse cx="1024.0" cy="576.0" rx="970.0" ry="534.0" fill="none" stroke="#180F0A" stroke-width="12.0"/>
+  <ellipse cx="1024.0" cy="576.0" rx="949.0" ry="513.0" fill="none" stroke="#4A2E1E" stroke-width="30.0"/>
+  <ellipse cx="1024.0" cy="576.0" rx="957.0" ry="521.0" fill="none" stroke="#22150F" stroke-width="1.8" opacity="0.200"/>
+  <ellipse cx="1024.0" cy="576.0" rx="949.0" ry="513.0" fill="none" stroke="#22150F" stroke-width="1.8" opacity="0.200"/>
+  <ellipse cx="1024.0" cy="576.0" rx="941.0" ry="505.0" fill="none" stroke="#22150F" stroke-width="1.8" opacity="0.200"/>
+  <ellipse cx="1024.0" cy="576.0" rx="930.0" ry="494.0" fill="none" stroke="#100B08" stroke-width="8.0"/>
+  <ellipse cx="1024.0" cy="576.0" rx="893.0" ry="457.0" fill="none" stroke="#302219" stroke-width="66.0"/>
+  <ellipse cx="1024.0" cy="576.0" rx="895.0" ry="459.0" fill="none" stroke="#3F2E22" stroke-width="26.0" opacity="0.550"/>
+
+  <!-- rail lighting: lit from the upper left, shadowed lower right -->
+  <path d="M 157.0 784.7 A 949.0 513.0 0 0 1 1498.5 131.7" fill="none" stroke="#8A5C2E" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 88.3 661.6 A 949.0 513.0 0 0 1 1279.2 81.9" fill="none" stroke="#8A5C2E" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 78.3 533.1 A 949.0 513.0 0 0 1 1043.9 63.1" fill="none" stroke="#8A5C2E" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 127.8 407.3 A 949.0 513.0 0 0 1 807.3 76.6" fill="none" stroke="#8A5C2E" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 233.6 292.1 A 949.0 513.0 0 0 1 584.3 121.4" fill="none" stroke="#8A5C2E" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 1891.0 367.3 A 949.0 513.0 0 0 1 549.5 1020.3" fill="none" stroke="#0B0705" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 1959.7 490.4 A 949.0 513.0 0 0 1 768.8 1070.1" fill="none" stroke="#0B0705" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 1969.7 618.9 A 949.0 513.0 0 0 1 1004.1 1088.9" fill="none" stroke="#0B0705" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 1920.2 744.7 A 949.0 513.0 0 0 1 1240.7 1075.4" fill="none" stroke="#0B0705" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 1814.4 859.9 A 949.0 513.0 0 0 1 1463.7 1030.6" fill="none" stroke="#0B0705" stroke-width="30.0" stroke-linecap="round" opacity="0.110"/>
+  <path d="M 1839.8 390.1 A 893.0 457.0 0 0 1 577.5 971.8" fill="none" stroke="#0B0705" stroke-width="66.0" stroke-linecap="round" opacity="0.070"/>
+  <path d="M 1904.5 499.8 A 893.0 457.0 0 0 1 783.9 1016.2" fill="none" stroke="#0B0705" stroke-width="66.0" stroke-linecap="round" opacity="0.070"/>
+  <path d="M 1913.9 614.2 A 893.0 457.0 0 0 1 1005.3 1032.9" fill="none" stroke="#0B0705" stroke-width="66.0" stroke-linecap="round" opacity="0.070"/>
+  <path d="M 1867.3 726.3 A 893.0 457.0 0 0 1 1227.9 1020.9" fill="none" stroke="#0B0705" stroke-width="66.0" stroke-linecap="round" opacity="0.070"/>
+  <path d="M 1767.8 828.9 A 893.0 457.0 0 0 1 1437.7 981.0" fill="none" stroke="#0B0705" stroke-width="66.0" stroke-linecap="round" opacity="0.070"/>
+  <path d="M 206.4 762.7 A 895.0 459.0 0 0 1 1471.5 178.5" fill="none" stroke="#6E5340" stroke-width="26.0" stroke-linecap="round" opacity="0.140"/>
+  <path d="M 141.5 652.5 A 895.0 459.0 0 0 1 1264.7 133.9" fill="none" stroke="#6E5340" stroke-width="26.0" stroke-linecap="round" opacity="0.140"/>
+  <path d="M 132.1 537.6 A 895.0 459.0 0 0 1 1042.7 117.1" fill="none" stroke="#6E5340" stroke-width="26.0" stroke-linecap="round" opacity="0.140"/>
+  <path d="M 178.8 425.1 A 895.0 459.0 0 0 1 819.6 129.1" fill="none" stroke="#6E5340" stroke-width="26.0" stroke-linecap="round" opacity="0.140"/>
+  <path d="M 278.5 322.0 A 895.0 459.0 0 0 1 609.4 169.2" fill="none" stroke="#6E5340" stroke-width="26.0" stroke-linecap="round" opacity="0.140"/>
+  <path d="M 1841.6 389.3 A 895.0 459.0 0 0 1 576.5 973.5" fill="none" stroke="#0B0705" stroke-width="26.0" stroke-linecap="round" opacity="0.090"/>
+  <path d="M 1906.5 499.5 A 895.0 459.0 0 0 1 783.3 1018.1" fill="none" stroke="#0B0705" stroke-width="26.0" stroke-linecap="round" opacity="0.090"/>
+  <path d="M 1915.9 614.4 A 895.0 459.0 0 0 1 1005.3 1034.9" fill="none" stroke="#0B0705" stroke-width="26.0" stroke-linecap="round" opacity="0.090"/>
+  <path d="M 1869.2 726.9 A 895.0 459.0 0 0 1 1228.4 1022.9" fill="none" stroke="#0B0705" stroke-width="26.0" stroke-linecap="round" opacity="0.090"/>
+  <path d="M 1769.5 830.0 A 895.0 459.0 0 0 1 1438.6 982.8" fill="none" stroke="#0B0705" stroke-width="26.0" stroke-linecap="round" opacity="0.090"/>
+
+  <!-- double stitching along the padded roll -->
+  <ellipse cx="1024.0" cy="576.0" rx="918.0" ry="482.0" fill="none" stroke="#6A4E38" stroke-width="2.6" opacity="0.220" stroke-dasharray="12 18" stroke-linecap="round"/>
+  <ellipse cx="1024.0" cy="576.0" rx="868.0" ry="432.0" fill="none" stroke="#6A4E38" stroke-width="2.6" opacity="0.220" stroke-dasharray="12 18" stroke-linecap="round"/>
+
+  <!-- brass trim -->
+  <ellipse cx="1024.0" cy="576.0" rx="856.0" ry="420.0" fill="none" stroke="#7E5A32" stroke-width="8.0"/>
+  <ellipse cx="1024.0" cy="576.0" rx="856.0" ry="420.0" fill="none" stroke="#A87B4A" stroke-width="3.0" opacity="0.900"/>
+  <path d="M 242.0 746.8 A 856.0 420.0 0 0 1 1452.0 212.3" fill="none" stroke="#E3BD6E" stroke-width="8.0" stroke-linecap="round" opacity="0.150"/>
+  <path d="M 180.0 646.0 A 856.0 420.0 0 0 1 1254.2 171.5" fill="none" stroke="#E3BD6E" stroke-width="8.0" stroke-linecap="round" opacity="0.150"/>
+  <path d="M 171.0 540.9 A 856.0 420.0 0 0 1 1041.9 156.1" fill="none" stroke="#E3BD6E" stroke-width="8.0" stroke-linecap="round" opacity="0.150"/>
+  <path d="M 215.6 437.9 A 856.0 420.0 0 0 1 828.5 167.1" fill="none" stroke="#E3BD6E" stroke-width="8.0" stroke-linecap="round" opacity="0.150"/>
+  <path d="M 311.0 343.6 A 856.0 420.0 0 0 1 627.4 203.8" fill="none" stroke="#E3BD6E" stroke-width="8.0" stroke-linecap="round" opacity="0.150"/>
+  <path d="M 1806.0 405.2 A 856.0 420.0 0 0 1 596.0 939.7" fill="none" stroke="#33230F" stroke-width="8.0" stroke-linecap="round" opacity="0.140"/>
+  <path d="M 1868.0 506.0 A 856.0 420.0 0 0 1 793.8 980.5" fill="none" stroke="#33230F" stroke-width="8.0" stroke-linecap="round" opacity="0.140"/>
+  <path d="M 1877.0 611.1 A 856.0 420.0 0 0 1 1006.1 995.9" fill="none" stroke="#33230F" stroke-width="8.0" stroke-linecap="round" opacity="0.140"/>
+  <path d="M 1832.4 714.1 A 856.0 420.0 0 0 1 1219.5 984.9" fill="none" stroke="#33230F" stroke-width="8.0" stroke-linecap="round" opacity="0.140"/>
+  <path d="M 1737.0 808.4 A 856.0 420.0 0 0 1 1420.6 948.2" fill="none" stroke="#33230F" stroke-width="8.0" stroke-linecap="round" opacity="0.140"/>
+
+  <!-- felt bed: base is the darkest tone, the light pool is built on top -->
+  <ellipse cx="1024.0" cy="576.0" rx="852.0" ry="416.0" fill="#1A0F0B"/>
+
+  <!-- overhead light pool: nested lifts, radii clustered near the rim so
+       the middle is a flat plateau. Keeps the centre quiet under the cards,
+       chips and pot that render on top of it. Step opacity is kept above
+       ~1/64 so every channel actually advances in 8-bit compositing -->
+  <ellipse cx="1024.0" cy="576.0" rx="847.7" ry="411.7" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1021.8" cy="574.2" rx="841.1" ry="405.1" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1019.6" cy="572.4" rx="821.0" ry="385.0" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1017.5" cy="570.5" rx="787.5" ry="351.5" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1015.3" cy="568.7" rx="740.7" ry="304.7" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1013.1" cy="566.9" rx="680.5" ry="244.5" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1010.9" cy="565.1" rx="606.9" ry="170.9" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1008.7" cy="563.3" rx="520.0" ry="84.0" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1006.5" cy="561.5" rx="419.6" ry="-16.4" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1004.4" cy="559.6" rx="305.9" ry="-130.1" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1002.2" cy="557.8" rx="178.8" ry="-257.2" fill="#5A3A26" opacity="0.039"/>
+  <ellipse cx="1000.0" cy="556.0" rx="38.3" ry="-397.7" fill="#5A3A26" opacity="0.039"/>
+
+  <!-- betting line, deliberately faint: chips and cards sit over it -->
+  <ellipse cx="1024.0" cy="576.0" rx="786.0" ry="350.0" fill="none" stroke="#A87B4A" stroke-width="3.0" opacity="0.070"/>
+
+  <!-- shadow the rail casts down onto the felt. Ring insets grow
+       quadratically so they pile up at the edge and thin out inward -->
+  <ellipse cx="1024.0" cy="576.0" rx="851.0" ry="415.0" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="850.5" ry="414.5" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="848.9" ry="412.9" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="846.2" ry="410.2" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="842.5" ry="406.5" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="837.7" ry="401.7" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="831.8" ry="395.8" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="824.9" ry="388.9" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="816.9" ry="380.9" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="807.8" ry="371.8" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="797.7" ry="361.7" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="786.5" ry="350.5" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="774.2" ry="338.2" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="760.9" ry="324.9" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="746.5" ry="310.5" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+  <ellipse cx="1024.0" cy="576.0" rx="731.0" ry="295.0" fill="none" stroke="#0C0705" stroke-width="10.0" opacity="0.030"/>
+</svg>

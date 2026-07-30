@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Poker Trainer icon system: 256 artboard, 24px safe margin, 16px monoline stroke, #EDE3D3 -->
+  <title>shop</title>
+  <g fill="none" stroke="#EDE3D3" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <!-- storefront. The scalloped awning is what separates this from the house
+         glyph, which sits next to it in the same nav cluster. -->
+    <path d="M 36 90 L 64 40 L 192 40 L 220 90 A 30.7 30.7 0 0 1 158.7 90 A 30.7 30.7 0 0 1 97.3 90 A 30.7 30.7 0 0 1 36 90 Z"/>
+    <!-- shopfront, tucked under the low points of the awning -->
+    <path d="M 56 119 L 56 216 L 200 216 L 200 119"/>
+    <path d="M 108 216 L 108 160 L 148 160 L 148 216"/>
+  </g>
+</svg>
