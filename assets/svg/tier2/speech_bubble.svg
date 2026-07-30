@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="768" height="512" viewBox="0 0 768 512">
+  <title>Speech bubble - hand-drawn oval with a bottom-right tail</title>
+  <desc>Sketchy marker-drawn bubble for the Root screen frog. Two loose passes around a
+superellipse (n=2.3, centred 384,220, radii 320 x 161) whose radius wanders on three
+harmonics, so neither line is a clean ellipse and the two are never parallel for long.
+The inner pass overshoots its own start on the upper-left arc instead of closing; the
+outer pass runs out just past the left extreme, leaving that arc open. The tail is a
+narrow spike off the bottom-right pointing down and right, because the bubble sits to
+the LEFT of the frog and points back at it.
+
+The interior is filled, not a hole: this is drawn over a blurred photographic room and
+the text inside has to stay readable, so it is opaque bg_modal (#2A1F1B) with the ink in
+text_primary (#EDE3D3). That inverts the black-on-white reference, which is what a dark
+app needs.
+
+TEXT INTERIOR RECT, in fractions of the 768x512 canvas:
+    x = 0.21   y = 0.24   w = 0.58   h = 0.38
+i.e. 161 .. 607 across and 123 .. 317 down. Its worst corner clears the inner ink by
+about 20px at this canvas size even where the wobble bites inward, so a caller may fill
+that rect edge to edge.</desc>
+
+  <!-- ================= OPAQUE INTERIOR =================
+       Closed twin of the inner ink pass, so the 11px stroke straddles this edge and
+       covers it the whole way round. No stroke on this path: the ink is drawn
+       separately as open paths, which is the only way to get ends that visibly fail
+       to meet. -->
+  <path d="M 558 361
+           C 535 368, 512 373, 482 376 C 453 379, 416 379, 383 379 C 350 378, 316 376, 286 374
+           C 257 371, 231 369, 206 363 C 182 358, 158 351, 140 342 C 121 333, 108 321, 98 309
+           C 87 296, 81 283, 76 268 C 71 253, 68 235, 68 218 C 68 202, 71 184, 77 170
+           C 83 155, 93 143, 105 131 C 116 120, 130 109, 148 100 C 166 90, 187 83, 210 77
+           C 234 70, 258 66, 288 63 C 318 60, 357 57, 390 57 C 424 57, 460 58, 488 62
+           C 516 66, 539 73, 560 80 C 582 88, 599 97, 616 106 C 634 115, 652 124, 665 135
+           C 679 146, 692 157, 699 172 C 706 187, 708 207, 708 224 C 707 241, 704 258, 697 273
+           C 689 287, 679 300, 666 311 C 652 322, 635 332, 616 340 L 660 458
+           L 558 361 Z"
+        fill="#2A1F1B"/>
+
+  <!-- ================= INNER INK PASS =================
+       One clockwise lap starting on the left flank: up over the top, down the right,
+       out along the tail, back across the bottom, and then ~25 degrees past its own
+       start instead of stopping on it. That overshoot is what reads as a marker line
+       drawn in one motion by a hand that did not stop on time. -->
+  <path d="M 84 157
+           C 92 144, 102 132, 115 122 C 128 111, 144 101, 163 93 C 181 84, 204 78, 228 73
+           C 252 67, 276 64, 307 61 C 338 58, 381 56, 413 57 C 446 57, 476 60, 502 64
+           C 528 69, 549 77, 570 84 C 590 92, 606 100, 623 109 C 640 118, 657 127, 670 138
+           C 683 149, 694 161, 700 176 C 707 191, 708 212, 708 228 C 707 245, 703 261, 696 275
+           C 688 289, 678 301, 665 312 C 652 323, 634 332, 616 340 L 660 458
+           L 558 361 C 535 368, 512 373, 483 376 C 454 379, 417 379, 384 379
+           C 351 378, 316 376, 287 374 C 257 371, 232 369, 207 363 C 183 358, 159 352, 140 343
+           C 122 334, 109 321, 98 309 C 88 297, 82 284, 77 269 C 71 254, 68 236, 68 220
+           C 68 204, 71 185, 77 171 C 83 156, 92 144, 104 132 C 115 121, 129 110, 146 100"
+        fill="none" stroke="#EDE3D3" stroke-width="11"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- ================= OUTER INK PASS =================
+       The same journey roughly 20-40px further out, running widest over the top and
+       bottom and pinching close to the inner line at the two flanks. It stops dead
+       just past the left extreme, converging on the inner line without touching it,
+       and never comes back round: that open upper-left arc is the "does not quite
+       meet" of the reference. Its tail spike lands offset from the inner one, which
+       gives the tip its split-nib look. -->
+  <path d="M 253 33
+           C 282 27, 312 21, 347 19 C 383 16, 431 16, 466 20 C 500 25, 528 35, 553 44
+           C 579 53, 597 65, 617 76 C 636 86, 655 94, 671 107 C 688 120, 707 135, 717 153
+           C 727 171, 730 195, 730 216 C 729 237, 723 259, 716 278 C 708 296, 697 312, 682 327
+           C 668 343, 649 357, 629 369 L 680 486 L 568 396
+           C 544 403, 517 408, 486 411 C 456 414, 417 413, 383 413 C 350 412, 314 411, 284 408
+           C 253 406, 227 404, 201 398 C 174 392, 146 383, 126 371 C 106 358, 91 340, 80 324
+           C 68 308, 64 293, 59 276 C 53 258, 48 239, 47 220 C 47 201, 48 179, 54 161"
+        fill="none" stroke="#EDE3D3" stroke-width="11"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

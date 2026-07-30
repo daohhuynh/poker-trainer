@@ -49,6 +49,8 @@ EXACT_SIZES: dict[str, tuple[int, int]] = {
     # only waste resolution -- but it would waste a lot of it.
     "tier2/table_felt": (2048, 1577),
     "tier2/side_pot_all_in_marker": (512, 512),
+    "tier2/frog_peek": (512, 512),
+    "tier2/speech_bubble": (768, 512),
     "tier4/frog_base": (1024, 1024),
     "tier4/frog_expression_pass": (1024, 1024),
     "tier4/frog_expression_fail": (1024, 1024),

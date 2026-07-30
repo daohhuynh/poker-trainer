@@ -147,8 +147,10 @@ static void test_asset_paths_and_tier_config() {
     // trophy), bringing it to 87. A §14-approved contract change then collapsed
     // the Root and Mode Selection backgrounds — byte-identical since Mode took
     // Root's blur parameters — into the single Tier-1 BackgroundRoom, giving 86.
-    // The header static_assert pins it to the enum; mirror the value here.
-    assert(pt::assets::kAssetCount == 86u);
+    // The Root frog decoration (frog_peek + speech_bubble, both Tier 2) is a
+    // further §14-approved additive change, giving 88. The header static_assert
+    // pins it to the enum; mirror the value here.
+    assert(pt::assets::kAssetCount == 88u);
 
     // Tier-1 synchronous set includes the front-facing Butler (A3) and the
     // Home icon (A4), both promoted from Tier 2.

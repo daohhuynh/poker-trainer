@@ -1,0 +1,203 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <title>Frog peek - Root screen corner sprite</title>
+  <desc>The easter-egg dealer frog, small and sitting, for the bottom-right of the Root
+screen. Same creature as tier4/frog_base.svg: identical greens, identical eye
+construction (dome + cream sclera + gold iris + upper-left glint), and the golden
+monocle that ties both the frog and the Butler together. Simplified for legibility at
+roughly a tenth of frog_base's on-screen size: the dealer jacket, wing collar and bow
+tie are dropped, the head-to-body ratio is pushed chibi, and the pupils sit left of
+centre so the frog looks toward the speech bubble that opens on its left.
+
+Geometry was authored around a head centred on (250, 258) and only then shifted by the
+outer translate, which balances the top and bottom margins at ~62px each. Everything
+downstream of that translate is in the pre-shift space, so the frog_base mapping
+x' = 250 + (x - 512) * 0.548, y' = 258 + (y - 439) * 0.545 still relates the two files
+shape for shape.</desc>
+
+  <g transform="translate(0,-44)">
+
+    <!-- ================= BODY (sitting haunches) ================= -->
+    <g id="body">
+      <!-- Deliberately a shade darker than the head so the head stays the focal point
+           and the two masses separate at small sizes. -->
+      <path d="M 62 440
+               C 50 372, 84 316, 140 294
+               C 176 280, 214 274, 256 274
+               C 298 274, 336 280, 372 294
+               C 428 316, 462 372, 450 440
+               C 444 466, 400 482, 256 482
+               C 112 482, 68 466, 62 440 Z"
+            fill="#46743A" stroke="#2E4A2C" stroke-width="7" stroke-opacity="0.6"/>
+
+      <!-- pale throat/belly, same family as frog_base's chin highlight -->
+      <ellipse cx="256" cy="412" rx="116" ry="62" fill="#7FAE60" opacity="0.32"/>
+      <ellipse cx="256" cy="426" rx="82" ry="42" fill="#8CBB6B" opacity="0.2"/>
+
+      <!-- folded hind legs, suggested rather than drawn -->
+      <path d="M 104 350 C 84 386, 78 428, 88 462" fill="none"
+            stroke="#3F6637" stroke-width="9" stroke-opacity="0.28" stroke-linecap="round"/>
+      <path d="M 408 350 C 428 386, 434 428, 424 462" fill="none"
+            stroke="#3F6637" stroke-width="9" stroke-opacity="0.28" stroke-linecap="round"/>
+
+      <!-- rim light down the upper-left flank. Single light source, upper left,
+           matching the eye glints in frog_base. -->
+      <path d="M 138 302 C 98 330, 74 380, 76 428" fill="none"
+            stroke="#8CBB6B" stroke-width="10" stroke-opacity="0.3" stroke-linecap="round"/>
+
+      <circle cx="112" cy="388" r="7" fill="#3F6637" opacity="0.22"/>
+      <circle cx="400" cy="388" r="7" fill="#3F6637" opacity="0.22"/>
+      <circle cx="152" cy="452" r="6" fill="#86B461" opacity="0.3"/>
+      <circle cx="360" cy="452" r="6" fill="#86B461" opacity="0.3"/>
+    </g>
+
+    <!-- ================= FRONT FEET =================
+         One path each so the webbing between the toes has no internal seam. The three
+         scallops hang from a flat baseline at y=474; control offsets of 29 put each
+         toe tip at 474 + 0.75*29 ~= 496. -->
+    <g id="feet">
+      <path d="M 122 474
+               C 122 456, 142 446, 167 446
+               C 192 446, 212 456, 212 474
+               C 212 503, 182 503, 182 474
+               C 182 503, 152 503, 152 474
+               C 152 503, 122 503, 122 474 Z"
+            fill="#6B9E55" stroke="#2E4A2C" stroke-width="5" stroke-opacity="0.6"/>
+      <path d="M 300 474
+               C 300 456, 320 446, 345 446
+               C 370 446, 390 456, 390 474
+               C 390 503, 360 503, 360 474
+               C 360 503, 330 503, 330 474
+               C 330 503, 300 503, 300 474 Z"
+            fill="#6B9E55" stroke="#2E4A2C" stroke-width="5" stroke-opacity="0.6"/>
+      <path d="M 134 458 C 148 452, 186 452, 200 458" fill="none"
+            stroke="#8CBB6B" stroke-width="6" stroke-opacity="0.35" stroke-linecap="round"/>
+      <path d="M 312 458 C 326 452, 364 452, 378 458" fill="none"
+            stroke="#8CBB6B" stroke-width="6" stroke-opacity="0.35" stroke-linecap="round"/>
+    </g>
+
+    <!-- ================= HEAD =================
+         Head centre sits at x=250, six pixels left of the body centre. That small
+         offset plus the off-centre pupils is what sells "looking left" without a
+         rotation that would open a seam at the jaw. -->
+    <g id="head">
+      <path d="M 250 130
+               C 168 130, 106 176, 96 246
+               C 88 300, 118 350, 176 372
+               C 200 381, 226 386, 250 386
+               C 274 386, 300 381, 324 372
+               C 382 350, 412 300, 404 246
+               C 394 176, 332 130, 250 130 Z"
+            fill="#578A47" stroke="#2E4A2C" stroke-width="7" stroke-opacity="0.6"/>
+
+      <!-- dorsal (upper head) shading -->
+      <path d="M 250 138
+               C 182 138, 116 174, 104 247
+               C 145 228, 195 220, 250 220
+               C 305 220, 355 228, 396 247
+               C 384 174, 318 138, 250 138 Z"
+            fill="#497A3B" opacity="0.9"/>
+
+      <ellipse cx="250" cy="159" rx="17" ry="10" fill="#3F6637" opacity="0.26"/>
+      <ellipse cx="250" cy="199" rx="12" ry="8" fill="#3F6637" opacity="0.22"/>
+      <ellipse cx="126" cy="222" rx="13" ry="8" fill="#3F6637" opacity="0.24"/>
+      <ellipse cx="374" cy="222" rx="13" ry="8" fill="#3F6637" opacity="0.24"/>
+
+      <!-- muzzle / lower face -->
+      <path d="M 250 226
+               C 181 226, 122 245, 105 282
+               C 97 325, 139 363, 187 376
+               C 207 382, 228 385, 250 385
+               C 272 385, 293 382, 313 376
+               C 361 363, 403 325, 395 282
+               C 378 245, 319 226, 250 226 Z"
+            fill="#6B9E55" opacity="0.9"/>
+
+      <!-- chin / throat highlight -->
+      <path d="M 250 345
+               C 218 345, 194 356, 189 370
+               C 207 381, 227 384, 250 384
+               C 273 384, 293 381, 311 370
+               C 306 356, 282 345, 250 345 Z"
+            fill="#86B461" opacity="0.42"/>
+
+      <!-- rim light along the upper-left of the skull -->
+      <path d="M 236 140 C 174 144, 122 182, 110 244" fill="none"
+            stroke="#8CBB6B" stroke-width="8" stroke-opacity="0.28" stroke-linecap="round"/>
+
+      <circle cx="132" cy="320" r="4" fill="#86B461" opacity="0.45"/>
+      <circle cx="151" cy="335" r="3" fill="#86B461" opacity="0.4"/>
+      <circle cx="368" cy="320" r="4" fill="#86B461" opacity="0.45"/>
+      <circle cx="349" cy="335" r="3" fill="#86B461" opacity="0.4"/>
+
+      <ellipse cx="232" cy="253" rx="7" ry="4" fill="#3B5F34" opacity="0.7"/>
+      <ellipse cx="268" cy="253" rx="7" ry="4" fill="#3B5F34" opacity="0.7"/>
+
+      <!-- Smirk, not a smile: both corners flick up but the left one rides twenty
+           pixels higher than the right. The asymmetry is the whole "pleased with
+           itself" read, and it leans the same way the pupils do. -->
+      <path d="M 142 286 C 150 342, 326 350, 356 306" fill="none"
+            stroke="#2E4A2C" stroke-width="6" stroke-linecap="round"/>
+      <path d="M 170 338 C 224 356, 298 360, 334 342" fill="none"
+            stroke="#8CBB6B" stroke-width="5" stroke-opacity="0.4" stroke-linecap="round"/>
+    </g>
+
+    <!-- ================= EYES ================= -->
+    <g id="eyes">
+      <circle cx="173" cy="162" r="52" fill="#6B9E55" stroke="#3E6438" stroke-width="3" stroke-opacity="0.5"/>
+      <circle cx="327" cy="162" r="52" fill="#6B9E55" stroke="#3E6438" stroke-width="3" stroke-opacity="0.5"/>
+      <path d="M 173 110 C 202 110, 222 126, 225 146 C 209 132, 192 127, 173 127
+               C 154 127, 137 132, 121 146 C 124 126, 144 110, 173 110 Z"
+            fill="#7DAF63" opacity="0.55"/>
+      <path d="M 327 110 C 298 110, 278 126, 275 146 C 291 132, 308 127, 327 127
+               C 346 127, 363 132, 379 146 C 376 126, 356 110, 327 110 Z"
+            fill="#7DAF63" opacity="0.55"/>
+
+      <!-- left eye -->
+      <path d="M 137 172 C 139 148, 160 135, 173 135
+               C 186 135, 206 148, 208 172
+               C 206 193, 188 201, 173 201
+               C 158 201, 139 193, 137 172 Z"
+            fill="#F1E7D5" stroke="#2E4A2C" stroke-width="4" stroke-opacity="0.8"/>
+      <path d="M 143 165 C 148 146, 199 146, 204 165" fill="none"
+            stroke="#C4AE88" stroke-width="8" stroke-opacity="0.35" stroke-linecap="round"/>
+      <circle cx="162" cy="172" r="23" fill="#D6A143" stroke="#8E6430" stroke-width="2"/>
+      <circle cx="162" cy="173" r="12" fill="#17110E"/>
+      <circle cx="154" cy="163" r="7" fill="#FFF7E6" opacity="0.92"/>
+      <circle cx="170" cy="182" r="3" fill="#FFF7E6" opacity="0.5"/>
+
+      <!-- right eye -->
+      <path d="M 363 172 C 361 148, 340 135, 327 135
+               C 314 135, 294 148, 292 172
+               C 294 193, 312 201, 327 201
+               C 342 201, 361 193, 363 172 Z"
+            fill="#F1E7D5" stroke="#2E4A2C" stroke-width="4" stroke-opacity="0.8"/>
+      <path d="M 357 165 C 352 146, 301 146, 296 165" fill="none"
+            stroke="#C4AE88" stroke-width="8" stroke-opacity="0.35" stroke-linecap="round"/>
+      <circle cx="316" cy="172" r="23" fill="#D6A143" stroke="#8E6430" stroke-width="2"/>
+      <circle cx="316" cy="173" r="12" fill="#17110E"/>
+      <circle cx="308" cy="163" r="7" fill="#FFF7E6" opacity="0.92"/>
+      <circle cx="324" cy="182" r="3" fill="#FFF7E6" opacity="0.5"/>
+    </g>
+
+    <!-- ================= GOLDEN MONOCLE =================
+         The identity marker shared with the Butler and with frog_base. Kept even
+         though everything else formal was cut: at a glance it is the one detail that
+         says "this is the dealer frog" rather than "a frog". Chain is shortened to a
+         stub because the full lapel run would be mush at this size. -->
+    <g id="monocle">
+      <path d="M 365 205 C 395 232, 408 275, 400 313 C 395 344, 383 364, 370 375"
+            fill="none" stroke="#B8873A" stroke-width="4" stroke-linecap="round"/>
+      <path d="M 365 205 C 395 232, 408 275, 400 313 C 395 344, 383 364, 370 375"
+            fill="none" stroke="#E9C070" stroke-width="1.5" stroke-opacity="0.55" stroke-linecap="round"/>
+      <circle cx="370" cy="377" r="5" fill="#D9A441"/>
+
+      <circle cx="327" cy="169" r="45" fill="#EFB42E" opacity="0.06"/>
+      <path d="M 299 139 C 289 151, 284 166, 286 179 C 293 166, 302 151, 313 141 Z"
+            fill="#FFF6E0" opacity="0.18"/>
+      <circle cx="327" cy="169" r="48" fill="none" stroke="#D9A441" stroke-width="6"/>
+      <circle cx="327" cy="169" r="44" fill="none" stroke="#8E6430" stroke-width="2" stroke-opacity="0.5"/>
+      <circle cx="327" cy="169" r="53" fill="none" stroke="#6E4E2C" stroke-width="2" stroke-opacity="0.35"/>
+    </g>
+
+  </g>
+</svg>

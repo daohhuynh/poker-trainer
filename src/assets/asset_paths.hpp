@@ -16,8 +16,9 @@ namespace poker_trainer::assets {
 // synchronous Root-screen set (room background, dealer button, Home icon,
 // front-facing Butler). Tier 2 is the background set fetched after Root
 // renders (Game background, side-profile Butler, table, cards, chips,
-// cluster + Post-Round glyphs, all-in marker). Tier 3 carries no PNGs (SFX
-// and music only). Tier 4 is the on-demand Frog easter-egg set.
+// cluster + Post-Round glyphs, all-in marker, the Root frog decoration and its
+// speech bubble). Tier 3 carries no PNGs (SFX and music only). Tier 4 is the
+// on-demand Frog easter-egg set.
 //
 // There are two backdrops, not one per screen: the blurred room, and the
 // Game screen's pool of light. The four menu-side screens (Root, Mode
@@ -94,13 +95,18 @@ enum class AssetId : std::uint16_t {
     // --- Tier 2: Side pot all-in marker (table-side) ---
     SidePotAllInMarker,
 
+    // --- Tier 2: Root screen frog decoration ---
+    FrogPeek,      // the small frog that sits in the Root screen's bottom-right
+                   // corner on a fraction of visits (screens/root_frog.hpp)
+    SpeechBubble,  // its dialogue bubble, drawn to the frog's left once clicked
+
     // --- Tier 4: Frog easter egg (base + two expression overlays) ---
     FrogBase,
     FrogExpressionPass,
     FrogExpressionFail,
 };
 
-inline constexpr std::size_t kAssetCount = 86;
+inline constexpr std::size_t kAssetCount = 88;
 
 // Cross-check: the enum is contiguous from 0, so the last enumerator + 1 is
 // the asset count. Keep this in lock-step with the kAssetEntries array size.
@@ -215,6 +221,10 @@ inline constexpr std::array<AssetEntry, kAssetCount> kAssetEntries = {{
 
     // --- Tier 2: Side pot all-in marker ---
     {"assets/images/tier2/side_pot_all_in_marker.png",     AssetTier::Tier2},
+
+    // --- Tier 2: Root screen frog decoration ---
+    {"assets/images/tier2/frog_peek.png",                  AssetTier::Tier2},
+    {"assets/images/tier2/speech_bubble.png",              AssetTier::Tier2},
 
     // --- Tier 4: Frog easter egg ---
     {"assets/images/tier4/frog_base.png",                  AssetTier::Tier4},

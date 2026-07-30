@@ -75,6 +75,12 @@ struct Size {
         case A::FrogExpressionPass:
         case A::FrogExpressionFail:
             return {1024, 1024};
+        case A::FrogPeek:
+            return {512, 512};
+        case A::SpeechBubble:
+            // 3:2 landscape panel; the Root frog's bubble is drawn to its left
+            // and the drawn rect holds this aspect (screens/root_frog.cpp).
+            return {768, 512};
         default:
             return {256, 256};
     }
