@@ -1,0 +1,131 @@
+#!/usr/bin/env python3
+"""Derive the three room-background PNGs from one source photograph.
+
+ARCHITECTURE.md Module 2 specifies a single source render of the high-limit room,
+blurred three ways at asset-preparation time so the app never pays for a runtime
+blur:
+
+    background_root.png   heavily blurred   ~12-20 px radius equivalent
+    background_mode.png   medium blur       ~6-10 px radius equivalent
+    background_game.png   light blur        ~2-4 px radius equivalent
+
+The screens crossfade between these variants to fake a camera focus-pull, so all
+three must be the same crop of the same source at the same size -- any framing
+drift between variants shows up as a jump during the transition.
+
+Output is PNG because the decoder is compiled STBI_ONLY_PNG (see
+src/assets/loader.cpp); a JPG here would silently fail to load.
+
+The same module budgets ~1.3 MB for all three combined. A full-depth 2560x1440
+truecolour PNG blows through that on its own, so each variant is colour-quantized
+to fit. Blur destroys high-frequency detail, which is exactly what makes heavy
+quantization invisible here -- and the heavier the blur, the fewer colours the
+variant needs. Dithering suppresses banding across the smooth tonal ramps that
+survive the blur.
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+SOURCE = REPO / "assets" / "source" / "room_source.jpg"
+
+WIDTH, HEIGHT = 2560, 1440
+
+# (output path, gaussian sigma at 2560px, stored width, palette colours)
+#
+# Sigma is the midpoint of each band the architecture specifies, applied at full
+# 2560px width so the blur radius means what the spec says it means.
+#
+# Stored resolution is then matched to the blur. A Gaussian of sigma s erases
+# essentially all spatial detail finer than about 2s pixels, so storing a
+# heavily-blurred variant at full width is paying for information the blur
+# already destroyed. background_root (sigma 16) carries no detail below ~32px and
+# is visually identical stored at 1/4 width and bilinear-upscaled by the GPU;
+# background_game (sigma 3) is only lightly blurred and keeps most of its width.
+# This is what brings the set inside the ~1.3 MB budget in Module 2 -- quantizing
+# alone could not, and it matters most for background_root, which is Tier 1 and
+# therefore on the critical path to first render.
+#
+# Palette size follows the same logic: the heavier the blur, the fewer colours
+# needed before quantization becomes visible.
+VARIANTS = [
+    ("tier1/background_root.png", 16, 720, 96),
+    ("tier2/background_mode.png", 8, 1280, 160),
+    ("tier2/background_game.png", 3, 1920, 224),
+]
+
+# The app paints its own bg_primary tint over the room at runtime, so bake only a
+# slight darken here for text legibility. Baking the full mood would double up
+# with the theme tint and crush the photo to mud.
+DARKEN_PERCENT = 12
+
+
+def run(cmd: list[str]) -> None:
+    subprocess.run(cmd, check=True, capture_output=True)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", type=Path, default=SOURCE)
+    args = parser.parse_args()
+
+    if not args.source.exists():
+        print(f"error: source photo not found at {args.source}", file=sys.stderr)
+        return 1
+
+    dims = subprocess.run(
+        ["magick", "identify", "-format", "%wx%h", str(args.source)],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    src_w, src_h = (int(v) for v in dims.split("x"))
+    print(f"source: {args.source.relative_to(REPO)}  {src_w}x{src_h}")
+    if src_w < WIDTH or src_h < HEIGHT:
+        print(f"error: source is smaller than {WIDTH}x{HEIGHT}; refusing to upscale",
+              file=sys.stderr)
+        return 1
+
+    total = 0
+    for rel, sigma, store_w, colours in VARIANTS:
+        out = REPO / "assets" / "images" / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        store_h = store_w * HEIGHT // WIDTH
+        run([
+            "magick", str(args.source),
+            # Centre-crop to exactly 16:9 at full width first. Cropping before the
+            # blur keeps every variant on identical framing, which the crossfade
+            # between them depends on.
+            "-resize", f"{WIDTH}x{HEIGHT}^",
+            "-gravity", "center",
+            "-extent", f"{WIDTH}x{HEIGHT}",
+            # Blur at full width so the radius matches the spec's stated pixels...
+            "-blur", f"0x{sigma}",
+            # ...then downsample to the storage resolution the blur justifies.
+            "-resize", f"{store_w}x{store_h}",
+            "-brightness-contrast", f"-{DARKEN_PERCENT}x0",
+            "-colors", str(colours),
+            "-dither", "FloydSteinberg",
+            "-strip",
+            "-define", "png:compression-level=9",
+            str(out),
+        ])
+        size = out.stat().st_size
+        total += size
+        geom = subprocess.run(
+            ["magick", "identify", "-format", "%wx%h %[type]", str(out)],
+            check=True, capture_output=True, text=True,
+        ).stdout
+        print(f"  {rel:<32} sigma={sigma:<3} colors={colours:<4} "
+              f"{geom}  {size / 1024:.0f} KB")
+
+    print(f"\ncombined: {total / 1024 / 1024:.2f} MB "
+          f"(ARCHITECTURE Module 2 budget: ~1.3 MB)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
