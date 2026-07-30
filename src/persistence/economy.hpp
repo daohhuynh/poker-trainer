@@ -5,6 +5,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 // Module 7 — the tomato economy core (pure logic over the persisted wallet + music
 // library). This is the testable heart of the Retention Engine: the dual-track award
@@ -54,9 +55,10 @@ inline constexpr std::array<std::uint32_t, 3> kTrackPriceByGenrePosition{0u, 5u,
 [[nodiscard]] bool is_track_owned(const MusicLibraryState& lib,
                                   audio::MusicTrackId track) noexcept;
 
-// A track is in rotation when it appears in active_pool_track_ids (its genre's shuffle
-// pool). Independent of ownership in storage shape, though only owned tracks are ever
-// added.
+// A track is in rotation when it appears in active_pool_track_ids (the one global,
+// cross-genre rotation). Independent of ownership in storage shape, though only owned
+// tracks are ever added. Linear scan, not a binary search: the rotation is ordered by
+// ADD ORDER, not by id.
 [[nodiscard]] bool is_track_in_pool(const MusicLibraryState& lib,
                                     audio::MusicTrackId track) noexcept;
 
@@ -68,22 +70,44 @@ inline constexpr std::array<std::uint32_t, 3> kTrackPriceByGenrePosition{0u, 5u,
 // Returns true on commit, false when already owned or unaffordable (state unchanged).
 [[nodiscard]] bool purchase_track(AppState& state, audio::MusicTrackId track);
 
-// Add `track` to its genre's shuffle pool (active_pool_track_ids, sorted + unique). A
-// no-op when the track is not owned or already present. Mutates persisted state only;
-// the caller updates the in-memory audio pool via audio::add_to_shuffle.
+// APPEND `track` to the end of the rotation. A no-op when the track is not owned or
+// already present (so it never duplicates, and re-adding does not move a track to the
+// back). Mutates persisted state only; the caller updates the live audio rotation via
+// audio::add_to_rotation.
 void add_track_to_pool(MusicLibraryState& lib, audio::MusicTrackId track);
 
-// Remove `track` from its genre's shuffle pool. A no-op when absent. Mutates persisted
-// state only; the caller updates the in-memory audio pool via audio::remove_from_shuffle.
+// Remove `track` from the rotation, preserving the order of everything else. A no-op
+// when absent. Mutates persisted state only; the caller updates the live audio rotation
+// via audio::remove_from_rotation.
 void remove_track_from_pool(MusicLibraryState& lib, audio::MusicTrackId track);
 
-// Put every genre's free starter track into the persisted rotation. ARCHITECTURE
-// Module 7 (Shop UI — "Default tracks"): "The first track of each genre is permanently
-// owned and pre-added to that genre's shuffle pool on first session", rendering in the
-// Owned-and-in-shuffle state. Boot calls this once, on a profile whose rotation has no
-// persisted representation yet, so active_pool_track_ids becomes the single source of
-// truth for what is in rotation from that point on (a later removal then sticks across
-// reloads instead of being re-seeded). Idempotent.
+// The rotation as typed track ids, in add order — what the Shop's rotation list renders
+// and what boot replays into the audio engine. Ids the catalog does not define are
+// skipped (see normalize_rotation).
+[[nodiscard]] std::vector<audio::MusicTrackId> rotation_tracks(const MusicLibraryState& lib);
+
+// Append the four free starter tracks to the rotation, in genre order (Lounge Jazz,
+// Classical, Bossa Nova, Ambient). ARCHITECTURE Module 7 (Shop UI — "Default tracks"):
+// the first track of each genre is permanently owned and pre-added on first session.
+// This is the ONLY seeding path: boot calls it on a profile whose rotation is empty
+// after normalization, which is the fresh-profile case. From that point on
+// active_pool_track_ids is the single source of truth, so a later removal sticks across
+// reloads instead of being re-seeded. Idempotent, and it preserves (never reorders)
+// tracks already in the rotation.
 void add_starter_tracks_to_pool(MusicLibraryState& lib);
+
+// Bring a loaded rotation into the invariants the playback model depends on: every id
+// names a real catalog track, and no id appears twice. Order is preserved; the FIRST
+// occurrence of a duplicate wins, because that is the position the user's playlist has
+// had all along.
+//
+// MIGRATION of pre-rotation profiles: active_pool_track_ids used to hold the four
+// per-genre shuffle pools unioned into one sorted set. Those ids are exactly the tracks
+// the user had chosen to hear, so they are adopted verbatim as the initial rotation —
+// nothing is dropped and nothing is re-seeded. The only observable change is that their
+// ascending-id order now also means playback order, which is a defensible reading of a
+// set that never carried an order to begin with. A profile that had tracks therefore
+// cannot come back empty, and cannot gain duplicates.
+void normalize_rotation(MusicLibraryState& lib);
 
 }  // namespace poker_trainer::persistence

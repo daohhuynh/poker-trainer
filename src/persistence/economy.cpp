@@ -17,7 +17,9 @@ namespace {
     return static_cast<std::uint8_t>(track);
 }
 
-// Sorted-unique insert into a track-id vector (the persisted storage shape).
+// Sorted-unique insert into a track-id vector. Used for unlocked_track_ids, which IS a
+// set (the schema documents it sorted) — NOT for the rotation, whose order is the user's
+// playlist order.
 void insert_sorted_unique(std::vector<std::uint8_t>& ids, std::uint8_t id) {
     const auto it = std::lower_bound(ids.begin(), ids.end(), id);
     if (it == ids.end() || *it != id) {
@@ -25,16 +27,24 @@ void insert_sorted_unique(std::vector<std::uint8_t>& ids, std::uint8_t id) {
     }
 }
 
-void erase_value(std::vector<std::uint8_t>& ids, std::uint8_t id) {
-    const auto it = std::lower_bound(ids.begin(), ids.end(), id);
-    if (it != ids.end() && *it == id) {
-        ids.erase(it);
+[[nodiscard]] bool contains_value(const std::vector<std::uint8_t>& ids,
+                                  std::uint8_t id) noexcept {
+    return std::ranges::find(ids, id) != ids.end();
+}
+
+// Rotation edits. Both preserve the order of every element they do not touch, which is
+// what makes active_pool_track_ids a queue rather than a set.
+void append_if_absent(std::vector<std::uint8_t>& ids, std::uint8_t id) {
+    if (!contains_value(ids, id)) {
+        ids.push_back(id);
     }
 }
 
-[[nodiscard]] bool contains_value(const std::vector<std::uint8_t>& ids,
-                                  std::uint8_t id) noexcept {
-    return std::binary_search(ids.begin(), ids.end(), id);
+void erase_value(std::vector<std::uint8_t>& ids, std::uint8_t id) {
+    const auto it = std::ranges::find(ids, id);
+    if (it != ids.end()) {
+        ids.erase(it);
+    }
 }
 
 }  // namespace
@@ -90,20 +100,47 @@ void add_track_to_pool(MusicLibraryState& lib, audio::MusicTrackId track) {
     if (!is_track_owned(lib, track)) {
         return;  // cannot rotate an unowned track
     }
-    insert_sorted_unique(lib.active_pool_track_ids, track_byte(track));
+    append_if_absent(lib.active_pool_track_ids, track_byte(track));
 }
 
 void remove_track_from_pool(MusicLibraryState& lib, audio::MusicTrackId track) {
     erase_value(lib.active_pool_track_ids, track_byte(track));
 }
 
+std::vector<audio::MusicTrackId> rotation_tracks(const MusicLibraryState& lib) {
+    std::vector<audio::MusicTrackId> out;
+    out.reserve(lib.active_pool_track_ids.size());
+    for (const std::uint8_t id : lib.active_pool_track_ids) {
+        if (id < audio::kMusicTrackCount) {
+            out.push_back(static_cast<audio::MusicTrackId>(id));
+        }
+    }
+    return out;
+}
+
 void add_starter_tracks_to_pool(MusicLibraryState& lib) {
+    // Catalog order is genre-major with the starter first in each genre, so a forward
+    // walk seeds Lounge Jazz, Classical, Bossa Nova, Ambient in that order.
     for (std::size_t i = 0; i < audio::kMusicTrackCount; ++i) {
         const auto track = static_cast<audio::MusicTrackId>(i);
         if (audio::music_track_info(track).is_starter) {
             add_track_to_pool(lib, track);
         }
     }
+}
+
+void normalize_rotation(MusicLibraryState& lib) {
+    // Ownership is deliberately NOT re-checked here. add_track_to_pool already gates on
+    // it, so an unowned member can only come from a damaged blob — and going quiet on a
+    // user who had tracks is a worse failure than playing one track they no longer own.
+    std::vector<std::uint8_t> clean;
+    clean.reserve(lib.active_pool_track_ids.size());
+    for (const std::uint8_t id : lib.active_pool_track_ids) {
+        if (id < audio::kMusicTrackCount) {
+            append_if_absent(clean, id);
+        }
+    }
+    lib.active_pool_track_ids = std::move(clean);
 }
 
 }  // namespace poker_trainer::persistence

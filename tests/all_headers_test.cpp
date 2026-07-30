@@ -253,8 +253,10 @@ static void test_settings_defaults() {
 
     // Audio — single Volume slider default 50 (S7); the three mutes default off.
     assert(s.audio.volume == 50);
-    assert(s.audio.current_music_genre
-               == pt::settings::ActiveMusicGenre::LoungeJazz);
+    // The genre control filters the one global rotation, so its default is the unfiltered
+    // view (every track the user has in rotation), walked in the order they added them.
+    assert(s.audio.current_music_genre == pt::settings::ActiveMusicGenre::All);
+    assert(s.audio.music_playback_order == pt::settings::MusicPlaybackOrder::Loop);
     assert(!s.audio.mute_all);
     assert(!s.audio.mute_sfx);
     assert(!s.audio.mute_music);

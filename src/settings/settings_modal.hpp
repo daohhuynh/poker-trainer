@@ -75,6 +75,7 @@ inline constexpr backbone::FocusableId kDiHoverTilt = backbone::make_focusable_i
 
 // Audio
 inline constexpr backbone::FocusableId kAuMusicType = backbone::make_focusable_id("settings.au.music_type");
+inline constexpr backbone::FocusableId kAuPlaybackOrder = backbone::make_focusable_id("settings.au.playback_order");
 inline constexpr backbone::FocusableId kAuVolumeSlider = backbone::make_focusable_id("settings.au.volume_slider");
 inline constexpr backbone::FocusableId kAuVolumeInput = backbone::make_focusable_id("settings.au.volume_input");
 inline constexpr backbone::FocusableId kAuMuteAll = backbone::make_focusable_id("settings.au.mute_all");
@@ -111,9 +112,9 @@ inline constexpr backbone::FocusableId kLeTerms = backbone::make_focusable_id("s
 inline constexpr backbone::FocusableId kLePrivacy = backbone::make_focusable_id("settings.le.privacy");
 inline constexpr backbone::FocusableId kLeAbout = backbone::make_focusable_id("settings.le.about");
 
-// The full Tab order (52 stops). Stable storage; the content provider's focus_list
+// The full Tab order (53 stops). Stable storage; the content provider's focus_list
 // returns a span over this.
-inline constexpr std::array<backbone::FocusableId, 52> kSettingsFocusOrder{
+inline constexpr std::array<backbone::FocusableId, 53> kSettingsFocusOrder{
     kFocusSearch,
     kSidebarFocus[0], kSidebarFocus[1], kSidebarFocus[2], kSidebarFocus[3], kSidebarFocus[4],
     kSidebarFocus[5], kSidebarFocus[6], kSidebarFocus[7], kSidebarFocus[8],
@@ -127,7 +128,8 @@ inline constexpr std::array<backbone::FocusableId, 52> kSettingsFocusOrder{
     // Display
     kDiTheme, kDiReduceMotion, kDiParticleDrift, kDiHoverTilt, kReScreenTransitions,
     // Audio
-    kAuMusicType, kAuVolumeSlider, kAuVolumeInput, kAuMuteAll, kAuMuteSfx, kAuMuteMusic,
+    kAuMusicType, kAuPlaybackOrder, kAuVolumeSlider, kAuVolumeInput, kAuMuteAll, kAuMuteSfx,
+    kAuMuteMusic,
     // Recap
     kReDealerArrival, kReDefaultRecapTab,
     // Tomatoes

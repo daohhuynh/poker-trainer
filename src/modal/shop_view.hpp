@@ -12,10 +12,17 @@
 #include <vector>
 
 // Zone 11 — Module 7 Shop content, rendered inside the cluster-modal frame
-// (ARCHITECTURE Module 7 "The Shop UI"). Fixed size, no scroll: all 12 tracks render at
-// once, grouped into the four genre sections, each row a three-state Buy/Add/Remove
-// button with the armed-confirm Buy, the in-rotation dot, and the insufficient-funds
-// state. The header carries the Leaderboard-swap icon + the Spendable Tomatoes count.
+// (ARCHITECTURE Module 7 "The Shop UI"). Two columns:
+//
+//   LEFT (catalog)  — all 12 tracks at once, grouped into the four genre sections, each
+//                     row a three-state Buy/Add/Remove button with the armed-confirm Buy,
+//                     the in-rotation dot, and the insufficient-funds state.
+//   RIGHT (rotation)— the live rotation from audio::rotation_tracks(), in ADD ORDER, and
+//                     ONLY what is in it. Read-only: each listed track's one interactive
+//                     control is its REMOVE button in the catalog column, so the panel
+//                     adds no focus stops and the tab order is unchanged.
+//
+// The header carries the Leaderboard-swap icon + the Spendable Tomatoes count.
 //
 // The render reads a boot-computed ShopSnapshot and drives mutations through the wired
 // ShopController callbacks (modals.hpp) — Z11 never touches Zone 04 / Zone 03 directly.

@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -138,7 +139,7 @@ TEST(PurchaseTrack, AlreadyOwnedIsRejected) {
     EXPECT_EQ(s.tomatoes.spendable, after_first);
 }
 
-// ----- Shuffle-pool composition -----
+// ----- Rotation composition (one global, cross-genre, ordered by add order) -----
 
 TEST(PoolMutation, AddThenRemoveTogglesRotation) {
     pt::AppState s{};
@@ -152,21 +153,102 @@ TEST(PoolMutation, AddThenRemoveTogglesRotation) {
     EXPECT_FALSE(pt::is_track_in_pool(s.music_library, audio::MusicTrackId::LoungeJazz_Track2));
 }
 
-TEST(PoolMutation, AddIsIdempotentAndSorted) {
+// Supersedes an earlier "kept sorted" assertion: the rotation is a playlist, and Loop
+// playback walks it in the order the user built it. Sorting would silently reorder that.
+TEST(PoolMutation, AddAppendsInAddOrderAndIsIdempotent) {
     pt::MusicLibraryState lib{};
-    // Starters are owned, so they can join the pool.
-    pt::add_track_to_pool(lib, audio::MusicTrackId::Ambient_Starter);   // id 9
+    // Starters are owned, so they can join the rotation.
+    pt::add_track_to_pool(lib, audio::MusicTrackId::Ambient_Starter);    // id 9
     pt::add_track_to_pool(lib, audio::MusicTrackId::LoungeJazz_Starter); // id 0
-    pt::add_track_to_pool(lib, audio::MusicTrackId::Ambient_Starter);   // duplicate
+    pt::add_track_to_pool(lib, audio::MusicTrackId::Ambient_Starter);    // duplicate
     ASSERT_EQ(lib.active_pool_track_ids.size(), 2u);
-    EXPECT_EQ(lib.active_pool_track_ids[0], 0u);  // kept sorted
-    EXPECT_EQ(lib.active_pool_track_ids[1], 9u);
+    EXPECT_EQ(lib.active_pool_track_ids[0], 9u);  // added first, stays first
+    EXPECT_EQ(lib.active_pool_track_ids[1], 0u);
+}
+
+// Re-adding a member must not shuffle it to the back either — add is a no-op, not a move.
+TEST(PoolMutation, ReAddingAMemberDoesNotMoveIt) {
+    pt::MusicLibraryState lib{};
+    pt::add_track_to_pool(lib, audio::MusicTrackId::LoungeJazz_Starter);
+    pt::add_track_to_pool(lib, audio::MusicTrackId::Classical_Starter);
+    pt::add_track_to_pool(lib, audio::MusicTrackId::LoungeJazz_Starter);
+    ASSERT_EQ(lib.active_pool_track_ids.size(), 2u);
+    EXPECT_EQ(lib.active_pool_track_ids[0],
+              static_cast<std::uint8_t>(audio::MusicTrackId::LoungeJazz_Starter));
+}
+
+TEST(PoolMutation, RemoveKeepsTheOrderOfTheSurvivors) {
+    pt::MusicLibraryState lib{};
+    pt::add_track_to_pool(lib, audio::MusicTrackId::Ambient_Starter);     // 9
+    pt::add_track_to_pool(lib, audio::MusicTrackId::LoungeJazz_Starter);  // 0
+    pt::add_track_to_pool(lib, audio::MusicTrackId::BossaNova_Starter);   // 6
+    pt::remove_track_from_pool(lib, audio::MusicTrackId::LoungeJazz_Starter);
+    ASSERT_EQ(lib.active_pool_track_ids.size(), 2u);
+    EXPECT_EQ(lib.active_pool_track_ids[0], 9u);
+    EXPECT_EQ(lib.active_pool_track_ids[1], 6u);
 }
 
 TEST(PoolMutation, AddUnownedTrackIsNoOp) {
     pt::MusicLibraryState lib{};
     pt::add_track_to_pool(lib, audio::MusicTrackId::Classical_Track3);  // not owned
     EXPECT_TRUE(lib.active_pool_track_ids.empty());
+}
+
+TEST(RotationTracks, ReturnsTypedIdsInAddOrder) {
+    pt::MusicLibraryState lib{};
+    pt::add_track_to_pool(lib, audio::MusicTrackId::BossaNova_Starter);
+    pt::add_track_to_pool(lib, audio::MusicTrackId::Classical_Starter);
+    const std::vector<audio::MusicTrackId> tracks = pt::rotation_tracks(lib);
+    ASSERT_EQ(tracks.size(), 2u);
+    EXPECT_EQ(tracks[0], audio::MusicTrackId::BossaNova_Starter);
+    EXPECT_EQ(tracks[1], audio::MusicTrackId::Classical_Starter);
+}
+
+TEST(RotationTracks, SkipsIdsTheCatalogDoesNotDefine) {
+    pt::MusicLibraryState lib{};
+    lib.active_pool_track_ids = {0, 200, 3};
+    const std::vector<audio::MusicTrackId> tracks = pt::rotation_tracks(lib);
+    ASSERT_EQ(tracks.size(), 2u);
+    EXPECT_EQ(tracks[0], audio::MusicTrackId::LoungeJazz_Starter);
+    EXPECT_EQ(tracks[1], audio::MusicTrackId::Classical_Starter);
+}
+
+// ----- Rotation normalization / migration of pre-rotation profiles -----
+
+// The old semantics stored the per-genre pools unioned into one sorted set. Those ids are
+// adopted verbatim, so a profile that had tracks keeps every one of them.
+TEST(NormalizeRotation, AdoptsALegacySortedSetUnchanged) {
+    pt::MusicLibraryState lib{};
+    lib.active_pool_track_ids = {0, 3, 4, 6, 9};  // what the per-genre model left behind
+    pt::normalize_rotation(lib);
+    const std::vector<std::uint8_t> expected{0, 3, 4, 6, 9};
+    EXPECT_EQ(lib.active_pool_track_ids, expected);
+}
+
+TEST(NormalizeRotation, DropsDuplicatesKeepingTheFirstPosition) {
+    pt::MusicLibraryState lib{};
+    lib.active_pool_track_ids = {9, 0, 9, 6, 0};
+    pt::normalize_rotation(lib);
+    const std::vector<std::uint8_t> expected{9, 0, 6};
+    EXPECT_EQ(lib.active_pool_track_ids, expected);
+}
+
+TEST(NormalizeRotation, DropsIdsOutsideTheCatalog) {
+    pt::MusicLibraryState lib{};
+    lib.active_pool_track_ids = {0, 12, 255, 3};
+    pt::normalize_rotation(lib);
+    const std::vector<std::uint8_t> expected{0, 3};
+    EXPECT_EQ(lib.active_pool_track_ids, expected);
+}
+
+// Boot re-seeds only an EMPTY rotation, so normalization emptying a populated one would
+// silently reset the user's playlist to the four starters.
+TEST(NormalizeRotation, NeverEmptiesARotationThatHadValidTracks) {
+    pt::MusicLibraryState lib{};
+    lib.active_pool_track_ids = {7, 7, 7};
+    pt::normalize_rotation(lib);
+    ASSERT_EQ(lib.active_pool_track_ids.size(), 1u);
+    EXPECT_EQ(lib.active_pool_track_ids[0], 7u);
 }
 
 // ----- First-session starter seeding (Module 7 "Default tracks") -----
@@ -178,6 +260,18 @@ TEST(StarterPoolSeeding, PutsEveryGenresStarterInRotation) {
     EXPECT_TRUE(pt::is_track_in_pool(lib, audio::MusicTrackId::Classical_Starter));
     EXPECT_TRUE(pt::is_track_in_pool(lib, audio::MusicTrackId::BossaNova_Starter));
     EXPECT_TRUE(pt::is_track_in_pool(lib, audio::MusicTrackId::Ambient_Starter));
+}
+
+// A fresh profile's Loop order is the genre order the Shop lists, not an arbitrary one.
+TEST(StarterPoolSeeding, SeedsInGenreOrder) {
+    pt::MusicLibraryState lib{};
+    pt::add_starter_tracks_to_pool(lib);
+    const std::vector<std::uint8_t> expected{
+        static_cast<std::uint8_t>(audio::MusicTrackId::LoungeJazz_Starter),
+        static_cast<std::uint8_t>(audio::MusicTrackId::Classical_Starter),
+        static_cast<std::uint8_t>(audio::MusicTrackId::BossaNova_Starter),
+        static_cast<std::uint8_t>(audio::MusicTrackId::Ambient_Starter)};
+    EXPECT_EQ(lib.active_pool_track_ids, expected);
 }
 
 TEST(StarterPoolSeeding, LeavesPaidTracksOutOfRotation) {
@@ -208,6 +302,9 @@ TEST(StarterPoolSeeding, PreservesTracksAlreadyInRotation) {
     pt::add_starter_tracks_to_pool(s.music_library);
     EXPECT_TRUE(pt::is_track_in_pool(s.music_library, audio::MusicTrackId::Classical_Track2));
     EXPECT_EQ(s.music_library.active_pool_track_ids.size(), 5u);
+    // The track already in rotation keeps its position; the starters append behind it.
+    EXPECT_EQ(s.music_library.active_pool_track_ids[0],
+              static_cast<std::uint8_t>(audio::MusicTrackId::Classical_Track2));
 }
 
 // Boot reconciles Z03's in-memory pools to this set both ways, so a removed starter must

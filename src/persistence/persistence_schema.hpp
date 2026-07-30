@@ -38,10 +38,9 @@ struct TomatoesState {
 };
 
 // Music library state. Tracks which music tracks the user has
-// unlocked via Shop purchase, and which tracks are currently in
-// each genre's shuffle pool (the user toggles tracks in and out
-// of the pool exclusively via the Shop UI, not the Settings Audio
-// section).
+// unlocked via Shop purchase, and which tracks are in the music
+// rotation (the user adds and removes tracks exclusively via the
+// Shop UI, not the Settings Audio section).
 struct MusicLibraryState {
     // The set of MusicTrackId values the user has unlocked.
     // Stored as a sorted vector of raw track IDs for compact
@@ -50,10 +49,15 @@ struct MusicLibraryState {
     // this vector.
     std::vector<std::uint8_t> unlocked_track_ids;
 
-    // The set of MusicTrackId values currently in each genre's
-    // shuffle pool. Sorted vector of raw track IDs. By default,
-    // each genre's pool contains only the starter track until
-    // the user adds others via the Shop UI.
+    // The ONE global music rotation, spanning all genres, stored
+    // in ADD ORDER: index 0 is the longest-standing member, the
+    // back is the most recently added. Loop playback walks this
+    // order and wraps, so the order is meaningful state — this
+    // vector must NEVER be sorted or set-ified (an earlier
+    // revision kept it sorted, when it still meant "the per-genre
+    // shuffle pools unioned together"; sorting now would silently
+    // rewrite the user's playlist). Duplicates are not permitted.
+    // A fresh profile is seeded with the four free starters.
     std::vector<std::uint8_t> active_pool_track_ids;
 };
 

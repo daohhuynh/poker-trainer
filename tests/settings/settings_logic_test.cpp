@@ -7,9 +7,14 @@
 
 #include "settings/settings.hpp"
 
+#include "audio/audio_paths.hpp"
+
+#include <cstddef>
+
 #include <gtest/gtest.h>
 
 namespace st = poker_trainer::settings;
+namespace audio = poker_trainer::audio;
 
 namespace {
 
@@ -180,4 +185,25 @@ TEST(Validate, RejectsOverlongDisplayName) {
     st::Settings s{};
     s.account.display_name_override = std::string(40, 'x');  // > 32
     EXPECT_EQ(st::validate(s), st::SettingsValidationResult::InvalidDisplayNameOverride);
+}
+
+// ----- the genre filter's ordinal contract -----
+
+// Two places convert ActiveMusicGenre to an audio-layer filter by subtracting one (boot's
+// genre_filter_of, and the settings-blob codec's version-1 migration, which ADDS one going
+// the other way). Both are silent if the +1 offset ever drifts — a wrong-but-valid genre is
+// not a crash, just the wrong music — so pin the offset here.
+TEST(GenreFilter, NonAllValuesSitOneAboveTheAudioGenre) {
+    static_assert(static_cast<int>(st::ActiveMusicGenre::All) == 0,
+                  "All must be the zero value so it is the default");
+    static_assert(static_cast<int>(st::ActiveMusicGenre::LoungeJazz) ==
+                  static_cast<int>(audio::MusicGenre::LoungeJazz) + 1);
+    static_assert(static_cast<int>(st::ActiveMusicGenre::Classical) ==
+                  static_cast<int>(audio::MusicGenre::Classical) + 1);
+    static_assert(static_cast<int>(st::ActiveMusicGenre::BossaNova) ==
+                  static_cast<int>(audio::MusicGenre::BossaNova) + 1);
+    static_assert(static_cast<int>(st::ActiveMusicGenre::Ambient) ==
+                  static_cast<int>(audio::MusicGenre::Ambient) + 1);
+    // One genre value per catalog genre, plus All.
+    EXPECT_EQ(static_cast<std::size_t>(st::ActiveMusicGenre::Ambient), audio::kMusicGenreCount);
 }

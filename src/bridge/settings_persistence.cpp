@@ -93,7 +93,18 @@ namespace {
 
 constexpr std::array<std::uint8_t, 4> kFullMagic{std::uint8_t{'P'}, std::uint8_t{'T'},
                                                  std::uint8_t{'S'}, std::uint8_t{'1'}};
-constexpr std::uint8_t kFullVersion = 1;
+
+// Layout revisions inside the 'PTS1' magic. The magic is stable; this byte says which
+// audio layout follows.
+//   1 — original. current_music_genre is one of four genres (0..3, Lounge Jazz first)
+//       and there is no playback-order byte.
+//   2 — rotation model. current_music_genre gains "All" at 0 (so every genre shifts up
+//       by one) and a music_playback_order byte follows it.
+// Both are readable; only 2 is written. Version-gating the read is what lets a returning
+// user keep every other saved setting instead of the whole blob being rejected as
+// truncated and silently reset to defaults.
+constexpr std::uint8_t kFullVersionPreRotation = 1;
+constexpr std::uint8_t kFullVersion = 2;
 
 void put_u8(std::vector<std::uint8_t>& o, std::uint8_t v) { o.push_back(v); }
 void put_bool(std::vector<std::uint8_t>& o, bool v) {
@@ -143,6 +154,24 @@ struct Reader {
     float flt() { return std::bit_cast<float>(u32()); }
 };
 
+// Decode the genre-filter byte written by layout `version`. A version-1 byte names one of
+// the four genres with Lounge Jazz at 0; the rotation model inserted "All" at 0, so those
+// values shift up by one. The user's explicit genre choice is preserved rather than reset
+// to All: it is a real stored preference, and the rotation still plays within it (one
+// control switches to All genres). Out-of-range bytes — a hand-edited or corrupt blob —
+// fall back to the All default rather than to an arbitrary genre.
+[[nodiscard]] settings::ActiveMusicGenre decode_genre(std::uint8_t raw,
+                                                      std::uint8_t version) noexcept {
+    constexpr std::uint8_t kGenreCount = 4;
+    if (version <= kFullVersionPreRotation) {
+        return raw < kGenreCount
+                   ? static_cast<settings::ActiveMusicGenre>(static_cast<std::uint8_t>(raw + 1))
+                   : settings::ActiveMusicGenre::All;
+    }
+    return raw <= kGenreCount ? static_cast<settings::ActiveMusicGenre>(raw)
+                              : settings::ActiveMusicGenre::All;
+}
+
 }  // namespace
 
 std::vector<std::uint8_t> encode_settings(const settings::Settings& s) {
@@ -180,6 +209,7 @@ std::vector<std::uint8_t> encode_settings(const settings::Settings& s) {
     const settings::AudioSettings& a = s.audio;
     put_u8(o, a.volume);
     put_u8(o, static_cast<std::uint8_t>(a.current_music_genre));
+    put_u8(o, static_cast<std::uint8_t>(a.music_playback_order));
     put_bool(o, a.mute_all);
     put_bool(o, a.mute_sfx);
     put_bool(o, a.mute_music);
@@ -216,7 +246,8 @@ std::optional<settings::Settings> decode_settings(std::span<const std::uint8_t> 
             return std::nullopt;
         }
     }
-    if (blob[kFullMagic.size()] != kFullVersion) {
+    const std::uint8_t version = blob[kFullMagic.size()];
+    if (version != kFullVersion && version != kFullVersionPreRotation) {
         return std::nullopt;
     }
 
@@ -252,7 +283,14 @@ std::optional<settings::Settings> decode_settings(std::span<const std::uint8_t> 
 
     settings::AudioSettings& a = s.audio;
     a.volume = rd.u8();
-    a.current_music_genre = static_cast<settings::ActiveMusicGenre>(rd.u8());
+    a.current_music_genre = decode_genre(rd.u8(), version);
+    if (version > kFullVersionPreRotation) {
+        // A version-1 blob has no such byte; its default (Loop) already stands.
+        const std::uint8_t order = rd.u8();
+        a.music_playback_order = (order == static_cast<std::uint8_t>(settings::MusicPlaybackOrder::Shuffle))
+                                     ? settings::MusicPlaybackOrder::Shuffle
+                                     : settings::MusicPlaybackOrder::Loop;
+    }
     a.mute_all = rd.boolean();
     a.mute_sfx = rd.boolean();
     a.mute_music = rd.boolean();

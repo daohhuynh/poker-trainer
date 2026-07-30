@@ -11,11 +11,13 @@
 #include "assets/asset_paths.hpp"
 #include "theme/theme_tokens.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <imgui.h>
@@ -23,11 +25,22 @@
 #include "bridge/asset_image.hpp"
 #include "bridge/focus_registry.hpp"
 
+// Zone 03 (authorized by ZONES.md Z11 "Depends on: ... Zone 03"): the rotation panel
+// renders audio::rotation_tracks() — the live, ordered rotation. Nothing else in the
+// Shop reads Z03; mutations still go through the ShopController seam.
+#include "audio/audio.hpp"
+
 // Zone 11 — Module 7 Shop content. The render is a marked seam (browser-verified); the
 // pure shop_button_kind helper is unit-tested. Wallet reads come from a boot-computed
 // ShopSnapshot; purchases / add / remove route through the wired ShopController, so this
-// TU never includes Zone 04 (persistence) or Zone 03 (audio control) headers — only the
-// Phase-0 audio track catalog (audio_paths.hpp) for names / prices / genre grouping.
+// TU never includes Zone 04 (persistence) — only the Phase-0 audio track catalog
+// (audio_paths.hpp) for names / prices / genre grouping, plus the Z03 rotation query.
+//
+// The body is two columns: the catalog (four genre sections, twelve Buy/Add/Remove rows)
+// on the left, and the ROTATION panel on the right. The rotation is one global ordered
+// queue shared across genres, so the panel is the only place the user can see what is
+// actually queued and in what order — the catalog's per-row dot only says "this one is in
+// it", which is what left the rotation illegible before.
 
 namespace poker_trainer::modal {
 
@@ -266,6 +279,82 @@ void render_shop_row(ModalRuntime& rt, const ShopRowView& row) {
     ImGui::PopID();
 }
 
+// Width the rotation panel needs: an index column wide enough for "12." plus the longest
+// track name in the catalog, its own inner padding, and room for a scrollbar (twelve
+// entries can overflow a short canvas). Floored so the heading and caption do not wrap to
+// a ragged sliver, and capped so the catalog column keeps its name + price + button
+// columns legible on a narrow canvas (1280x720 is the tightest supported).
+[[nodiscard]] float rotation_panel_width(float body_w) {
+    float widest_name = 0.0f;
+    for (const audio::MusicTrackInfo& info : audio::kMusicTracks) {
+        const ImVec2 sz = ImGui::CalcTextSize(info.display_name.data(),
+                                              info.display_name.data() + info.display_name.size());
+        widest_name = std::max(widest_name, sz.x);
+    }
+    const float line = ImGui::GetTextLineHeight();
+    const float want = ImGui::CalcTextSize("12.").x + line * 0.5f + widest_name + line +
+                       ImGui::GetStyle().ScrollbarSize;
+    return std::clamp(want, body_w * 0.26f, body_w * 0.42f);
+}
+
+// Draw a secondary-text paragraph that wraps inside the current column.
+void draw_caption(const char* text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(text);
+    ImGui::PopTextWrapPos();
+    ImGui::PopStyleColor();
+}
+
+// The rotation panel: the live rotation in ADD ORDER, read-only.
+//
+// Read-only is deliberate. Every listed track already owns exactly one interactive
+// control — its REMOVE button in the catalog column, which is that track's single focus
+// stop (shop_focus_list). A second remove affordance here would either add a duplicate
+// tab stop per track (doubling the traversal for no new capability) or be mouse-only,
+// which breaks keyboard parity. The panel reports state; the catalog edits it.
+void render_rotation_panel(float width) {
+    ImGui::BeginChild("##shop_rotation", ImVec2{width, 0.0f}, false);
+    const float line = ImGui::GetTextLineHeight();
+    ImGui::Indent(line * 0.5f);
+
+    ImGui::TextUnformatted("Rotation");
+    // The rotation is one queue across all genres, and the Audio Settings genre choice
+    // only narrows what plays from it — say so, because the previous per-genre model is
+    // exactly the thing the user could not read off this screen.
+    draw_caption("Every genre, in the order added.");
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+
+    const std::vector<audio::MusicTrackId> rotation = audio::rotation_tracks();
+    if (rotation.empty()) {
+        // An empty rotation is silence, not a neutral state — name the consequence rather
+        // than leaving a blank column that reads as "not loaded yet". ASCII only: the
+        // bundled ImGui font has no glyph for an em dash and renders it as "?".
+        draw_caption("Empty. Nothing will play.\n\nAdd a track to start the rotation.");
+        ImGui::Unindent(line * 0.5f);
+        ImGui::EndChild();
+        return;
+    }
+
+    const float index_w = ImGui::CalcTextSize("12.").x + line * 0.5f;
+    for (std::size_t i = 0; i < rotation.size(); ++i) {
+        const std::string index = std::to_string(i + 1) + ".";
+        const float row_x = ImGui::GetCursorPosX();
+        ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
+        ImGui::TextUnformatted(index.c_str());
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(row_x + index_w);
+        const std::string_view name = audio::music_track_info(rotation[i]).display_name;
+        ImGui::TextUnformatted(name.data(), name.data() + name.size());
+    }
+
+    ImGui::Unindent(line * 0.5f);
+    ImGui::EndChild();
+}
+
 void render_genre_section(ModalRuntime& rt, const ShopSnapshot& snap, std::size_t genre) {
     const std::string_view title = audio::kMusicGenreNames[genre];
     ImGui::Spacing();
@@ -369,13 +458,36 @@ void render_shop_view(ModalRuntime& runtime) {
     // had before the list was wrapped (rows right-align to the content width).
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0.0f, 0.0f});
     ImGui::BeginChild("##shop_body", ImVec2{0.0f, 0.0f}, false);
+
+    const float body_w = ImGui::GetContentRegionAvail().x;
+    const float body_h = ImGui::GetContentRegionAvail().y;
+    const ImVec2 body_origin = ImGui::GetCursorScreenPos();
+    const float gutter = ImGui::GetTextLineHeight();
+    const float rotation_w = rotation_panel_width(body_w);
+    const float catalog_w = body_w - rotation_w - gutter;
+
+    // Divider down the gutter, so the two columns read as separate panes rather than one
+    // run-on list of names.
+    const float divider_x = body_origin.x + catalog_w + gutter * 0.5f;
+    ImGui::GetWindowDrawList()->AddLine(ImVec2{divider_x, body_origin.y},
+                                        ImVec2{divider_x, body_origin.y + body_h},
+                                        token_u32(theme::ColorToken::SeparatorLine), 1.0f);
+
     // The track rows are interactive controls — dimmed + click-suppressed under the
-    // tutorial lock; the X close and the Leaderboard icon above stay live.
+    // tutorial lock; the X close and the Leaderboard icon above stay live. The rotation
+    // panel is inside the wrap too: it carries no controls, but dimming it with the
+    // catalog keeps the locked body reading as one surface.
     modal_begin_locked_controls();
+    ImGui::BeginChild("##shop_catalog", ImVec2{catalog_w, 0.0f}, false);
     for (std::size_t g = 0; g < audio::kMusicGenreCount; ++g) {
         render_genre_section(runtime, snap, g);
     }
+    ImGui::EndChild();
+
+    ImGui::SameLine(0.0f, gutter);
+    render_rotation_panel(rotation_w);
     modal_end_locked_controls();
+
     ImGui::EndChild();
     ImGui::PopStyleVar();
 

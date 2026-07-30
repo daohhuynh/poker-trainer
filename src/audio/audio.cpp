@@ -40,7 +40,9 @@ namespace {
 AudioEngine& audio_engine() {
     static AudioEngine instance = [] {
         AudioEngine eng{make_session_seed()};
-        eng.music.seed_starter_tracks();  // each genre starts with its free track
+        // A fresh profile starts with all four free starter tracks in the one
+        // rotation; Module 7 later replaces this with the persisted rotation.
+        eng.music.seed_starter_tracks();
         return eng;
     }();
     return instance;
@@ -98,14 +100,12 @@ void on_first_user_gesture() {
     // Web Audio device "running" and the first <audio>.play() is permitted.
     backend::sfx_init();
     backend::music_init();
-    // Begin the active genre's shuffle pool now (in-gesture) so music persists across
-    // the session; an empty active pool stays silent (the explicit state).
-    ShufflePool& active = eng.music.active_pool();
-    if (!active.empty()) {
-        const std::optional<MusicTrackId> first = active.next();
-        if (first.has_value()) {
-            music_start_track(eng, *first);
-        }
+    // Begin the rotation now (in-gesture) so music persists across the session. An
+    // empty rotation — or a genre filter that selects nothing in it — stays silent
+    // (the explicit state), which is what next() reporting nullopt means.
+    const std::optional<MusicTrackId> first = eng.music.next();
+    if (first.has_value()) {
+        music_start_track(eng, *first);
     }
 }
 

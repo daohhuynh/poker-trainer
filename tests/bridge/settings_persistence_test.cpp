@@ -19,6 +19,7 @@
 
 #include "persistence_mocks.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -180,6 +181,7 @@ TEST(FullSettingsCodec, RoundTripsEveryField) {
     in.display.particle_drift = false;
     in.audio.volume = 73;
     in.audio.current_music_genre = st::ActiveMusicGenre::BossaNova;
+    in.audio.music_playback_order = st::MusicPlaybackOrder::Shuffle;
     in.audio.mute_sfx = true;
     in.recap.transitions_enabled = false;
     in.recap.default_aggressor_recap_tab = st::DefaultAggressorRecapTab::Summary;
@@ -208,6 +210,7 @@ TEST(FullSettingsCodec, RoundTripsEveryField) {
     EXPECT_FALSE(out->display.particle_drift);
     EXPECT_EQ(out->audio.volume, 73);
     EXPECT_EQ(out->audio.current_music_genre, st::ActiveMusicGenre::BossaNova);
+    EXPECT_EQ(out->audio.music_playback_order, st::MusicPlaybackOrder::Shuffle);
     EXPECT_TRUE(out->audio.mute_sfx);
     EXPECT_FALSE(out->recap.transitions_enabled);
     EXPECT_EQ(out->recap.default_aggressor_recap_tab, st::DefaultAggressorRecapTab::Summary);
@@ -215,6 +218,85 @@ TEST(FullSettingsCodec, RoundTripsEveryField) {
     EXPECT_TRUE(out->tomatoes.leaderboard_opt_in);
     EXPECT_EQ(out->account.display_name_override, "Stack_Jack");
     EXPECT_FALSE(out->general.confirm_before_leaving_site);
+}
+
+// ----- 'PTS1' layout version 1 -> 2 (the rotation model) -----
+
+namespace {
+
+// A version-1 blob, built by degrading a freshly encoded version-2 one: stamp the older
+// layout version, write the genre in the old four-value encoding, and drop the
+// playback-order byte that layout did not have. Offsets are asserted below rather than
+// trusted, so a future field insertion fails loudly here instead of silently mis-testing.
+constexpr std::size_t kVersionOffset = 4;
+constexpr std::size_t kVolumeOffset = 37;
+constexpr std::size_t kGenreOffset = 38;
+constexpr std::size_t kPlaybackOrderOffset = 39;
+
+[[nodiscard]] std::vector<std::uint8_t> to_version_1_blob(const st::Settings& in,
+                                                          std::uint8_t legacy_genre) {
+    std::vector<std::uint8_t> blob = br::encode_settings(in);
+    EXPECT_EQ(blob[kVolumeOffset], in.audio.volume);
+    EXPECT_EQ(blob[kGenreOffset], static_cast<std::uint8_t>(in.audio.current_music_genre));
+    blob[kVersionOffset] = 1;
+    blob[kGenreOffset] = legacy_genre;
+    blob.erase(blob.begin() + static_cast<std::ptrdiff_t>(kPlaybackOrderOffset));
+    return blob;
+}
+
+}  // namespace
+
+// The whole blob must survive, not just the audio block: rejecting a version-1 blob as
+// truncated would silently reset every saved setting the user has.
+TEST(FullSettingsCodec, DecodesAVersion1BlobAndKeepsItsOtherSettings) {
+    st::Settings in{};
+    in.audio.volume = 73;
+    in.display.active_theme_id = th::kThemeIdOcean;
+    in.gameplay.time_pressure_custom_seconds = 123;
+    in.account.display_name_override = "Stack_Jack";
+
+    const std::optional<st::Settings> out = br::decode_settings(to_version_1_blob(in, 0));
+    ASSERT_TRUE(out.has_value());
+    EXPECT_EQ(out->audio.volume, 73);
+    EXPECT_EQ(out->display.active_theme_id, th::kThemeIdOcean);
+    EXPECT_EQ(out->gameplay.time_pressure_custom_seconds, 123);
+    EXPECT_EQ(out->account.display_name_override, "Stack_Jack");
+}
+
+// Version 1 numbered the genres 0..3 with Lounge Jazz first; version 2 inserted All at 0.
+// The user's explicit choice is preserved through the shift rather than reset to All.
+TEST(FullSettingsCodec, Version1GenreShiftsPastTheNewAllEntry) {
+    st::Settings in{};
+    struct Case {
+        std::uint8_t legacy;
+        st::ActiveMusicGenre expected;
+    };
+    for (const Case c : {Case{0, st::ActiveMusicGenre::LoungeJazz},
+                         Case{1, st::ActiveMusicGenre::Classical},
+                         Case{2, st::ActiveMusicGenre::BossaNova},
+                         Case{3, st::ActiveMusicGenre::Ambient}}) {
+        const std::optional<st::Settings> out = br::decode_settings(to_version_1_blob(in, c.legacy));
+        ASSERT_TRUE(out.has_value());
+        EXPECT_EQ(out->audio.current_music_genre, c.expected);
+    }
+}
+
+// Version 1 had no playback-order byte, so a migrated profile takes the Loop default.
+TEST(FullSettingsCodec, Version1BlobDefaultsToLoopOrder) {
+    const std::optional<st::Settings> out = br::decode_settings(to_version_1_blob(st::Settings{}, 2));
+    ASSERT_TRUE(out.has_value());
+    EXPECT_EQ(out->audio.music_playback_order, st::MusicPlaybackOrder::Loop);
+}
+
+// A byte naming no genre (corrupt / hand-edited blob) resolves to the All default, never
+// to whichever genre the cast happens to land on.
+TEST(FullSettingsCodec, OutOfRangeGenreByteFallsBackToAllGenres) {
+    st::Settings in{};
+    std::vector<std::uint8_t> blob = br::encode_settings(in);
+    blob[kGenreOffset] = 200;
+    const std::optional<st::Settings> out = br::decode_settings(blob);
+    ASSERT_TRUE(out.has_value());
+    EXPECT_EQ(out->audio.current_music_genre, st::ActiveMusicGenre::All);
 }
 
 TEST(FullSettingsCodec, DecodeRejectsInterimAndForeignBlobs) {

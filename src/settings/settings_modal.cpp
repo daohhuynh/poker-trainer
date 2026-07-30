@@ -313,11 +313,26 @@ bool widget_combo(backbone::FocusableId id, const char* imgui_id, int& index,
     return changed;
 }
 
+// A wrapped, de-emphasised line under a control, for the rare setting whose effect is not
+// self-evident from its label and options. text_secondary keeps it subordinate to the
+// control it explains.
+void caption(const char* text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
+    ImGui::TextWrapped("%s", text);
+    ImGui::PopStyleColor();
+}
+
 // ----- option label tables -----
 
 constexpr std::array<const char*, 4> kThemeOptions{"No Limit", "Slate", "Ocean", "Sage"};
-constexpr std::array<const char*, 4> kMusicOptions{"Lounge Jazz", "Classical", "Bossa Nova",
-                                                   "Ambient"};
+// Genre filter over the rotation. "All genres" is index 0 to match
+// ActiveMusicGenre::All, and is the default.
+constexpr std::array<const char*, 5> kMusicOptions{"All genres", "Lounge Jazz", "Classical",
+                                                   "Bossa Nova", "Ambient"};
+// Option text spells out what the order does, so the control reads correctly next to the
+// genre filter: neither one changes WHICH tracks are in the rotation.
+constexpr std::array<const char*, 2> kPlaybackOrderOptions{"Loop (in the order added)",
+                                                           "Shuffle"};
 constexpr std::array<const char*, 2> kRecapTabOptions{"Tier 1", "Summary"};
 constexpr std::array<const char*, 2> kUnitOptions{"Cash", "Big Blinds"};
 
@@ -415,14 +430,31 @@ void set_music_index(SettingsModalState& s, int idx) {
     if (s.live == nullptr) {
         return;
     }
-    s.live->audio.current_music_genre = static_cast<ActiveMusicGenre>(clamp_int(idx, 0, 3));
+    s.live->audio.current_music_genre = static_cast<ActiveMusicGenre>(
+        clamp_int(idx, 0, static_cast<int>(kMusicOptions.size()) - 1));
     on_setting_change(s, SettingId::MusicType);
 }
 void cycle_music(SettingsModalState& s) {
     if (s.live == nullptr) {
         return;
     }
-    set_music_index(s, (static_cast<int>(s.live->audio.current_music_genre) + 1) % 4);
+    set_music_index(s, (static_cast<int>(s.live->audio.current_music_genre) + 1) %
+                           static_cast<int>(kMusicOptions.size()));
+}
+void set_playback_order_index(SettingsModalState& s, int idx) {
+    if (s.live == nullptr) {
+        return;
+    }
+    s.live->audio.music_playback_order =
+        (idx == 1) ? MusicPlaybackOrder::Shuffle : MusicPlaybackOrder::Loop;
+    on_setting_change(s, SettingId::PlaybackOrder);
+}
+void cycle_playback_order(SettingsModalState& s) {
+    if (s.live == nullptr) {
+        return;
+    }
+    set_playback_order_index(
+        s, s.live->audio.music_playback_order == MusicPlaybackOrder::Loop ? 1 : 0);
 }
 void set_unit_index(SettingsModalState& s, int idx) {
     if (s.live == nullptr) {
@@ -739,6 +771,17 @@ void populate_main_registry(SettingsModalState& s) {
                                                             static_cast<int>(s.live->audio.current_music_genre) + d);
                                                     }
                                                 }});
+    reg.register_element(
+        kAuPlaybackOrder,
+        bridge::FocusableEntry{
+            .activate = [&s] { cycle_playback_order(s); },
+            .adjust =
+                [&s](int d) {
+                    if (s.live != nullptr) {
+                        set_playback_order_index(
+                            s, static_cast<int>(s.live->audio.music_playback_order) + d);
+                    }
+                }});
     reg.register_element(kAuVolumeSlider, bridge::FocusableEntry{.adjust = [&s](int d) {
                              if (s.live != nullptr) {
                                  set_volume(s, s.live->audio.volume + d);
@@ -913,7 +956,7 @@ struct BodyFocusOwner {
     backbone::FocusableId focus;
     SettingId setting;
 };
-constexpr std::array<BodyFocusOwner, 45> kBodyFocusOwners{{
+constexpr std::array<BodyFocusOwner, 46> kBodyFocusOwners{{
     {kGpStreetPreflopSlider, SettingId::StreetWeights},
     {kGpStreetPreflopInput, SettingId::StreetWeights},
     {kGpStreetFlopSlider, SettingId::StreetWeights},
@@ -937,6 +980,7 @@ constexpr std::array<BodyFocusOwner, 45> kBodyFocusOwners{{
     {kDiHoverTilt, SettingId::HoverTilt},
     {kReScreenTransitions, SettingId::ScreenTransitions},
     {kAuMusicType, SettingId::MusicType},
+    {kAuPlaybackOrder, SettingId::PlaybackOrder},
     {kAuVolumeSlider, SettingId::Volume},
     {kAuVolumeInput, SettingId::Volume},
     {kAuMuteAll, SettingId::MuteAll},
@@ -1205,6 +1249,21 @@ void render_audio(SettingsModalState& s, const bridge::FocusReconcile& rec, ImU3
         if (widget_combo(kAuMusicType, "##music", idx, kMusicOptions, ring, s.scroll_follow_focus)) {
             set_music_index(s, idx);
         }
+        // The genre control is a FILTER, and users reasonably assume a genre picker also
+        // decides what is available. Saying so here — and naming where tracks are actually
+        // added — is what stops "I chose Classical and the music stopped" from reading as a
+        // bug when the rotation holds no Classical. Worded to stay true under "All genres".
+        caption("Filters your rotation by genre. Tracks are added and removed in the Shop.");
+    }
+    if (setting_visible(SettingId::PlaybackOrder, q)) {
+        ImGui::TextUnformatted("Playback order");
+        int order_idx = static_cast<int>(a.music_playback_order);
+        if (widget_combo(kAuPlaybackOrder, "##playback_order", order_idx, kPlaybackOrderOptions,
+                         ring, s.scroll_follow_focus)) {
+            set_playback_order_index(s, order_idx);
+        }
+        caption("The order your rotation plays in. Like Music type, it never changes what "
+                "is in it.");
     }
     if (setting_visible(SettingId::Volume, q)) {
         ImGui::TextUnformatted("Volume");
@@ -1651,6 +1710,7 @@ void on_setting_change(SettingsModalState& state, SettingId id) {
             theme::set_theme(state.live->display.active_theme_id);  // apply immediately (Z06)
             break;
         case SettingId::MusicType:
+        case SettingId::PlaybackOrder:
         case SettingId::Volume:
         case SettingId::MuteAll:
         case SettingId::MuteSfx:

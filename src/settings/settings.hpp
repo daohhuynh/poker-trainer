@@ -21,14 +21,31 @@ enum class ChipDenominationMode : std::uint8_t {
     Fixed = 1,
 };
 
-// Music genre selection (one active genre at a time). Mirrors the
-// audio::MusicGenre enum; the shuffle pool draws from this genre's unlocked
-// tracks.
+// Genre FILTER over the single global music rotation. This is a view, never an
+// editor: choosing a genre scopes playback to the rotation's tracks of that
+// genre and adds, removes or reorders nothing. The rotation itself is edited
+// only in the Shop. `All` (the default) plays the whole rotation; a genre with
+// no tracks in the rotation plays silence.
+//
+// The non-All values mirror audio::MusicGenre, offset by one — All occupies 0
+// so the default is the zero value. Converting to audio::MusicGenre is
+// therefore (value - 1), and All maps to no genre at all (std::nullopt).
 enum class ActiveMusicGenre : std::uint8_t {
-    LoungeJazz = 0,
-    Classical = 1,
-    BossaNova = 2,
-    Ambient = 3,
+    All = 0,
+    LoungeJazz = 1,
+    Classical = 2,
+    BossaNova = 3,
+    Ambient = 4,
+};
+
+// How playback walks the rotation. Orthogonal to the genre filter: the filter
+// decides WHICH tracks are in scope, this decides the order they play in.
+//   Loop:    the rotation's add order, wrapping at the end. Default.
+//   Shuffle: random within the filtered scope, never repeating a track
+//            immediately.
+enum class MusicPlaybackOrder : std::uint8_t {
+    Loop = 0,
+    Shuffle = 1,
 };
 
 // Which tab is shown by default on the Post-Round Screen for a multi-tier
@@ -167,9 +184,12 @@ struct AudioSettings {
     // Single global volume, 0-100. Applied to both music and SFX. Default 50.
     std::uint8_t volume{50};
 
-    // Active music genre. The shuffle pool draws from this genre's unlocked
-    // tracks. Default Lounge Jazz.
-    ActiveMusicGenre current_music_genre{ActiveMusicGenre::LoungeJazz};
+    // Genre filter over the global rotation (see ActiveMusicGenre). Default
+    // All: every track the user has put in the rotation is in scope.
+    ActiveMusicGenre current_music_genre{ActiveMusicGenre::All};
+
+    // How the filtered rotation is walked. Default Loop (add order, wrapping).
+    MusicPlaybackOrder music_playback_order{MusicPlaybackOrder::Loop};
 
     // Mute all audio (music and SFX together).
     bool mute_all{false};

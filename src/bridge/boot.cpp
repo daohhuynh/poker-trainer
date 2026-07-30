@@ -66,6 +66,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <emscripten/emscripten.h>
 
@@ -191,6 +192,65 @@ void stash_leaderboard_opt_in() {
            g_boot.live_settings.tomatoes.leaderboard_opt_in ? 1 : 0);
 }
 
+// The Audio-settings genre selection as an audio-layer filter. ActiveMusicGenre::All is
+// "no filter" (std::nullopt — the whole rotation plays); the other four mirror
+// audio::MusicGenre one ordinal higher, because All took 0 so that the default is the
+// zero value.
+[[nodiscard]] std::optional<audio::MusicGenre> genre_filter_of(
+    settings::ActiveMusicGenre genre) noexcept {
+    if (genre == settings::ActiveMusicGenre::All) {
+        return std::nullopt;
+    }
+    return static_cast<audio::MusicGenre>(static_cast<unsigned>(genre) - 1u);
+}
+
+// Make the audio engine's rotation exactly the persisted one, in the persisted ORDER, and
+// make the persisted one canonical on the way through. Order is meaningful now (Loop walks
+// the rotation in add order), and add_to_rotation only ever appends, so reproducing a saved
+// order means clearing first — this REPLACES the engine's rotation rather than reconciling
+// membership into it. Z03 seeds its own starters at install (it has no persistence
+// dependency); an add-only replay used to let those re-seeded starters survive a removal,
+// leaving the Shop's rotation list describing something the engine was not playing.
+//
+// The clear/rebuild is skipped when the engine already holds exactly this rotation, so the
+// post-auth call cannot interrupt a track that is sounding when nothing actually changed.
+void restore_rotation_from_persisted_state() {
+    if (!g_boot.service.has_value()) {
+        return;
+    }
+    persistence::AppState next = g_boot.service->state();
+    const std::vector<std::uint8_t> before = next.music_library.active_pool_track_ids;
+    // Enforce the rotation's invariants (in-catalog, no duplicates, order preserved) and,
+    // for a profile written under the old per-genre semantics, adopt its ids as the initial
+    // rotation. See persistence::normalize_rotation.
+    persistence::normalize_rotation(next.music_library);
+    if (next.music_library.active_pool_track_ids.empty()) {
+        // ARCHITECTURE Module 7 (Shop UI, "Default tracks"): a fresh profile starts with
+        // the four free starters, so it hears all four genres out of the box.
+        //
+        // An empty stored rotation is the ONLY first-session signal available — the schema
+        // has no "seeded" flag — so a user who removes every track from the Shop gets the
+        // starters back on the next reload rather than booting into silence. Within the
+        // session the empty rotation is honoured and plays nothing.
+        persistence::add_starter_tracks_to_pool(next.music_library);
+    }
+    if (next.music_library.active_pool_track_ids != before) {
+        g_boot.service->save_state(next);
+    }
+
+    const std::vector<audio::MusicTrackId> want =
+        persistence::rotation_tracks(g_boot.service->state().music_library);
+    if (want == audio::rotation_tracks()) {
+        return;
+    }
+    for (std::size_t i = 0; i < audio::kMusicTrackCount; ++i) {
+        audio::remove_from_rotation(static_cast<audio::MusicTrackId>(i));
+    }
+    for (const audio::MusicTrackId track : want) {
+        audio::add_to_rotation(track);
+    }
+}
+
 // Refresh the live settings snapshot (and the visible theme + audio) from the
 // current persisted state. Invoked after an interactive sign-in/up adopts the
 // server's authoritative state, so cross-browser settings/theme surface
@@ -203,6 +263,10 @@ void reload_live_settings_after_auth() {
     g_boot.live_settings = read_persisted_settings(g_boot.service->state());
     theme::set_theme(g_boot.live_settings.display.active_theme_id);
     stash_leaderboard_opt_in();  // the adopted server state may flip opt-in
+    // The adopted state carries the other browser's rotation as well as its settings, so
+    // the music follows the account the same way the theme does. Same order as boot: the
+    // rotation is rebuilt first, then the filter and order are applied over it.
+    restore_rotation_from_persisted_state();
     if (g_boot.settings.apply_audio) {
         g_boot.settings.apply_audio(g_boot.live_settings.audio);
     }
@@ -408,8 +472,8 @@ void finish_boot_after_persistence() {
         audio::set_mute_all(a.mute_all);
         audio::set_mute_sfx(a.mute_sfx);
         audio::set_mute_music(a.mute_music);
-        audio::set_active_genre(
-            static_cast<audio::MusicGenre>(static_cast<std::uint8_t>(a.current_music_genre)));
+        audio::set_genre_filter(genre_filter_of(a.current_music_genre));
+        audio::set_playback_order(a.music_playback_order);
     };
     g_boot.settings.reset_tomatoes = [] {
         if (g_boot.service.has_value()) {
@@ -560,7 +624,7 @@ void finish_boot_after_persistence() {
         persistence::AppState next = g_boot.service->state();
         persistence::add_track_to_pool(next.music_library, track);
         g_boot.service->save_state(next);
-        audio::add_to_shuffle(audio::music_track_info(track).genre, track);
+        audio::add_to_rotation(track);  // appends to the same end the persisted order does
     };
     g_boot.modals.shop.on_remove = [](audio::MusicTrackId track) {
         if (!g_boot.service.has_value()) {
@@ -569,7 +633,7 @@ void finish_boot_after_persistence() {
         persistence::AppState next = g_boot.service->state();
         persistence::remove_track_from_pool(next.music_library, track);
         g_boot.service->save_state(next);
-        audio::remove_from_shuffle(audio::music_track_info(track).genre, track);
+        audio::remove_from_rotation(track);  // skips off it at once if it is the one playing
     };
 
     // Leaderboard controller: fetch the top-100 over Supabase (id_token bearer); the
@@ -654,45 +718,18 @@ void finish_boot_after_persistence() {
     // forwards here through Z03's normal mute/volume routing.
     bridge::set_sfx_player([](audio::SfxId id) { audio::play_sfx(id); });
 
-    // Restore the persisted shuffle-pool composition (Module 7) and make it the single
-    // source of truth for what is in rotation. Z03's install seeds every genre's starter
-    // into its in-memory pool unconditionally (it has no persistence dependency), so the
-    // restore must RECONCILE both ways — add what the user has in rotation, remove what
-    // they do not — not merely add. An add-only replay let the always-re-seeded starters
-    // survive a removal, and left the Shop's dot/ADD/REMOVE state (read from
-    // active_pool_track_ids) describing a rotation the audio engine was not actually
-    // playing.
-    //
-    // A profile whose active_pool_track_ids is empty has no persisted representation of
-    // the rotation yet, which is the first-session case: seed the four starters into it
-    // (ARCHITECTURE Module 7 Shop UI, "Default tracks ... pre-added to that genre's
-    // shuffle pool on first session") and save, so the persisted set is authoritative from
-    // here on and a later removal sticks.
-    if (g_boot.service.has_value()) {
-        if (g_boot.service->state().music_library.active_pool_track_ids.empty()) {
-            persistence::AppState next = g_boot.service->state();
-            persistence::add_starter_tracks_to_pool(next.music_library);
-            g_boot.service->save_state(next);
-        }
-        const persistence::MusicLibraryState& lib = g_boot.service->state().music_library;
-        for (std::size_t i = 0; i < audio::kMusicTrackCount; ++i) {
-            const auto track = static_cast<audio::MusicTrackId>(i);
-            const audio::MusicGenre genre = audio::music_track_info(track).genre;
-            if (persistence::is_track_in_pool(lib, track)) {
-                audio::add_to_shuffle(genre, track);
-            } else {
-                audio::remove_from_shuffle(genre, track);
-            }
-        }
-    }
+    // Restore the persisted rotation (Module 7) and make it the single source of truth for
+    // what plays. Nothing is sounding yet — playback waits on the first user gesture — so
+    // the rebuild is inaudible here.
+    restore_rotation_from_persisted_state();
 
-    // Apply the persisted audio settings now that Z03 is installed and its pools match
-    // the saved rotation. The boot path already restores the saved theme before the first
-    // frame; audio was the omission — apply_audio ran only from a Settings edit or the
-    // post-auth adopt, so every reload silently fell back to the DEFAULTS: Lounge Jazz at
-    // volume 50 with the mutes off. That pinned playback to the Lounge Jazz pool no matter
-    // which genre the user had selected, which is what made Shop add/remove on any other
-    // genre inaudible.
+    // Apply the persisted audio settings now that Z03 is installed and its rotation matches
+    // the saved one. The boot path already restores the saved theme before the first frame;
+    // audio was once the omission — apply_audio ran only from a Settings edit or the
+    // post-auth adopt, so every reload silently fell back to the constructor defaults. The
+    // genre filter and the playback order ride this same call for exactly that reason: a
+    // saved "Ambient only" or "Shuffle" must survive a reload, not sit unapplied behind the
+    // engine's defaults.
     if (g_boot.settings.apply_audio) {
         g_boot.settings.apply_audio(g_boot.live_settings.audio);
     }

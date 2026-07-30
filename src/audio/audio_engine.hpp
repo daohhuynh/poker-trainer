@@ -38,7 +38,7 @@ struct AudioEngine {
     bool gesture_started{false};
     std::size_t prev_modal_depth{0};
 
-    MusicEngine music;
+    MusicRotation music;
     MusicTransport transport;
     ChoreographyScheduler choreo;
 
@@ -66,8 +66,20 @@ struct AudioEngine {
 [[nodiscard]] AudioEngine& audio_engine();
 
 // Internal transport drivers (implemented in music.cpp), called by audio_update and
-// play_music. Not part of the public API.
+// the public rotation exports. Not part of the public API. They take the engine by
+// reference rather than reaching for audio_engine() so unit tests can drive the
+// transport against a locally-constructed engine.
 void music_update(AudioEngine& eng, float delta_ms);
 void music_start_track(AudioEngine& eng, MusicTrackId track);
+
+// Remove `track` from the rotation and react on the transport: if it is the track
+// currently sounding, skip to the next one in scope immediately, or halt when the
+// scope is now empty.
+void music_remove_track(AudioEngine& eng, MusicTrackId track);
+
+// Apply a genre filter (std::nullopt == All genres) and react on the transport: a
+// still-in-scope track keeps playing untouched; a track the new filter excludes is
+// left immediately for the next one in scope, or for silence.
+void music_apply_genre_filter(AudioEngine& eng, std::optional<MusicGenre> genre);
 
 }  // namespace poker_trainer::audio

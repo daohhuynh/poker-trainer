@@ -55,6 +55,7 @@ enum class SettingId : std::uint16_t {
     HoverTilt,
     // Audio
     MusicType,
+    PlaybackOrder,
     Volume,
     MuteAll,
     MuteSfx,
@@ -90,7 +91,7 @@ struct SettingEntry {
 // The full searchable catalog, in body order. Every blob is authored lowercase and
 // begins with the section name so a section query ("gameplay", "account") resolves to
 // every control in that section (kills the "account hits / gameplay misses" asymmetry).
-inline constexpr std::array<SettingEntry, 29> kSettingCatalog{{
+inline constexpr std::array<SettingEntry, 30> kSettingCatalog{{
     {SettingId::StreetWeights, "Street split weights", SettingsSection::Gameplay,
      "gameplay street split weights pre-flop preflop flop turn river save reset sum applies next game"},
     {SettingId::ChipDenomination, "Chip denomination mode", SettingsSection::Gameplay,
@@ -114,7 +115,10 @@ inline constexpr std::array<SettingEntry, 29> kSettingCatalog{{
     {SettingId::HoverTilt, "Hover tilt", SettingsSection::Display,
      "display hover tilt focus button wobble animation motion"},
     {SettingId::MusicType, "Music type", SettingsSection::Audio,
-     "audio music type genre lounge jazz classical bossa nova ambient track"},
+     "audio music type genre filter all genres lounge jazz classical bossa nova ambient track "
+     "rotation playlist"},
+    {SettingId::PlaybackOrder, "Playback order", SettingsSection::Audio,
+     "audio playback order loop shuffle random repeat rotation playlist sequence"},
     {SettingId::Volume, "Volume", SettingsSection::Audio, "audio volume loudness level"},
     {SettingId::MuteAll, "Mute all", SettingsSection::Audio, "audio mute all unmute silence"},
     {SettingId::MuteSfx, "Mute sound effects", SettingsSection::Audio,

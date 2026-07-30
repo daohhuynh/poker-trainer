@@ -123,6 +123,9 @@ TEST(CatalogCompleteness, OptionValuesAndSubLabelsResolve) {
     EXPECT_TRUE(st::setting_visible(st::SettingId::Theme, "slate"));
     EXPECT_TRUE(st::setting_visible(st::SettingId::Theme, "ocean"));
     EXPECT_TRUE(st::setting_visible(st::SettingId::MusicType, "bossa nova"));
+    EXPECT_TRUE(st::setting_visible(st::SettingId::MusicType, "all genres"));
+    EXPECT_TRUE(st::setting_visible(st::SettingId::PlaybackOrder, "loop"));
+    EXPECT_TRUE(st::setting_visible(st::SettingId::PlaybackOrder, "shuffle"));
     EXPECT_TRUE(st::setting_visible(st::SettingId::DefaultRecapTab, "summary"));
     // Street sub-labels.
     EXPECT_TRUE(st::setting_visible(st::SettingId::StreetWeights, "pre-flop"));
