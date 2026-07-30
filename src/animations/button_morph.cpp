@@ -69,7 +69,7 @@ Rect logo_rect(Canvas canvas) noexcept {
     // Driven by height so the mark holds a consistent optical size across window
     // aspects; the width follows. Keep in step with assets/svg/tier1/app_logo.svg and
     // the app_logo entries in tools/rasterize_assets.py and tools/placeholder_layout.hpp.
-    constexpr float kLogoAspect = 540.0f / 800.0f;  // app_logo.png width / height
+    constexpr float kLogoAspect = 420.0f / 1024.0f;  // app_logo.png width / height
     const float h = 0.11f * canvas.height;
     return Rect{0.03f * canvas.width, 0.03f * canvas.height, h * kLogoAspect, h};
 }

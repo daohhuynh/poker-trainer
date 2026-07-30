@@ -43,7 +43,7 @@ struct Size {
     switch (id) {
         case A::AppLogo:
             // Portrait monogram (P + t + chip), not the old wide wordmark.
-            return {540, 800};
+            return {420, 1024};
         case A::DealerButton:
             return {512, 512};
         case A::TableFelt:

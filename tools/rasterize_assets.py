@@ -38,7 +38,7 @@ PNG_ROOT = REPO / "assets" / "images"
 EXACT_SIZES: dict[str, tuple[int, int]] = {
     # Portrait monogram, not the old wide wordmark. Aspect must match
     # kLogoAspect in src/animations/button_morph.cpp.
-    "tier1/app_logo": (540, 800),
+    "tier1/app_logo": (420, 1024),
     "tier1/butler_neutral": (1024, 1536),
     "tier1/butler_raised": (1024, 1536),
     "tier1/dealer_button": (512, 512),
