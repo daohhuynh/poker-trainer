@@ -372,7 +372,10 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     )
     target_include_directories(modal PUBLIC ${CMAKE_SOURCE_DIR}/src)
     target_compile_options(modal PRIVATE ${POKER_TRAINER_WARNING_FLAGS})
-    target_link_libraries(modal PUBLIC backbone theme bridge persistence)  # theme brings imgui
+    # audio: the Shop's rotation panel renders audio::rotation_tracks() (ZONES.md Z11
+    # "Depends on: ... Zone 03"). audio links backbone/engine/bridge and does NOT depend
+    # on modal, so this stays a one-way edge (no cycle).
+    target_link_libraries(modal PUBLIC backbone theme bridge persistence audio)  # theme brings imgui
 
     # ---------------------------------------------------------------------
     # Zone 10 (Temporal Layer). Built here in the shared section so Z05 links the
