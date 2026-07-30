@@ -63,7 +63,8 @@ struct Size {
         case A::BackgroundMode:
             return {1280, 720};
         case A::BackgroundGame:
-            return {1920, 1080};
+            // Not photo-derived: a generated pool of light, which upscales cleanly.
+            return {480, 270};
         case A::SidePotAllInMarker:
             return {512, 512};
         case A::ButlerProfile:

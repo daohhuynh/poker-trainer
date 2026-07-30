@@ -53,11 +53,46 @@ WIDTH, HEIGHT = 2560, 1440
 #
 # Palette size follows the same logic: the heavier the blur, the fewer colours
 # needed before quantization becomes visible.
+# The Game screen is deliberately NOT in this list -- see POOL_OF_LIGHT below.
 VARIANTS = [
     ("tier1/background_root.png", 16, 720, 96),
     ("tier2/background_mode.png", 8, 1280, 160),
-    ("tier2/background_game.png", 3, 1920, 224),
 ]
+
+# The Game screen does not show the room at all. It shows a pool of light.
+#
+# The room was sharpest here, which put the most visual detail on the one screen
+# where the user has the least attention to spare: the Game screen is mental
+# arithmetic under a timer, with the table, dealer, chips, cards and math column all
+# competing already. It also had it backwards photographically -- a camera focused on
+# the felt throws the room OUT of focus, so a crisp room behind the table is the
+# unrealistic state, not the realistic one.
+#
+# So this variant is generated rather than derived: a warm elliptical falloff over
+# black, as if the only light in the room hangs above the table. That kills the
+# luminance competition (blur alone would not -- a blurred chandelier is still a
+# large bright blob) while keeping the table and the dealer standing in a lit space
+# rather than floating in a void, which is what pure black would have done to a
+# cut-out figure whose legs run off the bottom edge.
+#
+# The pool is centred and sized to cover BOTH the felt (table_center 0.50w/0.595h in
+# render/layout.hpp) and the dealer standing to its right (dealer_tl.x 0.700w, running
+# to ~0.96w). A dark-suited figure on pure black loses its silhouette entirely, so the
+# light has to reach him.
+#
+# Centre / radii are fractions of the canvas, so the ellipse stretches with the window
+# exactly as the table does (table_rx scales with width, table_ry with height) and the
+# two stay in proportion at every aspect.
+POOL_OF_LIGHT = {
+    "path": "tier2/background_game.png",
+    "size": (480, 270),      # a smooth gradient upscales perfectly; the GPU's
+                         # bilinear filter also smooths the ramp, so a larger
+                         # store measured no less banded and cost 3x the bytes
+    "center": (0.52, 0.60),
+    "radii": (0.58, 0.52),
+    "inner": "#31241B",      # dim warm lamplight, not a bright casino wash
+    "outer": "#000000",
+}
 
 # The app paints its own bg_primary tint over the room at runtime, so bake only a
 # slight darken here for text legibility. Baking the full mood would double up
@@ -90,6 +125,27 @@ def main() -> int:
         return 1
 
     total = 0
+    # --- the generated pool of light (Game screen) ---
+    pool = POOL_OF_LIGHT
+    pool_out = REPO / "assets" / "images" / pool["path"]
+    pool_out.parent.mkdir(parents=True, exist_ok=True)
+    pw, ph = pool["size"]
+    cx, cy = pool["center"][0] * pw, pool["center"][1] * ph
+    rx, ry = pool["radii"][0] * pw, pool["radii"][1] * ph
+    run([
+        "magick", "-size", f"{pw}x{ph}",
+        "-define", f"gradient:center={cx:.0f},{cy:.0f}",
+        "-define", f"gradient:radii={rx:.0f},{ry:.0f}",
+        f"radial-gradient:{pool['inner']}-{pool['outer']}",
+        # Smooth ramps band badly once quantized; dither instead of reducing colours.
+        "-dither", "FloydSteinberg",
+        "-strip", "-define", "png:compression-level=9",
+        str(pool_out),
+    ])
+    pool_size = pool_out.stat().st_size
+    total += pool_size
+    print(f"  {pool['path']:<32} POOL OF LIGHT  {pw}x{ph}  {pool_size / 1024:.0f} KB")
+
     for rel, sigma, store_w, colours in VARIANTS:
         out = REPO / "assets" / "images" / rel
         out.parent.mkdir(parents=True, exist_ok=True)
