@@ -41,7 +41,11 @@ EXACT_SIZES: dict[str, tuple[int, int]] = {
     "tier1/butler_raised": (1024, 1536),
     "tier1/dealer_button": (512, 512),
     "tier2/butler_profile": (1024, 1280),
-    "tier2/table_felt": (2048, 1152),
+    # Matches the aspect tools/gen_table_felt.py authors (the rim's bounding box in
+    # the D projection), not the 16:9 canvas. The renderer stretches this into the
+    # runtime rim box, so a mismatched aspect here would only waste resolution --
+    # but it would waste a lot of it.
+    "tier2/table_felt": (2048, 1497),
     "tier2/side_pot_all_in_marker": (512, 512),
     "tier4/frog_base": (1024, 1024),
     "tier4/frog_expression_pass": (1024, 1024),
