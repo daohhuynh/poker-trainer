@@ -59,11 +59,13 @@ namespace {
 namespace rnd = poker_trainer::render;
 
 // Top-center community-card readout (Part B): a flat, screen-space copy of the
-// board so the user reads the cards without parsing the perspective felt. Anchored
-// near the top edge at a legible size (visual-pass values; the on-felt board is
-// untouched).
+// board so the user reads the cards without parsing the perspective felt. This
+// readout — not the felt copy — is how the board is meant to be read, so it is the
+// focal element: drawn well above the on-felt card size and scaled with the canvas
+// (the felt copy is deliberately left alone).
 constexpr float kBoardReadoutTopFrac = 0.015f;  // top anchor, fraction of height
-constexpr float kBoardReadoutScale = 1.0f;      // x the base card size
+constexpr float kBoardReadoutScale = 2.1f;      // x the on-felt card size, at the
+                                                // reference canvas
 
 // File-static pointer to the installed runtime, for the easter-egg-active free
 // query Z13 reads later. Set once at install; mirrors the file-static integration
@@ -181,7 +183,7 @@ void draw_board_readout(ImDrawList* dl, const rnd::GameLayout& layout,
         return;  // pre-flop: no community cards to read
     }
     rnd::draw_card_fan(dl, layout.w * 0.5f, layout.h * kBoardReadoutTopFrac, scenario.board.data(),
-                       scenario.board_count, kBoardReadoutScale);
+                       scenario.board_count, kBoardReadoutScale * rnd::canvas_ui_scale());
 }
 
 }  // namespace
@@ -238,17 +240,21 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
         const int main_amt = scenario.pot - side_amt;
         const std::vector<rnd::ChipColumn> main_cols = rnd::decompose(main_amt, set);
         const std::vector<rnd::ChipColumn> side_cols = rnd::decompose(side_amt, set);
-        rnd::draw_chip_cluster(dl, rnd::cluster_base_x(layout.pot.x, main_cols.size()), layout.pot.y,
-                               main_cols);
+        rnd::draw_chip_cluster(dl,
+                               rnd::cluster_base_x(layout.pot.x, main_cols, layout.chip_scale),
+                               layout.pot.y, main_cols, layout.chip_scale);
         rnd::draw_chip_cluster(
-            dl, rnd::cluster_base_x(layout.pot.x + rnd::kSidePotOffsetX, side_cols.size()),
-            layout.pot.y + rnd::kSidePotOffsetY, side_cols);
+            dl,
+            rnd::cluster_base_x(layout.pot.x + rnd::kSidePotOffsetX, side_cols,
+                                layout.chip_scale),
+            layout.pot.y + rnd::kSidePotOffsetY, side_cols, layout.chip_scale);
         rnd::draw_all_in_marker(dl, layout, active_slot);
     } else {
         // Single main pot.
         const std::vector<rnd::ChipColumn> pot_cols = rnd::decompose(scenario.pot, set);
-        rnd::draw_chip_cluster(dl, rnd::cluster_base_x(layout.pot.x, pot_cols.size()), layout.pot.y,
-                               pot_cols);
+        rnd::draw_chip_cluster(dl,
+                               rnd::cluster_base_x(layout.pot.x, pot_cols, layout.chip_scale),
+                               layout.pot.y, pot_cols, layout.chip_scale);
 
         // Caller: the active opponent's bet is pushed forward + a floating bet
         // amount. Aggressor: nothing here (the empty chip area is the cue). The bet
@@ -270,13 +276,14 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
             const float bx = lerp(seat.x, fwd_x, t);
             const float by = lerp(seat.y, fwd_y, t);
             const std::vector<rnd::ChipColumn> bet_cols = rnd::decompose(scenario.faced_bet, set);
-            rnd::draw_chip_cluster(dl, rnd::cluster_base_x(bx, bet_cols.size(), sc), by, bet_cols, sc);
-            // Float the call amount a full text-line ABOVE the real (perspective-
-            // scaled) TOP of the pushed stack, mirroring the opponent-stack amount
-            // placement (opponents.cpp). The stack's height recedes with the far seat
-            // but the readable number does not, so clearing it by a fixed, unscaled
-            // line keeps the full-size amount off the small chips — the prior gap was
-            // measured from the chip base and scaled by sc, so it overlapped them.
+            const float bet_sc = sc * layout.chip_scale;
+            const float bet_left = rnd::cluster_base_x(bx, bet_cols, bet_sc);
+            const float bet_w = rnd::draw_chip_cluster(dl, bet_left, by, bet_cols, bet_sc);
+            // Read the call amount BESIDE the pushed stack, vertically centered on it.
+            // The corridor between the active seat and the pot is the tightest strip on
+            // the table — it already carries that seat's position label above and the
+            // pot's own columns below — so a readable number stacked in there collides
+            // at a small canvas. Sideways there is open felt at every canvas size.
             int bet_stack_chips = 0;
             for (const rnd::ChipColumn& col : bet_cols) {
                 bet_stack_chips =
@@ -284,8 +291,9 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
             }
             const float bet_stack_top =
                 by - (static_cast<float>(bet_stack_chips) * rnd::kChipStackStep + rnd::kChipRadius) * sc;
-            rnd::draw_floating_bet(dl, bx, bet_stack_top - ImGui::GetTextLineHeight() - 4.0f,
-                                   scenario.faced_bet, ui.cash_mode, scenario.big_blind, ui.show_hud);
+            rnd::draw_floating_bet(dl, bet_left + bet_w + 6.0f * rnd::canvas_ui_scale(),
+                                   (by + bet_stack_top) * 0.5f, scenario.faced_bet, ui.cash_mode,
+                                   scenario.big_blind, ui.show_hud);
         }
     }
 
@@ -311,7 +319,10 @@ void render_game_screen(GameScreenRuntime& runtime, interrogator::InterrogatorRu
     //    only) the To Call line (all HUD-gated).
     float info_y = layout.info_anchor.y;
     rnd::draw_denomination_legend(dl, layout.info_anchor.x, info_y, set);
-    info_y += rnd::kChipRadius * 2.0f + ImGui::GetTextLineHeight() + 10.0f;
+    // Legend block height: the chip row, its dollar label (canvas-scaled, so this
+    // has to ask for the same size the legend drew at), then a gap.
+    info_y += rnd::kChipRadius * 2.0f + rnd::readout_line_height(rnd::kReadoutRelSecondary) +
+              10.0f * rnd::canvas_ui_scale();
     info_y += rnd::draw_pot_size(dl, layout.info_anchor.x, info_y, scenario, ui.cash_mode, ui.show_hud);
     info_y += rnd::draw_blinds(dl, layout.info_anchor.x, info_y, scenario, ui.cash_mode, ui.show_hud);
     // To Call (Caller) and Opp Fold (Aggressor) share the line below the blinds; each

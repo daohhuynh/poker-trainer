@@ -28,15 +28,36 @@ namespace {
     return ImGui::ColorConvertFloat4ToU32(theme::get_color(token));
 }
 
-// Centered text at `scale` of the base font size, so a receded far seat's label /
-// amount shrinks with its chips (perspective). scale == 1 is the unscaled size.
+// Seat-readout shadow offset, as a fraction of the type size (so it tracks the
+// canvas scale like the type does).
+inline constexpr float kSeatTextShadowFrac = 0.08f;
+
+// Text centered on (cx, cy) at an explicit pixel size, over an offset shadow in
+// bg_primary. The seat readouts are the only text drawn straight onto the table,
+// and a seat near the rim can land over bright room art rather than dark felt, so
+// the shadow is what keeps them legible there. bg_primary is the darkest token and
+// is dark in all four themes, so this stays a token reference, not a literal.
 void centered_text(ImDrawList* dl, float cx, float cy, theme::ColorToken color,
-                   const std::string& text, float scale = 1.0f) {
+                   const std::string& text, float px) {
     ImFont* font = ImGui::GetFont();
-    const float size = ImGui::GetFontSize() * scale;
-    const ImVec2 sz = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text.c_str());
-    dl->AddText(font, size, ImVec2{cx - sz.x * 0.5f, cy - sz.y * 0.5f}, token_u32(color),
-                text.c_str());
+    const ImVec2 sz = font->CalcTextSizeA(px, FLT_MAX, 0.0f, text.c_str());
+    const ImVec2 pos{cx - sz.x * 0.5f, cy - sz.y * 0.5f};
+    const float offset = std::max(1.0f, px * kSeatTextShadowFrac);
+    dl->AddText(font, px, ImVec2{pos.x + offset, pos.y + offset},
+                token_u32(theme::ColorToken::BgPrimary), text.c_str());
+    dl->AddText(font, px, pos, token_u32(color), text.c_str());
+}
+
+// The seat's chip columns recede at the full perspective scale (kFarSeatScale at
+// the far rim, 1.0 nearest the camera). Its stack amount and position letters are
+// text the user has to READ across the felt, so they take a compressed share of
+// that perspective instead: the far seats still read as smaller, but the glyphs
+// never drop to the size where they stop resolving against the felt.
+inline constexpr float kSeatTextFarScale = 0.82f;
+
+[[nodiscard]] float seat_text_scale(float seat_scale) noexcept {
+    const float depth = (seat_scale - kFarSeatScale) / (1.0f - kFarSeatScale);
+    return kSeatTextFarScale + depth * (1.0f - kSeatTextFarScale);
 }
 
 }  // namespace
@@ -96,11 +117,19 @@ void draw_opponent_seats(ImDrawList* dl, const GameLayout& layout,
         const SeatSpot spot = seat_spot(layout, slot);
         const Pt c = spot.pos;
         const float sc = spot.scale;  // perspective size scale (smaller the farther away)
+        // Chip geometry takes the felt-relative multiplier as well; type does not,
+        // since readout_font_size already scales type off the canvas.
+        const float chip_sc = sc * layout.chip_scale;
+        const float text_sc = seat_text_scale(sc);
+        const float label_px = readout_font_size(kReadoutRelSecondary) * text_sc;
 
         // The hero seat (slot 0) shows its position label only; its hole cards
         // render dead-center at the bottom nearest the camera (drawn by game_screen).
+        // Anchored just BELOW the seat point so the enlarged label clears the hole
+        // cards, whose bottom edge sits on it.
         if (slot == 0) {
-            centered_text(dl, c.x, c.y, theme::ColorToken::TextSecondary, position_abbrev(seat));
+            centered_text(dl, c.x, c.y + label_px * 0.5f, theme::ColorToken::TextPrimary,
+                          position_abbrev(seat), label_px);
             continue;
         }
 
@@ -114,19 +143,27 @@ void draw_opponent_seats(ImDrawList* dl, const GameLayout& layout,
         if (show_hud) {
             const int seat_stack = opponent_display_stack(scenario, seat);
             const std::vector<ChipColumn> cols = decompose(seat_stack, denom_set);
-            draw_chip_cluster(dl, cluster_base_x(c.x, cols.size(), sc), c.y, cols, sc);
+            draw_chip_cluster(dl, cluster_base_x(c.x, cols, chip_sc), c.y, cols, chip_sc);
 
             int tallest = 0;
             for (const ChipColumn& col : cols) {
                 tallest = std::max(tallest, std::min(col.count, kMaxChipsPerColumn));
             }
             const float stack_top =
-                c.y - (static_cast<float>(tallest) * kChipStackStep + kChipRadius) * sc;
+                c.y - (static_cast<float>(tallest) * kChipStackStep + kChipRadius) * chip_sc;
             const std::string amount = format_amount(seat_stack, cash_mode, scenario.big_blind);
-            centered_text(dl, c.x, stack_top - 8.0f * sc, theme::ColorToken::TextPrimary, amount, sc);
+            // Clear the amount off the top chip by half its own (now larger) height
+            // plus a gap, rather than by a chip-scaled offset that shrank as the type
+            // did not — the far seats' numbers used to sit on their chips.
+            const float amount_px = readout_font_size(kReadoutRelPrimary) * text_sc;
+            centered_text(dl, c.x, stack_top - amount_px * 0.5f - 4.0f,
+                          theme::ColorToken::TextPrimary, amount, amount_px);
         }
-        centered_text(dl, c.x, c.y + (kChipRadius + 8.0f) * sc, theme::ColorToken::TextSecondary,
-                      position_abbrev(seat), sc);
+        // The position letter takes text_primary, not the subdued token: it is always
+        // on (not HUD-gated) and, read across the felt from a receded seat, it is the
+        // lowest-contrast element on the table.
+        centered_text(dl, c.x, c.y + kChipRadius * chip_sc + label_px * 0.5f + 4.0f,
+                      theme::ColorToken::TextPrimary, position_abbrev(seat), label_px);
     }
 }
 
@@ -145,8 +182,9 @@ void draw_all_in_marker(ImDrawList* dl, const GameLayout& layout, int slot) {
         dl->AddCircle(ImVec2{c.x, c.y}, marker_r, token_u32(theme::ColorToken::AccentPrimary), 32,
                       3.0f);
     }
-    centered_text(dl, c.x, c.y + marker_r + 6.0f, theme::ColorToken::StateFail, "ALL-IN",
-                  spot.scale);
+    const float px = readout_font_size(kReadoutRelSecondary) * seat_text_scale(spot.scale);
+    centered_text(dl, c.x, c.y + marker_r + 6.0f + px * 0.5f, theme::ColorToken::StateFail,
+                  "ALL-IN", px);
 }
 
 }  // namespace poker_trainer::render

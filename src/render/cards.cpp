@@ -5,6 +5,7 @@
 #include "engine/scenario.hpp"
 #include "theme/theme_tokens.hpp"
 
+#include <cfloat>
 #include <cstdint>
 
 #include <imgui.h>
@@ -19,6 +20,10 @@ namespace {
 [[nodiscard]] ImU32 token_u32(theme::ColorToken token) {
     return ImGui::ColorConvertFloat4ToU32(theme::get_color(token));
 }
+
+// Procedural-fallback pip height as a fraction of the drawn card height, so the
+// rank and suit letters keep their proportion at any card scale.
+inline constexpr float kCardPipHeightFrac = 0.22f;
 
 // First enumerator of each suit's 13-card asset block (asset_paths.hpp order:
 // Spades A-K, Hearts A-K, Diamonds A-K, Clubs A-K).
@@ -103,10 +108,15 @@ void draw_card(ImDrawList* dl, float x, float y, engine::Card card, float scale)
     const char* rank = rank_label(card.rank);
     const char suit[2] = {suit_letter(card.suit), '\0'};
 
-    const ImVec2 rank_sz = ImGui::CalcTextSize(rank);
-    dl->AddText(ImVec2{x + (w - rank_sz.x) * 0.5f, y + h * 0.18f}, pip, rank);
-    const ImVec2 suit_sz = ImGui::CalcTextSize(suit);
-    dl->AddText(ImVec2{x + (w - suit_sz.x) * 0.5f, y + h * 0.52f}, pip, suit);
+    // Size the pips off the card, not off the atlas: the same card is drawn small
+    // on the felt and large in the top-center board readout, and a fixed-size glyph
+    // would be lost on the big copy.
+    ImFont* font = ImGui::GetFont();
+    const float pip_px = kCardPipHeightFrac * h;
+    const ImVec2 rank_sz = font->CalcTextSizeA(pip_px, FLT_MAX, 0.0f, rank);
+    dl->AddText(font, pip_px, ImVec2{x + (w - rank_sz.x) * 0.5f, y + h * 0.18f}, pip, rank);
+    const ImVec2 suit_sz = font->CalcTextSizeA(pip_px, FLT_MAX, 0.0f, suit);
+    dl->AddText(font, pip_px, ImVec2{x + (w - suit_sz.x) * 0.5f, y + h * 0.52f}, pip, suit);
 }
 
 void draw_card_fan(ImDrawList* dl, float center_x, float top_y, const engine::Card* cards,

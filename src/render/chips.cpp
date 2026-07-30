@@ -1,14 +1,18 @@
 #include "render/chips.hpp"
 
+#include "render/hud.hpp"
 #include "render/render_constants.hpp"
 
 #include "theme/theme_tokens.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cfloat>
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <span>
+#include <string>
 #include <vector>
 
 #include <imgui.h>
@@ -122,11 +126,37 @@ std::vector<ChipColumn> decompose(int amount, std::span<const Denomination> set)
     return columns;
 }
 
+namespace {
+
+// A dealer does not pile a holding into one tall tower; past about a dozen chips it
+// gets broken into side-by-side stacks. Matching that keeps a big low-denomination
+// holding countable and stops it overhanging the felt.
+constexpr int kMaxChipsPerStack = 12;
+
+[[nodiscard]] int stacks_for(int count) noexcept {
+    const int capped = std::min(count, kMaxChipsPerColumn);
+    return capped <= 0 ? 1 : (capped + kMaxChipsPerStack - 1) / kMaxChipsPerStack;
+}
+
+}  // namespace
+
 float cluster_base_x(float cx, std::size_t columns, float scale) noexcept {
     const float pitch = kChipColumnPitch * scale;
     const float radius = kChipRadius * scale;
     const float span = columns > 0 ? static_cast<float>(columns - 1) * pitch : 0.0f;
     return cx - span * 0.5f - radius;
+}
+
+std::size_t cluster_stack_count(std::span<const ChipColumn> columns) noexcept {
+    std::size_t stacks = 0;
+    for (const ChipColumn& col : columns) {
+        stacks += static_cast<std::size_t>(stacks_for(col.count));
+    }
+    return stacks;
+}
+
+float cluster_base_x(float cx, std::span<const ChipColumn> columns, float scale) noexcept {
+    return cluster_base_x(cx, cluster_stack_count(columns), scale);
 }
 
 float draw_chip_cluster(ImDrawList* dl, float base_x, float base_y,
@@ -145,17 +175,28 @@ float draw_chip_cluster(ImDrawList* dl, float base_x, float base_y,
         // Cap the drawn chip count so a huge stack stays on-screen; the height is
         // still linear in count up to the cap (a visual guard, not a model change).
         const int drawn = std::min(col.count, kMaxChipsPerColumn);
-        for (int i = 0; i < drawn; ++i) {
-            const float cy = base_y - static_cast<float>(i) * step;
-            // Chip-denomination PNG via the shared texture-bind seam (a column is a
-            // stack of these); disk fallback when the art is unavailable.
-            if (!bridge::draw_asset_image(dl, ImVec2{x - radius, cy - radius},
-                                          ImVec2{x + radius, cy + radius}, chip)) {
-                dl->AddCircleFilled(ImVec2{x, cy}, radius, fill, kChipSegments);
-                dl->AddCircle(ImVec2{x, cy}, radius, outline, kChipSegments, 1.0f);
+        // Break the holding across side-by-side stacks the way a dealer would, rather
+        // than one tower. At low stakes a seat's stack decomposes into dozens of chips
+        // of the same denomination, and a single column of them overhangs the felt and
+        // collides with the seat above. Chips are spread as evenly as possible so the
+        // stacks read as a deliberate pile, not one full stack plus a stub.
+        const int stacks = stacks_for(col.count);
+        const int base_per = drawn / stacks;
+        const int remainder = drawn % stacks;
+        for (int s = 0; s < stacks; ++s) {
+            const int in_stack = base_per + (s < remainder ? 1 : 0);
+            for (int i = 0; i < in_stack; ++i) {
+                const float cy = base_y - static_cast<float>(i) * step;
+                // Chip-denomination PNG via the shared texture-bind seam (a stack is a
+                // pile of these); disk fallback when the art is unavailable.
+                if (!bridge::draw_asset_image(dl, ImVec2{x - radius, cy - radius},
+                                              ImVec2{x + radius, cy + radius}, chip)) {
+                    dl->AddCircleFilled(ImVec2{x, cy}, radius, fill, kChipSegments);
+                    dl->AddCircle(ImVec2{x, cy}, radius, outline, kChipSegments, 1.0f);
+                }
             }
+            x += pitch;
         }
-        x += pitch;
     }
     return (x - pitch + radius) - base_x;
 }
@@ -167,8 +208,28 @@ float draw_denomination_legend(ImDrawList* dl, float x, float y,
     }
     const ImU32 outline = token_u32(theme::ColorToken::BorderDefault);
     const ImU32 label = token_u32(theme::ColorToken::TextSecondary);
-    float cx = x + kChipRadius;
+    ImFont* font = ImGui::GetFont();
+    // Dollar labels use text_secondary per ARCHITECTURE, at the shared canvas-relative
+    // readout size (the legend is the user's key to the chip colors, so it has to read
+    // at every canvas size).
+    const float label_px = readout_font_size(kReadoutRelSecondary);
+
+    // Widen the slot pitch to clear the widest label rather than trusting the nominal
+    // one: at Nosebleed stakes "$25000" is already wider than kLegendSlotPitch, so the
+    // labels ran together even before the type grew.
+    std::vector<std::string> labels;
+    labels.reserve(set.size());
+    float widest = 0.0f;
     for (const Denomination& d : set) {
+        labels.push_back(std::format("${}", d.value));
+        widest = std::max(widest, font->CalcTextSizeA(label_px, FLT_MAX, 0.0f,
+                                                      labels.back().c_str()).x);
+    }
+    const float pitch = std::max(kLegendSlotPitch, widest + label_px * 0.7f);
+
+    float cx = x + kChipRadius;
+    for (std::size_t i = 0; i < set.size(); ++i) {
+        const Denomination& d = set[i];
         const ImVec2 center{cx, y + kChipRadius};
         // Legend chip-face PNG via the shared seam; disk fallback when unavailable.
         if (!bridge::draw_asset_image(dl, ImVec2{cx - kChipRadius, y},
@@ -177,12 +238,13 @@ float draw_denomination_legend(ImDrawList* dl, float x, float y,
             dl->AddCircleFilled(center, kChipRadius, token_u32(d.color), kChipSegments);
             dl->AddCircle(center, kChipRadius, outline, kChipSegments, 1.0f);
         }
-        const std::string text = std::format("${}", d.value);
-        const ImVec2 ts = ImGui::CalcTextSize(text.c_str());
-        dl->AddText(ImVec2{cx - ts.x * 0.5f, y + kChipRadius * 2.0f + 2.0f}, label, text.c_str());
-        cx += kLegendSlotPitch;
+        const char* text = labels[i].c_str();
+        const ImVec2 ts = font->CalcTextSizeA(label_px, FLT_MAX, 0.0f, text);
+        dl->AddText(font, label_px, ImVec2{cx - ts.x * 0.5f, y + kChipRadius * 2.0f + 2.0f}, label,
+                    text);
+        cx += pitch;
     }
-    return (cx - kLegendSlotPitch + kChipRadius) - x;
+    return (cx - pitch + kChipRadius) - x;
 }
 
 }  // namespace poker_trainer::render

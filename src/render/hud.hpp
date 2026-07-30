@@ -17,6 +17,48 @@ struct ImDrawList;
 
 namespace poker_trainer::render {
 
+// ----- Canvas-relative type scale (shared by every Game-screen readout) -----
+//
+// ImGui rasterizes its font atlas once at a fixed pixel size, so text drawn at
+// ImGui::GetFontSize() measures the same on a 1280-wide canvas and on a 4K one.
+// ARCHITECTURE (Notes — Canvas Layout and Scaling) requires the opposite: "Text
+// and icon sizes scale uniformly with the canvas... When the canvas is larger
+// (e.g., on a 4K monitor), text, buttons, and icons render at a larger pixel
+// size while maintaining the same proportional relationship to the rest of the
+// layout." Every Game readout therefore derives its size from canvas_ui_scale()
+// instead of the atlas size, so the seat numbers, the top-left info stack and
+// the top-center board readout hold their proportions at any canvas size.
+
+// The nominal design canvas is 1920x1080 (ARCHITECTURE, Asset resolution).
+inline constexpr float kReferenceCanvasWidth = 1920.0f;
+inline constexpr float kReferenceCanvasHeight = 1080.0f;
+
+// Readout body size in pixels at the reference canvas.
+inline constexpr float kReadoutBaseSize = 24.0f;
+
+// Size multipliers relative to the body size, so the amounts and the labels stay
+// in proportion to one another at every canvas size.
+inline constexpr float kReadoutRelPrimary = 1.0f;    // amounts: pot, blinds, stacks, bets
+inline constexpr float kReadoutRelSecondary = 0.9f;  // labels: legend values, position letters
+
+// The Game screen's canvas-relative size multiplier: 1.0 at the reference canvas,
+// 0.67 at 1280x720, 2.0 at 4K. Multiplies type sizes and the top-center board
+// readout's card size. Takes the SMALLER of the two dimension ratios so a canvas
+// that is tall for its width scales to the width it actually has — otherwise the
+// top row (legend on the left, board readout in the middle) grows past it and the
+// two run into each other.
+[[nodiscard]] float canvas_ui_scale();
+
+// Pixel type size for a readout drawn at `rel` x the body size on the current
+// canvas. Floored at the atlas size: below it the glyphs are downsampled and stop
+// resolving, and the minimum supported canvas is only 600px tall.
+[[nodiscard]] float readout_font_size(float rel);
+
+// Line advance for text at readout_font_size(rel) — the size plus the style's
+// item spacing, mirroring ImGui::GetTextLineHeightWithSpacing(). Used to stack the
+// top-left info lines and to clear a floating amount off a chip stack.
+[[nodiscard]] float readout_line_height(float rel);
+
 // Format a whole-dollar amount for display: "$<n>" in Cash mode, "<n> BB" (the
 // big-blind multiple) in Big Blinds mode. A non-integer BB multiple shows one
 // decimal. Used by the HUD and the opponent stack numbers (Units toggle).
@@ -40,9 +82,13 @@ float draw_blinds(ImDrawList* dl, float x, float y, const engine::ScenarioState&
 float draw_to_call(ImDrawList* dl, float x, float y, const engine::ScenarioState& scenario,
                    bool cash_mode, bool show_hud);
 
-// Draw the Caller floating bet amount centered at (anchor_x, anchor_y), adjacent
-// to the pushed bet chips (only when show_hud). The chips themselves are drawn by
-// the chip layer and stay visible regardless.
+// Draw the Caller floating bet amount beside the pushed bet chips (only when
+// show_hud): left edge at anchor_x, vertically centered on anchor_y. ARCHITECTURE
+// allows the call number "adjacent to or above the chips"; it sits beside them
+// because the corridor between the active seat and the pot also carries that seat's
+// position label and the pot's own stack, and at a small canvas there is no vertical
+// room left for a third line. The chips themselves are drawn by the chip layer and
+// stay visible regardless.
 void draw_floating_bet(ImDrawList* dl, float anchor_x, float anchor_y, int bet_dollars,
                        bool cash_mode, int big_blind, bool show_hud);
 

@@ -84,6 +84,17 @@ enum class StakeTier : std::uint8_t {
 // center identically.
 [[nodiscard]] float cluster_base_x(float cx, std::size_t columns, float scale = 1.0f) noexcept;
 
+// How many side-by-side stacks a cluster draws. A denomination holding more chips
+// than a dealer would physically pile up is broken into several stacks rather than
+// one tower, so this is >= columns.size(). Centering and drawing must agree on it,
+// hence the shared helper.
+[[nodiscard]] std::size_t cluster_stack_count(std::span<const ChipColumn> columns) noexcept;
+
+// Centering overload that accounts for the stack splitting above. Prefer this to the
+// count-taking form for any cluster that can hold a large stack.
+[[nodiscard]] float cluster_base_x(float cx, std::span<const ChipColumn> columns,
+                                   float scale = 1.0f) noexcept;
+
 // ----- Render helpers (game render TU only; ImGui pulled in chips.cpp) -----
 
 // Draw one chip cluster at `scale` (1.0 = full size; < 1 shrinks the chip radius,
