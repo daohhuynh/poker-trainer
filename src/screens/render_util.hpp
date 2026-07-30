@@ -46,9 +46,18 @@ namespace poker_trainer::screens::render_util {
     return ImGui::ColorConvertFloat4ToU32(theme::get_color(token));
 }
 
+// alpha multiplies the token color's alpha channel — used by the Root -> Mode Selection
+// morph to dissolve a button's body away and reveal the icon it becomes. Defaults to 1.0
+// (fully opaque), so existing call sites are unchanged; alpha <= 0 draws nothing.
 inline void fill_rect(ImDrawList* dl, const animations::Rect& r, theme::ColorToken fill,
-                      float rounding = 0.0f) {
-    dl->AddRectFilled(top_left(r), bottom_right(r), token_u32(fill), rounding);
+                      float rounding = 0.0f, float alpha = 1.0f) {
+    if (alpha <= 0.0f) {
+        return;
+    }
+    ImVec4 fill_rgba = theme::get_color(fill);
+    fill_rgba.w *= alpha;
+    dl->AddRectFilled(top_left(r), bottom_right(r),
+                      ImGui::ColorConvertFloat4ToU32(fill_rgba), rounding);
 }
 
 // alpha multiplies the token color's alpha channel — used for the

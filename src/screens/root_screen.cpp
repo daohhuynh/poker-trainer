@@ -11,6 +11,8 @@
 #include "backbone/modal_state.hpp"
 #include "backbone/screen_state.hpp"
 
+#include <algorithm>
+
 #include <imgui.h>
 
 #ifdef __EMSCRIPTEN__
@@ -51,6 +53,29 @@ void reload_page() noexcept {
 
 [[nodiscard]] bool point_in_rect(float x, float y, const animations::Rect& r) {
     return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+
+// One of the three cluster-bound buttons (Settings / Shop / Help) mid-morph: "As they
+// slide, their visual representations transform from full-size buttons into small icons."
+// The destination icon is drawn first and the button body over it, fading out on the
+// button's own eased progress — so the button dissolves to reveal the icon it becomes, and
+// at progress 1 what is on screen is exactly the glyph the live Mode Selection cluster
+// draws (visible == drawn, no pop at handoff). The label crossfades with the body for the
+// same reason "PLAY" crossfades into "STANDARD".
+void draw_morphing_cluster_button(ImDrawList* dl, const animations::Canvas& canvas,
+                                  float global_t, animations::MorphButton button,
+                                  assets::AssetId icon, const char* label) {
+    const animations::Rect r = animations::morph_button_rect(button, global_t, canvas);
+    const float body_alpha = 1.0f - animations::button_eased_progress(global_t, button);
+    // The icon art is square, so it rides the largest square centered in the (still
+    // button-shaped) morph rect rather than stretching to it. The target rect IS square,
+    // so at progress 1 the square equals the rect and matches the live cluster exactly.
+    const float side = std::min(r.w, r.h);
+    const animations::Rect icon_rect{r.x + (r.w - side) * 0.5f, r.y + (r.h - side) * 0.5f, side,
+                                     side};
+    ru::draw_image_slot(dl, icon_rect, icon, ru::SlotFallback::Icon, /*focused=*/false);
+    ru::fill_rect(dl, r, theme::ColorToken::ButtonBg, 6.0f, body_alpha);
+    ru::centered_label(dl, r, label, theme::ColorToken::TextButton, body_alpha);
 }
 
 }  // namespace
@@ -146,17 +171,16 @@ void render_root_morph_frame(float global_t) {
     ru::centered_label(dl, play_rect, "STANDARD", theme::ColorToken::TextButton, play_t);
 
     // Settings / Shop / Help shrink into the top-right cluster icon slots, each on
-    // its own staggered timeline, filled throughout. Their morph targets are the
-    // exact rects the live Mode Selection cluster renders/hit-tests
-    // (mode_button_target_rect), so the handoff is seamless. No focus outline
-    // during the transition.
-    ru::button(dl,
-               animations::morph_button_rect(animations::MorphButton::Settings, global_t, canvas),
-               "Settings", /*focused=*/false);
-    ru::button(dl, animations::morph_button_rect(animations::MorphButton::Shop, global_t, canvas),
-               "Shop", /*focused=*/false);
-    ru::button(dl, animations::morph_button_rect(animations::MorphButton::Help, global_t, canvas),
-               "Help", /*focused=*/false);
+    // its own staggered timeline, dissolving from button into icon as they travel.
+    // Their morph targets are the exact rects the live Mode Selection cluster
+    // renders/hit-tests (mode_button_target_rect), so the handoff is seamless. No
+    // focus outline during the transition.
+    draw_morphing_cluster_button(dl, canvas, global_t, animations::MorphButton::Settings,
+                                 assets::AssetId::IconSettings, "Settings");
+    draw_morphing_cluster_button(dl, canvas, global_t, animations::MorphButton::Shop,
+                                 assets::AssetId::IconShop, "Shop");
+    draw_morphing_cluster_button(dl, canvas, global_t, animations::MorphButton::Help,
+                                 assets::AssetId::IconHelp, "Help");
 }
 
 void install_root_handlers(animations::MorphController& morph) {

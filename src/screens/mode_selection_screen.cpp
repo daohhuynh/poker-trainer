@@ -41,13 +41,14 @@ namespace ru = render_util;
 }
 
 // The persistent top-right cluster. Zone 11 owns the cluster (render + activation);
-// Mode Selection hands it the morph target rects + focus ids. It keeps Zone 07's
-// morph-handoff look via the MorphButton style: the Root -> Mode morph animates
-// buttons into these exact rects, so Shop/Help/Settings render as buttons-with-labels
-// at rest (no pop at handoff); the fourth icon is Home (a glyph at the stationary
-// home_icon_rect). render_persistent_cluster caches the geometry/ids so the click
-// handler (cluster_hit_test) and the Z11 cluster keyboard handler resolve a hit /
-// focus to an action (open Shop/Help/Settings modal, or Home -> Root).
+// Mode Selection hands it the morph target rects + focus ids. IconGlyph style, the same
+// as the Game and Post-Round clusters: ARCHITECTURE specifies "the top-right region
+// contains a horizontal row of four icons ... Shop (storefront icon), Help (question
+// mark icon), Settings (cog icon), and Home". The morph hands off without a pop because
+// render_root_morph_frame dissolves each sliding button into that same icon as it
+// arrives. render_persistent_cluster caches the geometry/ids so the click handler
+// (cluster_hit_test) and the Z11 cluster keyboard handler resolve a hit / focus to an
+// action (open Shop/Help/Settings modal, or Home -> Root).
 void render_cluster(ImDrawList* dl, const animations::Canvas& canvas) {
     const std::array<animations::Rect, 4> rects{
         animations::mode_button_target_rect(animations::MorphButton::Shop, canvas),
@@ -58,7 +59,7 @@ void render_cluster(ImDrawList* dl, const animations::Canvas& canvas) {
                                                    kFocusModeSettings, kFocusModeHome};
     modal::render_persistent_cluster(
         dl, modal::ClusterContext{.screen = modal::ClusterScreen::ModeSelection,
-                                  .style = modal::ClusterStyle::MorphButton,
+                                  .style = modal::ClusterStyle::IconGlyph,
                                   .rects = rects,
                                   .ids = ids});
 }
