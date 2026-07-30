@@ -129,22 +129,43 @@ constexpr std::string_view kPromptMessage =
 // The top-left denomination legend row: chip disks with their dollar values beneath,
 // anchored at info_anchor (game_screen.cpp draws it there first, before the info
 // lines). Height covers a chip plus its label.
-[[nodiscard]] Rect game_legend_rect(Canvas c) noexcept {
-    const render::GameLayout L = game_layout(c);
-    const float chip = render::kChipRadius * 2.0f * L.chip_scale;
-    const float label = render::readout_line_height_for(render::kReadoutRelSecondary, c.width,
-                                                        c.height);
-    // Five denominations at most, each a chip plus the column pitch.
-    const float w = 5.0f * render::kChipColumnPitch * L.chip_scale;
-    return padded(Rect{L.info_anchor.x, L.info_anchor.y, w, chip + label}, c, 0.006f, 0.008f);
+// Upper bound on the rendered width of a string of `glyphs` characters at `px`.
+// The exact width needs ImGui's font metrics, which are not available here (and a
+// spotlight only has to CONTAIN its element, so erring wide is correct and erring
+// narrow clips the thing being taught). ImGui's default proportional font renders
+// digits and '$' at roughly half the pixel size; 0.62 leaves headroom.
+[[nodiscard]] float text_width_bound(int glyphs, float px) noexcept {
+    return static_cast<float>(glyphs) * px * 0.62f;
 }
 
-// Pot / Blinds / To Call / Opp Fold: the stacked lines directly under the legend.
+[[nodiscard]] Rect game_legend_rect(Canvas c) noexcept {
+    const render::GameLayout L = game_layout(c);
+    const float label = render::readout_font_size_for(render::kReadoutRelSecondary, c.width,
+                                                      c.height);
+    // Mirror draw_denomination_legend: the slot pitch widens to clear the widest
+    // dollar label rather than using the nominal pitch, because at Nosebleed stakes
+    // "$25000" is already wider than it. The legend's chips are drawn at the raw
+    // radius, NOT the felt-relative chip scale, so do not apply chip_scale here.
+    const float pitch = std::max(render::kLegendSlotPitch,
+                                 text_width_bound(6, label) + label * 0.7f);
+    // Five denominations is the largest set (High / Nosebleed / Fixed).
+    const float w = 4.0f * pitch + 2.0f * render::kChipRadius;
+    const float h = render::kChipRadius * 2.0f + 2.0f +
+                    render::readout_line_height_for(render::kReadoutRelSecondary, c.width,
+                                                    c.height);
+    return padded(Rect{L.info_anchor.x, L.info_anchor.y, w, h}, c, 0.006f, 0.008f);
+}
+
+// Pot / Blinds / To Call: the stacked lines directly under the legend. Their width is
+// text-driven, and the longest is the blinds line at Nosebleed stakes
+// ("Blinds $25000 / $50000"), which is wider than the legend above it.
 [[nodiscard]] Rect game_info_lines_rect(Canvas c) noexcept {
     const Rect legend = game_legend_rect(c);
+    const float px = render::readout_font_size_for(render::kReadoutRelPrimary, c.width, c.height);
     const float line = render::readout_line_height_for(render::kReadoutRelPrimary, c.width,
                                                         c.height);
-    return Rect{legend.x, legend.y + legend.h, legend.w, line * 4.0f};
+    const float w = std::max(legend.w, text_width_bound(22, px));
+    return Rect{legend.x, legend.y + legend.h, w, line * 3.0f};
 }
 
 // The on-felt "Opp fold: X%" readout. game_screen.cpp anchors it at
@@ -172,12 +193,16 @@ constexpr std::string_view kPromptMessage =
 // The hero's two hole cards, drawn as a fan above the hero seat (slot 0).
 [[nodiscard]] Rect game_hole_cards_rect(Canvas c) noexcept {
     const render::GameLayout L = game_layout(c);
-    const render::SeatSpot hero = render::seat_spot(L, 0);
-    const float s = hero.scale;
+    const render::Pt hero = render::seat_center(L, 0);
+    // The hero's cards are drawn at kHeroCardScale -- deliberately LARGER than the
+    // board -- not at the seat's perspective scale, and game_screen anchors the fan's
+    // TOP at seat.y - kCardHeight*kHeroCardScale - 6. Using the seat scale here made
+    // the rect too short and clipped the cards' top indices.
+    constexpr float s = render::kHeroCardScale;
     const float w = render::kCardFanStep * s + render::kCardWidth * s;
     const float h = render::kCardHeight * s;
-    // game_screen draws the fan with its BOTTOM on the seat point, label below.
-    return padded(Rect{hero.pos.x - w * 0.5f, hero.pos.y - h, w, h}, c, 0.008f, 0.010f);
+    const float top = hero.y - h - 6.0f;
+    return padded(Rect{hero.x - w * 0.5f, top, w, h}, c, 0.008f, 0.010f);
 }
 
 // The five opponent seats: the bounding box of their seat points, grown to take in

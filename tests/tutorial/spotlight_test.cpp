@@ -14,7 +14,11 @@
 
 #include "animations/button_morph.hpp"
 #include "render/layout.hpp"
+#include "render/hud.hpp"
 #include "render/opponents.hpp"
+#include "render/render_constants.hpp"
+
+#include <algorithm>
 #include "tutorial/step_sequencer.hpp"
 
 #include <gtest/gtest.h>
@@ -70,17 +74,23 @@ TEST(TutorialSpotlights, EveryGameTargetResolves) {
     }
 }
 
-TEST(TutorialSpotlights, HoleCardsCoverTheHeroSeat) {
+TEST(TutorialSpotlights, HoleCardsCoverTheWholeHeroFan) {
+    // Regression: the rect was built from the seat's perspective scale, but the hero's
+    // cards draw at kHeroCardScale (larger than the board), so the highlight was too
+    // short and clipped the cards' top rank indices. Check all four fan corners.
     for (const an::Canvas c : kCanvases) {
         const rnd::GameLayout L = rnd::compute_layout(c.width, c.height);
-        const rnd::Pt hero = rnd::seat_spot(L, 0).pos;
+        const rnd::Pt hero = rnd::seat_center(L, 0);
+        constexpr float s = rnd::kHeroCardScale;
+        const float fan_w = rnd::kCardFanStep * s + rnd::kCardWidth * s;
+        const float fan_h = rnd::kCardHeight * s;
+        const float top = hero.y - fan_h - 6.0f;
+        const float left = hero.x - fan_w * 0.5f;
         const an::Rect r = rect_for(SpotTarget::GameHoleCards, c);
-        // The fan is drawn with its bottom on the seat point, so the seat x must be
-        // inside horizontally and the seat y at or just below the rect's bottom.
-        EXPECT_GE(hero.x, r.x);
-        EXPECT_LE(hero.x, r.x + r.w);
-        EXPECT_GE(hero.y, r.y);
-        EXPECT_LE(hero.y, r.y + r.h + 1.0f);
+        EXPECT_TRUE(contains(r, left, top)) << "fan top-left clipped";
+        EXPECT_TRUE(contains(r, left + fan_w, top)) << "fan top-right clipped";
+        EXPECT_TRUE(contains(r, left, top + fan_h)) << "fan bottom-left clipped";
+        EXPECT_TRUE(contains(r, left + fan_w, top + fan_h)) << "fan bottom-right clipped";
     }
 }
 
@@ -123,14 +133,35 @@ TEST(TutorialSpotlights, PushedChipsCoverTheActiveSeatToPotCorridor) {
     }
 }
 
-TEST(TutorialSpotlights, LegendAndInfoLinesSitOnTheInfoAnchorAndDoNotOverlap) {
+TEST(TutorialSpotlights, LegendCoversEveryDenominationSlot) {
+    // Regression: the width was five nominal column pitches scaled by chip_scale, but
+    // the legend draws at the raw chip radius and widens its pitch to clear the widest
+    // dollar label -- so the highlight cut off the last denominations.
     for (const an::Canvas c : kCanvases) {
+        const an::Rect r = rect_for(SpotTarget::GameChipLegend, c);
         const rnd::GameLayout L = rnd::compute_layout(c.width, c.height);
+        const float label = rnd::readout_font_size_for(rnd::kReadoutRelSecondary, c.width,
+                                                       c.height);
+        const float pitch = std::max(rnd::kLegendSlotPitch, 6.0f * label * 0.62f + label * 0.7f);
+        // The five slot centres of the widest denomination set.
+        for (int i = 0; i < 5; ++i) {
+            const float cx = L.info_anchor.x + rnd::kChipRadius + static_cast<float>(i) * pitch;
+            EXPECT_TRUE(contains(r, cx, L.info_anchor.y + rnd::kChipRadius))
+                << "legend slot " << i << " outside the spotlight";
+        }
+    }
+}
+
+TEST(TutorialSpotlights, InfoLinesClearTheLongestBlindsLineAndSitUnderTheLegend) {
+    for (const an::Canvas c : kCanvases) {
         const an::Rect legend = rect_for(SpotTarget::GameChipLegend, c);
         const an::Rect lines = rect_for(SpotTarget::GamePotBlinds, c);
-        EXPECT_TRUE(contains(legend, L.info_anchor.x, L.info_anchor.y));
-        // The info lines stack directly beneath the legend, not on top of it.
+        // Stacked beneath the legend, not on top of it.
         EXPECT_GE(lines.y, legend.y + legend.h - 1.0f);
+        // Wide enough for "Blinds $25000 / $50000" at Nosebleed stakes, which is what
+        // used to overflow the highlight's right edge.
+        const float px = rnd::readout_font_size_for(rnd::kReadoutRelPrimary, c.width, c.height);
+        EXPECT_GE(lines.w, 22.0f * px * 0.62f);
     }
 }
 
