@@ -1,24 +1,61 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1280" viewBox="0 0 1024 1280">
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1800" viewBox="0 0 1024 1800">
   <!-- Butler dealer, side profile, facing LEFT toward the table, mid-deal.
        Palette, shading method, monocle geometry, collar/bowtie/waistcoat
        construction all lifted from tier1/butler_neutral.svg: same man, side on.
        Faceless per spec: no eye, no mouth, and no nose drawn as a feature.
-       The nose exists ONLY as a step in the head's outline. -->
+       The nose exists ONLY as a step in the head's outline.
+
+       Full-length: the tailcoat cuts away at the waist over trousers and shoes
+       that run to y=1788. The game screen crops him around y=1620 (mid-shin), so
+       the figure leaves the frame at the bottom edge instead of ending in air;
+       the shoe exists so the crop never has to land on an unfinished stump. -->
   <defs>
     <clipPath id="head_clip_p">
       <path d="M686 154 C748 154 798 184 814 226 C828 260 830 300 826 342 C822 386 810 424 790 448 C774 468 752 478 724 478 C700 478 668 480 640 484 C614 488 588 482 570 470 C558 462 552 456 554 448 C556 440 564 434 570 429 C578 424 562 419 558 412 C554 406 562 402 566 398 C570 394 560 390 556 386 C551 381 556 375 562 372 C550 366 520 354 508 348 C502 345 508 338 516 332 C528 322 536 316 542 308 C550 300 558 298 564 294 C558 286 534 282 538 272 C541 256 545 246 550 234 C566 194 620 154 686 154 Z"/>
     </clipPath>
     <clipPath id="torso_clip_p">
-      <path d="M596 668 C618 640 646 622 682 616 C736 608 792 620 830 644 C866 668 888 728 900 808 C912 894 920 1000 926 1104 C932 1188 938 1242 942 1280 L516 1280 C514 1198 516 1112 522 1030 C528 946 522 862 534 786 C544 716 568 682 596 668 Z"/>
+      <path d="M596 668 C618 640 646 622 682 616 C736 608 792 620 830 644 C866 668 888 728 900 808 C912 894 920 1000 926 1104 C934 1180 940 1244 944 1300 C947 1332 934 1348 908 1345 C878 1342 852 1330 838 1310 C800 1256 758 1206 706 1176 C656 1148 596 1132 552 1128 C526 1126 512 1114 514 1092 C515 1064 519 1046 522 1030 C528 946 522 862 534 786 C544 716 568 682 596 668 Z"/>
+    </clipPath>
+    <!-- One trouser leg, hip to sole. Drawn twice: once translated back and up
+         for the far leg, once as authored for the near one, so the two legs can
+         never drift out of register. -->
+    <path id="leg_shape_p" d="M580 1020 C566 1080 560 1140 566 1200 C572 1260 582 1330 590 1400 C596 1470 600 1540 604 1620 C606 1660 604 1682 598 1700 C574 1722 528 1738 486 1746 C458 1751 444 1760 446 1772 C448 1782 460 1788 478 1788 L706 1788 C730 1788 742 1776 740 1756 C738 1732 730 1710 724 1690 C744 1628 778 1556 772 1486 C768 1428 750 1412 748 1392 C756 1290 776 1218 796 1140 C806 1090 814 1046 816 1020 Z"/>
+    <clipPath id="leg_clip_p">
+      <use href="#leg_shape_p"/>
     </clipPath>
     <clipPath id="hair_clip_p">
       <path d="M550 234 C592 238 628 254 654 276 C666 286 674 296 678 310 C682 332 684 354 682 374 C690 376 696 370 698 358 C701 338 706 320 716 310 C730 300 754 300 770 316 C786 332 794 380 796 424 C797 442 794 460 788 472 C806 448 818 410 826 342 C830 300 828 260 814 226 C798 184 748 154 686 154 C620 154 566 194 550 234 Z"/>
     </clipPath>
   </defs>
 
-  <!-- ================= FAR ARM (hangs at his side, behind the torso) ================= -->
-  <g id="arm_far_p">
-    <path d="M828 654 C868 686 890 752 900 832 C910 914 910 1000 902 1068 L946 1074 C956 984 952 866 934 780 C914 682 880 640 836 630 Z" fill="#1a1210"/>
+  <!-- ================= LEGS =================
+       Behind the coat, so the tailcoat hem is what cuts them: only the trouser
+       front shows between the cutaway and the tail, and both shins clear below.
+       The far leg is one stride back and a touch higher (further from camera on
+       the same floor); it stays inside the near leg everywhere except its own
+       back edge, so the pair reads as two legs without opening a hole in the
+       silhouette. -->
+  <g id="legs_p">
+    <use href="#leg_shape_p" transform="translate(90,-12)" fill="#120C0A"/>
+    <use href="#leg_shape_p" fill="#241A16"/>
+    <g clip-path="url(#leg_clip_p)">
+      <!-- the coat's own shadow falling down the trouser from under the hem -->
+      <path d="M500 1000 L900 1000 L900 1424 C848 1382 802 1324 752 1262 C700 1200 630 1168 556 1164 L500 1164 Z" fill="#120C0A" opacity="0.42"/>
+      <path d="M556 1080 C550 1240 562 1420 574 1620 C580 1700 580 1744 576 1792 L500 1792 L500 1080 Z" fill="#5C4436" opacity="0.15"/>
+      <!-- Back-edge shading only. It stops short of the silhouette edge on purpose:
+           the far leg behind is already the darkest value in the palette, so a full
+           back shadow here would swallow the near leg's edge and the two would read
+           as one limb. -->
+      <path d="M752 1060 C766 1240 770 1420 766 1620 C764 1700 766 1748 770 1792 L900 1792 L900 1060 Z" fill="#120C0A" opacity="0.32"/>
+      <!-- outside-seam braid: the one line that says dress trouser, not slacks -->
+      <path d="M666 1120 C680 1270 686 1430 684 1610 C683 1690 684 1740 686 1786" fill="none" stroke="#3A2C25" stroke-width="15" opacity="0.38"/>
+      <path d="M588 1364 C628 1354 674 1356 710 1368" fill="none" stroke="#120C0A" stroke-width="9" stroke-linecap="round" opacity="0.30"/>
+      <path d="M594 1412 C632 1404 676 1406 712 1416" fill="none" stroke="#120C0A" stroke-width="7" stroke-linecap="round" opacity="0.22"/>
+      <!-- patent shoe: the trouser breaks over it, so the value change is the hem -->
+      <path d="M496 1656 C562 1668 664 1680 792 1690 L820 1800 L430 1800 Z" fill="#17100E"/>
+      <path d="M470 1726 C502 1721 542 1714 570 1704" fill="none" stroke="#5C4436" stroke-width="9" stroke-linecap="round" opacity="0.32"/>
+      <path d="M452 1772 L744 1772" fill="none" stroke="#3A2C25" stroke-width="8" opacity="0.45"/>
+    </g>
   </g>
 
   <!-- ================= NECK =================
@@ -33,21 +70,26 @@
     <path d="M708 474 C694 520 668 560 630 588" fill="none" stroke="#8A5F38" stroke-width="7" stroke-linecap="round" opacity="0.32"/>
   </g>
 
-  <!-- ================= TORSO (tailcoat body) ================= -->
+  <!-- ================= TORSO (tailcoat body) =================
+       Profile of a tailcoat: the front is cut away at the waist (y~1128) and the
+       tail hangs to y~1345 behind the legs. The back edge is one unbroken run
+       from shoulder to tail hem; nothing is allowed to bulge off it. -->
   <g id="torso_p">
-    <path d="M596 668 C618 640 646 622 682 616 C736 608 792 620 830 644 C866 668 888 728 900 808 C912 894 920 1000 926 1104 C932 1188 938 1242 942 1280 L516 1280 C514 1198 516 1112 522 1030 C528 946 522 862 534 786 C544 716 568 682 596 668 Z" fill="#241A16"/>
+    <path d="M596 668 C618 640 646 622 682 616 C736 608 792 620 830 644 C866 668 888 728 900 808 C912 894 920 1000 926 1104 C934 1180 940 1244 944 1300 C947 1332 934 1348 908 1345 C878 1342 852 1330 838 1310 C800 1256 758 1206 706 1176 C656 1148 596 1132 552 1128 C526 1126 512 1114 514 1092 C515 1064 519 1046 522 1030 C528 946 522 862 534 786 C544 716 568 682 596 668 Z" fill="#241A16"/>
     <g clip-path="url(#torso_clip_p)">
-      <path d="M852 664 C892 758 910 902 908 1040 C906 1132 912 1226 918 1300 L1030 1300 L1030 626 Z" fill="#120C0A" opacity="0.46"/>
+      <path d="M852 664 C892 758 910 902 908 1040 C906 1132 912 1240 916 1360 L1030 1360 L1030 626 Z" fill="#120C0A" opacity="0.46"/>
       <path d="M576 668 C542 712 526 782 524 856 L466 856 L466 626 Z" fill="#5C4436" opacity="0.22"/>
-      <path d="M768 618 C748 718 744 872 752 1006 C758 1100 762 1204 760 1300 L812 1300 C812 1192 806 1078 800 998 C790 866 792 716 810 624 Z" fill="#120C0A" opacity="0.20"/>
+      <path d="M768 618 C748 718 744 872 752 1006 C758 1100 762 1204 760 1360 L812 1360 C812 1192 806 1078 800 998 C790 866 792 716 810 624 Z" fill="#120C0A" opacity="0.20"/>
       <!-- tailcoat waist seam + the two back buttons -->
       <path d="M522 1004 C632 1040 800 1044 926 1014 L930 1062 C802 1092 632 1088 524 1052 Z" fill="#120C0A" opacity="0.26"/>
       <circle cx="892" cy="1030" r="11" fill="#3A2C25"/>
       <circle cx="892" cy="1030" r="4.5" fill="#1A1210"/>
-      <!-- tail panel behind the leg line -->
-      <path d="M872 1074 C892 1140 900 1216 902 1300 L960 1300 L950 1060 Z" fill="#120C0A" opacity="0.3"/>
+      <!-- far tail, folded behind the near one -->
+      <path d="M872 1074 C892 1140 902 1230 906 1360 L980 1360 L950 1060 Z" fill="#120C0A" opacity="0.3"/>
+      <!-- hem edge: the cutaway is a real seam, so it catches a little light -->
+      <path d="M552 1128 C620 1140 676 1166 720 1200 C776 1244 818 1296 846 1340" fill="none" stroke="#5C4436" stroke-width="6" opacity="0.22"/>
     </g>
-    <path d="M534 786 C522 862 528 946 522 1030 C516 1112 514 1198 516 1280" fill="none" stroke="#5C4436" stroke-width="5" opacity="0.26"/>
+    <path d="M534 786 C522 862 528 946 522 1030 C519 1046 515 1064 514 1092" fill="none" stroke="#5C4436" stroke-width="5" opacity="0.26"/>
   </g>
 
   <!-- ================= SHIRT / WAISTCOAT / LAPEL FRONT STRIP =================
@@ -148,7 +190,7 @@
 
   <!-- ================= EAR ================= -->
   <g id="ear_p">
-    <path d="M700 314 C692 336 690 364 696 386 C701 400 713 406 724 401 C738 394 749 372 752 344 C755 318 746 302 728 299 C714 297 705 304 700 314 Z" fill="#c08f62"/>
+    <path d="M700 314 C692 336 690 364 696 386 C701 400 713 406 724 401 C738 394 749 372 752 344 C755 318 746 302 728 299 C714 297 705 304 700 314 Z" fill="#C08F62"/>
     <path d="M708 326 C701 346 701 368 707 382 C713 392 722 392 730 382 C740 370 744 344 740 329 C736 317 726 313 718 317 C713 319 710 322 708 326 Z" fill="#A87B4A" opacity="0.45"/>
     <path d="M716 333 C726 341 728 368 718 382" fill="none" stroke="#7A5330" stroke-width="7" stroke-linecap="round" opacity="0.55"/>
   </g>

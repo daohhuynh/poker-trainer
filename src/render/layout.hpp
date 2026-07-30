@@ -96,10 +96,15 @@ struct GameLayout {
     // Pot near the felt's visual middle (community just above, hero's cards below).
     L.pot = Pt{L.table_center.x, L.table_center.y - L.table_ry * 0.05f};
     L.info_anchor = Pt{w * 0.02f, h * 0.03f};
-    // Dealer seated at the felt's flat right edge, front-right of the hero.
-    L.dealer_w = w * 0.18f;
-    L.dealer_h = h * 0.44f;
-    L.dealer_tl = Pt{w * 0.72f, h * 0.34f};
+    // Dealer at the felt's flat right edge, front-right of the hero. The box is
+    // DELIBERATELY taller than the frame: the art is a full-length figure (1024 x
+    // 1800, shoes at the canvas bottom) and the box bottom lands at 1.145h, so the
+    // frame cuts him mid-shin instead of leaving him to stop in mid-air above the
+    // rail. 0.278/0.87 is the art's 1024:1800 aspect on a 16:9 canvas, so he is not
+    // squashed; the x origin puts his gloved hand on the felt's dealer chord.
+    L.dealer_w = w * 0.278f;
+    L.dealer_h = h * 0.87f;
+    L.dealer_tl = Pt{w * 0.702f, h * 0.275f};
     L.cluster_anchor = Pt{w * 0.86f, h * 0.04f};
     return L;
 }
