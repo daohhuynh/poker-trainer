@@ -1,6 +1,7 @@
 #pragma once
 
 #include "screens/custom_popup.hpp"
+#include "screens/root_frog.hpp"
 
 #include "animations/button_morph.hpp"
 #include "backbone/screen_state.hpp"
@@ -45,6 +46,12 @@ struct ScreensRuntime {
     // register_focus_list); the watcher invalidates last_focus_screen on any screen
     // change so the next Root / Mode render re-registers. Error = nothing observed yet.
     backbone::ScreenId observed_screen{backbone::ScreenId::Error};
+
+    // The Root screen's frog: whether it rolled in this visit, and its bubble.
+    // Re-rolled by the same watcher that invalidates last_focus_screen, so the
+    // roll happens once per entry to Root rather than once per frame. Purely
+    // session-local — never persisted (screens/root_frog.hpp).
+    RootFrogState frog;
 };
 
 // Wire Zone 07 into Zone 05's render-dispatch registry and the event router:

@@ -62,6 +62,11 @@ void render_root_dispatch(ScreensRuntime& runtime) {
         return;
     }
     render_root_screen();
+    // Drawn after the Root body so it sits over the screen's own art, and only on
+    // the static Root frame — never during the morph, so the frog is gone the
+    // instant the user commits to Play. It keeps drawing while a modal is open;
+    // the router predicate above is what stops it taking clicks.
+    render_root_frog(runtime.frog);
 }
 
 void render_mode_dispatch(ScreensRuntime& runtime, CustomWeightsStore& store) {
@@ -111,9 +116,22 @@ void begin_mode_to_root_morph(ScreensRuntime& runtime) {
 // from Game (e.g. leave-drill -> Yes) leaves the stale Game focus list active and Tab
 // is dead on Mode.
 void watch_screen_for_focus_reentry(ScreensRuntime& runtime) {
-    const backbone::ScreenId current = backbone::read_screen_state().current;
+    const backbone::ScreenStateSnapshot screen = backbone::read_screen_state();
+    const backbone::ScreenId current = screen.current;
+    // The frog's appearance roll is once per ENTRY to Root, not once per frame —
+    // re-rolling every frame would make it strobe. This watcher is the only place
+    // Zone 07 sees a screen CHANGE (the Root dispatch runs every frame while Root
+    // is current and cannot tell entry from a repeat), so the roll hangs off it.
+    // The prompt latch, by contrast, must run every frame: Zone 14 raises the
+    // first-run prompt during its own render, which can land after this frame's
+    // entry roll.
+    note_tutorial_phase(runtime.frog, screen.tutorial_state.phase);
     if (current != runtime.observed_screen) {
         runtime.observed_screen = current;
+        if (current == backbone::ScreenId::Root) {
+            on_root_entry(runtime.frog, backbone::total_ms_since_app_start(),
+                          screen.tutorial_state.phase);
+        }
         runtime.last_focus_screen = backbone::ScreenId::Error;  // force re-register on next render
         // The button morph is only valid while Root (forward) or Mode Selection (reverse)
         // is current. If we left both some other way — e.g. an instant-cut launch clicked
@@ -150,7 +168,8 @@ void install_screens(ScreensRuntime& runtime, CustomWeightsStore& weights_store)
     bridge::set_mode_to_root_transition([&runtime] { begin_mode_to_root_morph(runtime); });
 
     // Event handlers (registered once with the event router).
-    install_root_handlers(runtime.morph);
+    seed_root_frog(runtime.frog);
+    install_root_handlers(runtime.morph, runtime.frog);
     install_mode_selection_handlers(runtime.popup, weights_store);
     install_custom_popup_handlers(runtime.popup);
 

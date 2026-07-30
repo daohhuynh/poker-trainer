@@ -227,6 +227,7 @@ if(EMSCRIPTEN OR ENABLE_TESTS)
     add_library(screens STATIC
         src/animations/button_morph.cpp
         src/screens/root_screen.cpp
+        src/screens/root_frog.cpp
         src/screens/mode_selection_screen.cpp
         src/screens/custom_popup.cpp
         src/screens/screen_registration.cpp
@@ -854,13 +855,15 @@ if(ENABLE_TESTS)
     #
     # The `screens` library is defined in the shared section above (it is now built
     # for the wasm app too, since Z05 links the real screens in). Its code is held
-    # to the full -Werror baseline there. These tests reference only the pure logic
-    # (morph math + controller, coupled solver, keystroke rules, action semantics)
-    # plus the focus-list registration — never the render/launch TUs.
+    # to the full -Werror baseline there. These tests call only the pure logic
+    # (morph math + controller, coupled solver, keystroke rules, action semantics,
+    # the Root frog's roll / dialogue / geometry) plus the focus-list registration
+    # — never a render or launch entry point.
     add_executable(screens_test
         tests/animations/button_morph_test.cpp
         tests/screens/custom_popup_test.cpp
         tests/screens/focus_lists_test.cpp
+        tests/screens/root_frog_test.cpp
     )
     target_include_directories(screens_test PRIVATE
         ${CMAKE_SOURCE_DIR}/src

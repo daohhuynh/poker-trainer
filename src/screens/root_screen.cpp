@@ -19,6 +19,7 @@
 #include <emscripten/emscripten.h>
 #endif
 
+#include "bridge/sfx_trigger.hpp"
 #include "theme/theme_tokens.hpp"
 
 #include "modal/modals.hpp"
@@ -183,7 +184,7 @@ void render_root_morph_frame(float global_t) {
                                  assets::AssetId::IconHelp, "Help");
 }
 
-void install_root_handlers(animations::MorphController& morph) {
+void install_root_handlers(animations::MorphController& morph, RootFrogState& frog) {
     // Escape on Root: consume and do nothing (Notes — Escape Key Behavior).
     backbone::register_key_handler(
         [] {
@@ -254,11 +255,21 @@ void install_root_handlers(animations::MorphController& morph) {
             return backbone::read_screen_state().current == backbone::ScreenId::Root &&
                    !backbone::is_any_modal_open();
         },
-        [&morph](const backbone::MouseEvent& e) {
+        [&morph, &frog](const backbone::MouseEvent& e) {
             if (e.type != backbone::MouseEventType::MouseDown || e.button != 0) {
                 return false;
             }
             const animations::Canvas canvas = viewport_canvas();
+            // The frog (bottom-right, on a quarter of visits): ribbit + open or swap
+            // its speech bubble. Hit-tested at the exact rect render_root_frog draws
+            // and only while it is actually showing, so an invisible frog is never
+            // clickable. The ribbit routes through the bridge SFX seam rather than a
+            // direct Zone 03 call — Zone 07 does not depend on the audio zone.
+            if (frog_showing(frog) && point_in_rect(e.x, e.y, frog_rect(canvas))) {
+                bridge::play_sfx(audio::SfxId::FrogToggle);
+                advance_frog_bubble(frog, backbone::total_ms_since_app_start());
+                return true;
+            }
             if (point_in_rect(e.x, e.y,
                               animations::root_grid_button_rect(animations::MorphButton::Play,
                                                                 canvas))) {

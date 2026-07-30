@@ -6,6 +6,8 @@
 // Help=BR of the grid), and a Home icon (top-right). On Root, Home reloads the
 // page. Play triggers the Root -> Mode Selection morph (animations/button_morph).
 
+#include "screens/root_frog.hpp"
+
 #include "animations/button_morph.hpp"
 #include "backbone/focus_manager.hpp"
 
@@ -86,9 +88,14 @@ void render_root_morph_frame(float global_t);
 // Install the Root event-router handlers (Escape -> no-op; Play -> start the
 // morph on the caller-owned MorphController; Home -> reload the page
 // [window.location.reload]; Settings/Shop/Help -> open their modals [Zone 11
-// seam]). Deferred wiring seam: takes the main-loop-owned morph controller by
-// reference, since the no-arg render export and CLAUDE.md section 10 (no global
-// state) give Zone 07 no place to own it. Called by Zone 05's main loop.
-void install_root_handlers(animations::MorphController& morph);
+// seam]; the bottom-right frog -> ribbit + swap its bubble line). Deferred wiring
+// seam: takes the main-loop-owned morph controller and frog state by reference,
+// since the no-arg render export and CLAUDE.md section 10 (no global state) give
+// Zone 07 no place to own them. Called by Zone 05's main loop.
+//
+// The frog rides the SAME registered mouse handler as the rest of Root, whose
+// predicate already gates on !is_any_modal_open() — which is exactly the frog's
+// contract: it keeps drawing under an open modal but stops taking clicks.
+void install_root_handlers(animations::MorphController& morph, RootFrogState& frog);
 
 }  // namespace poker_trainer::screens
