@@ -337,6 +337,39 @@ constexpr std::array<Credit, 6> kCredits{{
     {"Auth0", "authentication (Part 2)"},
 }};
 
+// Ten of the twelve shipped music tracks are CC BY 4.0. Attribution is a licence
+// condition, not a courtesy — Module 2 requires CC-BY tracks be credited here, so
+// rendering these is what makes the build legally shippable. Keep in lock-step
+// with the music table in ASSETS.md; the wording is Incompetech's own required
+// credit format and should not be paraphrased.
+//
+// These are the tracks' real titles, which deliberately differ from the in-app
+// slot filenames in audio_paths.hpp (after_hours.mp3 is "Just As Soon", etc.).
+constexpr const char* kMusicCreditArtist = "Kevin MacLeod (incompetech.com)";
+constexpr std::array<const char*, 10> kMusicCreditTitles{{
+    "Silver Blue Light",
+    "Light Awash",
+    "Wisps of Whorls",
+    "Casa Bossa Nova",
+    "Bossa Antigua",
+    "Modern Jazz Samba",
+    "Gymnopedie No. 1",
+    "Just As Soon",
+    "Backbay Lounge",
+    "I Knew a Guy",
+}};
+constexpr const char* kMusicCreditLicense =
+    "Licensed under Creative Commons: By Attribution 4.0";
+constexpr const char* kMusicCreditLicenseUrl = "http://creativecommons.org/licenses/by/4.0/";
+
+// The remaining two tracks carry no attribution obligation (public-domain and CC0
+// performances of public-domain compositions). Credited anyway so the list is a
+// truthful account of all twelve rather than only the legally-compelled ten.
+constexpr std::array<Credit, 2> kPublicDomainMusicCredits{{
+    {"Daniel Veesey", "Beethoven, Piano Sonata No. 8 \"Pathetique\" II (public domain)"},
+    {"Kimiko Ishizaka", "J. S. Bach, Goldberg Variations BWV 988 (CC0)"},
+}};
+
 // ----- per-control commit helpers (mouse + keyboard share these) -----
 
 void apply_audio_now(SettingsModalState& s) {
@@ -1482,9 +1515,18 @@ void render_doc_body(SettingsModalState& s) {
                 ImGui::BulletText("%s: %s", c.name, c.note);
             }
             ImGui::Spacing();
+            ImGui::TextUnformatted("Music attributions:");
+            for (const char* title : kMusicCreditTitles) {
+                ImGui::BulletText("\"%s\" by %s", title, kMusicCreditArtist);
+            }
             ImGui::PushStyleColor(ImGuiCol_Text, theme::get_color(theme::ColorToken::TextSecondary));
-            ImGui::TextWrapped("Music: CC-BY tracks. Credits pending from the audio pipeline.");
+            ImGui::TextUnformatted(kMusicCreditLicense);
+            ImGui::TextUnformatted(kMusicCreditLicenseUrl);
             ImGui::PopStyleColor();
+            ImGui::Spacing();
+            for (const Credit& c : kPublicDomainMusicCredits) {
+                ImGui::BulletText("%s: %s", c.name, c.note);
+            }
             break;
         case SettingsModalState::DocKind::Terms:
         case SettingsModalState::DocKind::Privacy:
