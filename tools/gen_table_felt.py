@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Generate table_felt.svg in the renderer's own first-person D projection.
+"""Generate table_felt.svg in the renderer's own first-person projection.
 
 The Game screen does not draw a flat top-down oval. render/layout.hpp defines a
-foreshortened D: the horizontal half-width lerps from a narrow far rim at the top
-to a wide near rim at the bottom, and the right wedge is flattened into the
-dealer's straight chord. Seats and chip stacks are positioned from that same
-rim, so felt art in any other projection cannot line up with them.
+racetrack table in mild perspective: a superellipse whose horizontal half-width
+lerps from a slightly narrower far rim at the top to a slightly wider near rim at
+the bottom. Seats and chip stacks are positioned from that same rim, so felt art
+in any other projection cannot line up with them.
 
 This script reproduces rim_spot() exactly:
 
-    depth  = (sin(a) + 1) / 2                       1 at the near rim, 0 at the far
+    e      = 2 / n                                  n = kFeltEdgeExponent
+    ux, uy = sign(cos a)|cos a|^e, sign(sin a)|sin a|^e
+    depth  = (uy + 1) / 2                           1 at the near rim, 0 at the far
     half_w = far_rx + depth * (rx - far_rx)
-    x, y   = cos(a) * half_w,  sin(a) * ry
+    x, y   = ux * half_w,  uy * ry
 
 Because x scales only with the canvas width and y only with its height, the
 shape is a pure axis-aligned scaling of one normalized form. Authoring in
@@ -31,26 +33,29 @@ REPO = Path(__file__).resolve().parent.parent
 OUT = REPO / "assets" / "svg" / "tier2" / "table_felt.svg"
 
 # --- mirrored from src/render/layout.hpp -------------------------------------
-RX = 0.40          # L.table_rx      / w   near (bottom) half-width
-FAR_RX = 0.23      # L.table_far_rx  / w   far (top) half-width
-RY = 0.22          # L.table_ry      / h   vertical half-extent
-FLAT_HALF_ANGLE = 42.0   # kFeltFlatHalfAngleDeg
-STEPS = 256        # the renderer traces 64; oversample so the art edge is smooth
+RX = 0.265         # L.table_rx      / w   near (bottom) half-width
+FAR_RX = 0.220     # L.table_far_rx  / w   far (top) half-width
+RY = 0.19           # L.table_ry      / h   vertical half-extent
+EDGE_EXPONENT = 2.9  # kFeltEdgeExponent
+STEPS = 512        # the renderer traces 96; oversample so the art edge is smooth
 
 # --- art proportions ---------------------------------------------------------
-RAIL_FRAC = 0.085  # rail band width, as a fraction of the shape, drawn INWARD
-TRIM_FRAC = 0.012  # brass trim line inboard of the rail
+RAIL_FRAC = 0.075  # rail band width, as a fraction of the shape, drawn INWARD
+TRIM_FRAC = 0.011  # brass trim line inboard of the rail
 CANVAS_W = 1536    # export resolution; aspect is irrelevant (the image is stretched)
 
-FELT_DARK = "#1E100B"
-FELT_MID = "#2A160F"
-FELT_LIGHT = "#3A1E14"
+# Real poker felt is green. This is a deep, desaturated cardroom green (hue ~140,
+# value under 30%) rather than a bright casino baize or a pool-table green, so it
+# still sits in a dim high-limit room. The rail stays leather and brass.
+FELT_DARK = "#0E1E15"
+FELT_MID = "#193226"
+FELT_LIGHT = "#27492F"
 RAIL_DARK = "#2B1A12"
 RAIL_MID = "#4A2E1D"
 RAIL_LIGHT = "#5C4436"
 BRASS = "#A87B4A"
 BRASS_LIGHT = "#D9A441"
-SHADOW = "#120C0A"
+SHADOW = "#0A0F0C"
 
 
 def rim(angle_deg: float, shrink: float = 1.0) -> tuple[float, float]:
@@ -61,21 +66,22 @@ def rim(angle_deg: float, shrink: float = 1.0) -> tuple[float, float]:
     projection as the outer rim instead of being a naive offset curve.
     """
     a = math.radians(angle_deg)
-    ex, ey = math.cos(a), math.sin(a)
-    depth = (ey + 1.0) * 0.5
+    e = 2.0 / EDGE_EXPONENT
+    ux = math.copysign(abs(math.cos(a)) ** e, math.cos(a))
+    uy = math.copysign(abs(math.sin(a)) ** e, math.sin(a))
+    depth = (uy + 1.0) * 0.5
     half_w = FAR_RX + depth * (RX - FAR_RX)
-    return ex * half_w * shrink, ey * RY * shrink
+    return ux * half_w * shrink, uy * RY * shrink
 
 
-def d_path(shrink: float = 1.0) -> list[tuple[float, float]]:
-    """The closed D outline: rim from the wedge's lower edge round to its upper
-    edge; closing the path turns the open right span into the dealer's chord."""
-    lo, hi = FLAT_HALF_ANGLE, 360.0 - FLAT_HALF_ANGLE
-    return [rim(lo + (hi - lo) * i / STEPS, shrink) for i in range(STEPS + 1)]
+def rim_path(shrink: float = 1.0) -> list[tuple[float, float]]:
+    """The closed rim: sampled all the way round. Symmetric about the vertical
+    axis -- there is no flat dealer chord, the dealer stands at the right end."""
+    return [rim(360.0 * i / STEPS, shrink) for i in range(STEPS)]
 
 
 def main() -> int:
-    outer = d_path(1.0)
+    outer = rim_path(1.0)
     xs = [p[0] for p in outer]
     ys = [p[1] for p in outer]
     min_x, max_x = min(xs), max(xs)
@@ -91,7 +97,7 @@ def main() -> int:
                 (p[1] - min_y) / span_y * canvas_h)
 
     def poly(shrink: float) -> str:
-        pts = [to_px(p) for p in d_path(shrink)]
+        pts = [to_px(p) for p in rim_path(shrink)]
         head = f"M {pts[0][0]:.2f} {pts[0][1]:.2f}"
         body = " ".join(f"L {x:.2f} {y:.2f}" for x, y in pts[1:])
         return f"{head} {body} Z"
@@ -104,13 +110,13 @@ def main() -> int:
     # A quiet centre is a hard requirement: the pot, community cards and every
     # chip stack render on top of it. Visual interest lives at the rail.
     glow_cx, glow_cy = to_px((0.0, -RY * 0.10))
-    glow_r = CANVAS_W * 0.30
+    glow_r = CANVAS_W * 0.34
 
     svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{CANVAS_W}" height="{canvas_h}" viewBox="0 0 {CANVAS_W} {canvas_h}">
-  <!-- Poker table felt, authored in the renderer's foreshortened D projection
-       (see tools/gen_table_felt.py). The outer edge is the exact rim that
-       render/layout.hpp's rim_spot() traces, so seats and chip stacks sit where
-       they should. Regenerate rather than hand-editing. -->
+  <!-- Poker table felt, authored in the renderer's foreshortened racetrack
+       projection (see tools/gen_table_felt.py). The outer edge is the exact rim
+       that render/layout.hpp's rim_spot() traces, so seats and chip stacks sit
+       where they should. Regenerate rather than hand-editing. -->
   <defs>
     <radialGradient id="feltGlow" cx="{glow_cx / CANVAS_W:.4f}" cy="{glow_cy / canvas_h:.4f}" r="{glow_r / CANVAS_W:.4f}">
       <stop offset="0%" stop-color="{FELT_LIGHT}" stop-opacity="0.85"/>

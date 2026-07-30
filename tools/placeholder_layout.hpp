@@ -47,9 +47,11 @@ struct Size {
         case A::DealerButton:
             return {512, 512};
         case A::TableFelt:
-            // Not 16:9 — the felt is authored in the renderer's foreshortened D
-            // projection and this is the aspect of that shape's bounding box.
-            return {2048, 1497};
+            // Not 16:9 — the felt is authored in the renderer's foreshortened
+            // racetrack projection and this is the aspect of that shape's bounding
+            // box (tools/gen_table_felt.py prints it). Reshaping the table changes
+            // this number; keep it in step with rasterize_assets.py.
+            return {2048, 1577};
         case A::IconHome:
             return {256, 256};
         // The three room backgrounds are stored at a resolution matched to their

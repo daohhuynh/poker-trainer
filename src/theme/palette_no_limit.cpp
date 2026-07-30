@@ -34,7 +34,12 @@ const Theme& no_limit_theme() noexcept {
         .border_default = rgba8(74, 58, 48),
         .separator = rgba8(237, 227, 211, 0.12f),
         .scrim = rgba8(12, 8, 7, 0.55f),
-        .felt = rgba8(40, 22, 16, 0.22f),
+        // Overlay wash on the authored GREEN felt art, not a colour of its own.
+        // It has to stay in the green family: the old warm brown pulled the felt
+        // back toward brown, which is not what a poker table looks like. A warm
+        // olive keeps this theme's leather-and-amber cast without desaturating the
+        // green underneath.
+        .felt = rgba8(34, 38, 14, 0.22f),
     };
     static constexpr std::array<ImVec4, kColorTokenCount> kTokens =
         build_palette(kSpec);

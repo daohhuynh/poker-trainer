@@ -386,8 +386,13 @@ void render_math_inputs(InterrogatorRuntime& runtime, const engine::ScenarioStat
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const float box_width = vp->Size.x * 0.10f;
     // Left-middle, vertically centered (ImGui centers the window's content from
-    // this anchor as boxes stack up/down).
-    ImGui::SetNextWindowPos(ImVec2{vp->Pos.x + vp->Size.x * 0.04f, vp->Pos.y + vp->Size.y * 0.5f},
+    // this anchor as boxes stack up/down), per the Game-screen layout spec.
+    // The left margin matches Z08's info column above it (layout.hpp info_anchor,
+    // 0.02w) so the two share one left edge -- and, because the panel's width is
+    // driven by fixed-pixel content (the four Bet Size buttons), that tighter
+    // margin is also what keeps its right edge clear of the felt on narrower
+    // windows, where the pixel-sized panel eats a larger fraction of the canvas.
+    ImGui::SetNextWindowPos(ImVec2{vp->Pos.x + vp->Size.x * 0.02f, vp->Pos.y + vp->Size.y * 0.5f},
                             ImGuiCond_Always, ImVec2{0.0f, 0.5f});
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                                    ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |

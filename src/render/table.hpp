@@ -9,7 +9,7 @@ struct ImDrawList;
 // room and table_felt.png as the table surface, with the per-theme BgTableFelt
 // wash over it.
 //
-// The felt art is authored in this renderer's own first-person D projection (see
+// The felt art is authored in this renderer's own first-person projection (see
 // tools/gen_table_felt.py, which mirrors rim_spot() from layout.hpp) rather than
 // as a flat top-down oval, so its painted edge coincides with the rim the seats
 // and chip stacks are positioned from.

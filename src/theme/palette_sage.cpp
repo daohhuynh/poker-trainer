@@ -34,7 +34,10 @@ const Theme& sage_theme() noexcept {
         .border_default = rgba8(62, 82, 57),
         .separator = rgba8(236, 237, 224, 0.12f),
         .scrim = rgba8(6, 10, 6, 0.55f),
-        .felt = rgba8(18, 40, 20, 0.22f),
+        // Overlay wash on the authored GREEN felt art, not a colour of its own.
+        // Sage is the one theme whose own hue matches the felt, so the wash simply
+        // lifts it a little rather than shifting it.
+        .felt = rgba8(28, 54, 30, 0.22f),
     };
     static constexpr std::array<ImVec4, kColorTokenCount> kTokens =
         build_palette(kSpec);

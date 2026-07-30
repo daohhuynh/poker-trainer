@@ -34,7 +34,11 @@ const Theme& ocean_theme() noexcept {
         .border_default = rgba8(46, 74, 102),
         .separator = rgba8(228, 236, 244, 0.12f),
         .scrim = rgba8(4, 8, 14, 0.55f),
-        .felt = rgba8(12, 32, 52, 0.22f),
+        // Overlay wash on the authored GREEN felt art, not a colour of its own.
+        // A deep sea-blue at this alpha still reads green underneath and gives the
+        // felt this theme's cool cast; a heavier or bluer wash would turn the table
+        // teal, which no poker table is.
+        .felt = rgba8(8, 36, 52, 0.22f),
     };
     static constexpr std::array<ImVec4, kColorTokenCount> kTokens =
         build_palette(kSpec);

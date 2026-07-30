@@ -33,7 +33,10 @@ const Theme& slate_theme() noexcept {
         .border_default = rgba8(60, 67, 76),
         .separator = rgba8(230, 232, 235, 0.12f),
         .scrim = rgba8(4, 6, 9, 0.55f),
-        .felt = rgba8(20, 30, 40, 0.20f),
+        // Overlay wash on the authored GREEN felt art, not a colour of its own.
+        // A cool near-neutral: it cools and deepens the green toward this theme's
+        // grey-blue register without repainting it.
+        .felt = rgba8(22, 34, 36, 0.22f),
     };
     static constexpr std::array<ImVec4, kColorTokenCount> kTokens =
         build_palette(kSpec);
