@@ -36,11 +36,13 @@ PNG_ROOT = REPO / "assets" / "images"
 # .svg suffix dropped. Directory-level defaults cover the repetitive families
 # (52 cards, 8 chips, 13 icons) so adding a card never means editing this table.
 EXACT_SIZES: dict[str, tuple[int, int]] = {
-    "tier1/app_logo": (1280, 480),
+    # Portrait monogram, not the old wide wordmark. Aspect must match
+    # kLogoAspect in src/animations/button_morph.cpp.
+    "tier1/app_logo": (540, 800),
     "tier1/butler_neutral": (1024, 1536),
     "tier1/butler_raised": (1024, 1536),
     "tier1/dealer_button": (512, 512),
-    "tier2/butler_profile": (1024, 1280),
+    "tier2/butler_profile": (1024, 1800),
     # Matches the aspect tools/gen_table_felt.py authors (the rim's bounding box in
     # the D projection), not the 16:9 canvas. The renderer stretches this into the
     # runtime rim box, so a mismatched aspect here would only waste resolution --

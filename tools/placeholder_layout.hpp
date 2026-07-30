@@ -1,11 +1,18 @@
 #pragma once
 
-// Placeholder dimensions, shared by the generator (tools/gen_placeholders.cpp)
-// and the decode test (tests/assets/loader_test.cpp) so the two never disagree
-// about how large a generated stand-in PNG should be. The spec pins no exact
-// pixel dimensions for these assets; the values here are coherent placeholder
-// sizes (correct aspect ratios for cards/backgrounds) that real art overwrites
-// without any code change.
+// The declared pixel dimensions of every shipped PNG, shared by the generator
+// (tools/gen_placeholders.cpp) and the decode test (tests/assets/loader_test.cpp)
+// so the two never disagree about how large an asset should be.
+//
+// These were the generated stand-ins' sizes until real art landed; they now
+// record the real art's. The decode test asserts the shipped PNGs match, which
+// catches a truncated or mis-exported asset.
+//
+// Three files must agree on these numbers and there is no compile-time link
+// between them, so change them together:
+//   - this header                    (C++ generator + decode test)
+//   - tools/rasterize_assets.py      (SVG -> PNG export, 84 vector assets)
+//   - tools/derive_backgrounds.py    (the 3 photo-derived backgrounds)
 
 #include "assets/asset_paths.hpp"
 
@@ -23,40 +30,53 @@ struct Size {
 
     // Card faces (52) and the card back share the 5:7 playing-card ratio.
     if ((id >= A::CardSpadeA && id <= A::CardClubK) || id == A::CardBack) {
-        return {60, 84};
+        return {400, 560};
     }
     if (id >= A::ChipWhite && id <= A::ChipGold) {
-        return {96, 96};
+        return {512, 512};
     }
     // Cluster + Post-Round glyphs (Shop..SidePotChip) are square icons.
     if (id >= A::IconShop && id <= A::IconSidePotChip) {
-        return {48, 48};
+        return {256, 256};
     }
 
     switch (id) {
         case A::AppLogo:
-            return {320, 120};
+            // Portrait monogram (P + t + chip), not the old wide wordmark.
+            return {540, 800};
         case A::DealerButton:
-            return {200, 200};
+            return {512, 512};
         case A::TableFelt:
-            return {320, 180};  // 16:9
+            // Not 16:9 — the felt is authored in the renderer's foreshortened D
+            // projection and this is the aspect of that shape's bounding box.
+            return {2048, 1497};
         case A::IconHome:
-            return {48, 48};
+            return {256, 256};
+        // The three room backgrounds are stored at a resolution matched to their
+        // blur radius rather than all at full size: a heavy blur destroys the
+        // detail that resolution would preserve, so background_root needs far
+        // fewer pixels than background_game. See tools/derive_backgrounds.py.
         case A::BackgroundRoot:
+            return {720, 405};
         case A::BackgroundMode:
+            return {1280, 720};
         case A::BackgroundGame:
-            return {256, 144};  // 16:9
+            return {1920, 1080};
         case A::SidePotAllInMarker:
-            return {64, 64};
+            return {512, 512};
         case A::ButlerProfile:
+            // Taller than the front views: the side profile has legs and runs off
+            // the bottom of the Game screen.
+            return {1024, 1800};
         case A::ButlerNeutral:
         case A::ButlerRaised:
+            return {1024, 1536};
         case A::FrogBase:
         case A::FrogExpressionPass:
         case A::FrogExpressionFail:
-            return {160, 240};  // 2:3 portrait character frame
+            return {1024, 1024};
         default:
-            return {64, 64};
+            return {256, 256};
     }
 }
 

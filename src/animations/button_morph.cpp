@@ -60,8 +60,18 @@ Rect lerp_rect(const Rect& a, const Rect& b, float t) noexcept {
 }
 
 Rect logo_rect(Canvas canvas) noexcept {
-    return Rect{0.03f * canvas.width, 0.03f * canvas.height,
-                0.12f * canvas.width, 0.06f * canvas.height};
+    // The mark is a compact PORTRAIT monogram (a P whose bowl holds the dealer-button
+    // chip, with a lowercase t in the counter beneath), not the wide wordmark this slot
+    // was originally cut for. draw_image_slot stretches the art to fill this rect with
+    // no aspect preservation, so the rect's aspect must equal the PNG's or the chip
+    // renders as an ellipse — the old 0.12w x 0.06h slot was over 5x too wide.
+    //
+    // Driven by height so the mark holds a consistent optical size across window
+    // aspects; the width follows. Keep in step with assets/svg/tier1/app_logo.svg and
+    // the app_logo entries in tools/rasterize_assets.py and tools/placeholder_layout.hpp.
+    constexpr float kLogoAspect = 540.0f / 800.0f;  // app_logo.png width / height
+    const float h = 0.11f * canvas.height;
+    return Rect{0.03f * canvas.width, 0.03f * canvas.height, h * kLogoAspect, h};
 }
 
 Rect home_icon_rect(Canvas canvas) noexcept {
