@@ -93,11 +93,12 @@ void render_mode_selection_screen() {
     const animations::Canvas canvas = viewport_canvas();
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
-    // Blurred Mode Selection background image (background_mode.png); bg_primary
-    // wash when the asset is unavailable. Routes through the shared texture-bind
-    // seam, the same single AddImage point as every other image slot.
+    // Blurred room background image (background_room.png, the same asset Root
+    // draws); bg_primary wash when the asset is unavailable. Routes through the
+    // shared texture-bind seam, the same single AddImage point as every other
+    // image slot.
     ru::draw_image_slot(dl, animations::Rect{0.0f, 0.0f, canvas.width, canvas.height},
-                        assets::AssetId::BackgroundMode, ru::SlotFallback::Background,
+                        assets::AssetId::BackgroundRoom, ru::SlotFallback::Background,
                         /*focused=*/false);
 
     // Tier-1 ambient particle drift, behind the UI (self-gates on Reduce Motion +

@@ -13,11 +13,15 @@ namespace poker_trainer::assets {
 // is also the index into kAssetEntries below.
 //
 // Tiers follow ARCHITECTURE Module 3's loading strategy. Tier 1 is the
-// synchronous Root-screen set (Root background, dealer button, Home icon,
+// synchronous Root-screen set (room background, dealer button, Home icon,
 // front-facing Butler). Tier 2 is the background set fetched after Root
-// renders (Mode/Game backgrounds, side-profile Butler, table, cards, chips,
+// renders (Game background, side-profile Butler, table, cards, chips,
 // cluster + Post-Round glyphs, all-in marker). Tier 3 carries no PNGs (SFX
 // and music only). Tier 4 is the on-demand Frog easter-egg set.
+//
+// There are two backdrops, not one per screen: the blurred room, and the
+// Game screen's pool of light. The four menu-side screens (Root, Mode
+// Selection, Post-Round, Tutorial Complete) all draw the same room.
 //
 // The 4 Root UI buttons (PLAY / etc.) are theme-rendered ImGui widgets, not
 // baked PNGs, so they are intentionally absent here. Seat positions are HUD
@@ -25,15 +29,17 @@ namespace poker_trainer::assets {
 enum class AssetId : std::uint16_t {
     // --- Tier 1: synchronous initial load (Root screen) ---
     AppLogo = 0,
-    BackgroundRoot,   // background_root.png (heavily-blurred Root variant)
+    BackgroundRoom,   // background_room.png (heavily-blurred room; Root, Mode
+                      // Selection, Post-Round, Tutorial Complete). Tier 1 because
+                      // Root needs it on the critical path; the other three
+                      // inherit that and no longer wait on a Tier-2 fetch.
     DealerButton,
     IconHome,         // promoted to Tier 1 (returns to Root from Mode/Post-Round)
     ButlerNeutral,    // front-facing Butler, pass expression
     ButlerRaised,     // front-facing Butler, fail expression
 
     // --- Tier 2: background load (after Root renders) ---
-    BackgroundMode,   // background_mode.png (Mode Selection + Post-Round)
-    BackgroundGame,   // background_game.png (Game screen)
+    BackgroundGame,   // background_game.png (Game screen pool of light)
     ButlerProfile,    // side-profile Butler, Game screen
 
     // --- Tier 2: Card faces (52 cards) ---
@@ -94,7 +100,7 @@ enum class AssetId : std::uint16_t {
     FrogExpressionFail,
 };
 
-inline constexpr std::size_t kAssetCount = 87;
+inline constexpr std::size_t kAssetCount = 86;
 
 // Cross-check: the enum is contiguous from 0, so the last enumerator + 1 is
 // the asset count. Keep this in lock-step with the kAssetEntries array size.
@@ -113,14 +119,13 @@ struct AssetEntry {
 inline constexpr std::array<AssetEntry, kAssetCount> kAssetEntries = {{
     // --- Tier 1 ---
     {"assets/images/tier1/app_logo.png",                   AssetTier::Tier1},
-    {"assets/images/tier1/background_root.png",            AssetTier::Tier1},
+    {"assets/images/tier1/background_room.png",            AssetTier::Tier1},
     {"assets/images/tier1/dealer_button.png",              AssetTier::Tier1},
     {"assets/images/tier1/icons/home.png",                 AssetTier::Tier1},
     {"assets/images/tier1/butler_neutral.png",             AssetTier::Tier1},
     {"assets/images/tier1/butler_raised.png",              AssetTier::Tier1},
 
-    // --- Tier 2: Backgrounds + side-profile Butler ---
-    {"assets/images/tier2/background_mode.png",            AssetTier::Tier2},
+    // --- Tier 2: Game background + side-profile Butler ---
     {"assets/images/tier2/background_game.png",            AssetTier::Tier2},
     {"assets/images/tier2/butler_profile.png",             AssetTier::Tier2},
 

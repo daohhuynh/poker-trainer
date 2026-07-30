@@ -90,9 +90,9 @@ void render_root_screen() {
     const animations::Canvas canvas = viewport_canvas();
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
-    // Blurred Root background image (background_root.png); bg_primary wash when
+    // Blurred room background image (background_room.png); bg_primary wash when
     // the asset is unavailable. Routes through the shared texture-bind seam.
-    ru::draw_image_slot(dl, canvas_rect(canvas), assets::AssetId::BackgroundRoot,
+    ru::draw_image_slot(dl, canvas_rect(canvas), assets::AssetId::BackgroundRoom,
                         ru::SlotFallback::Background, /*focused=*/false);
 
     // Tier-1 ambient particle drift, behind the UI (self-gates on Reduce Motion +
@@ -143,13 +143,13 @@ void render_root_morph_frame(float global_t) {
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
     // Background + the two stationary anchors stay put through the morph.
-    // SEAM(visual-pass): the synchronized background-blur crossfade goes here.
-    // The Root background now renders its image through the shared seam; the
-    // ~300 ms crossfade into the Mode Selection background (blending background_root
-    // into background_mode using animations::MorphController::crossfade) is still a
-    // deferred visual-pass step, so the morph draws the single Root background slot
-    // and the live Mode Selection screen takes over background_mode at handoff.
-    ru::draw_image_slot(dl, canvas_rect(canvas), assets::AssetId::BackgroundRoot,
+    //
+    // No background crossfade runs here, and none is deferred: Root and Mode
+    // Selection draw the same BackgroundRoom asset, so the backdrop is already
+    // continuous across the morph and the handoff to the live Mode Selection
+    // screen is pixel-identical. The focus-pull crossfade the architecture asks
+    // for is the room-to-pool-of-light step on the way into the Game screen.
+    ru::draw_image_slot(dl, canvas_rect(canvas), assets::AssetId::BackgroundRoom,
                         ru::SlotFallback::Background, /*focused=*/false);
     ru::draw_image_slot(dl, animations::logo_rect(canvas), assets::AssetId::AppLogo,
                         ru::SlotFallback::Icon, /*focused=*/false);

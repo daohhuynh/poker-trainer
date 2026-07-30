@@ -13,8 +13,8 @@ That idiom is the usual premultiply fix for resize halos, but in ImageMagick 7 i
 turns every transparent pixel opaque black -- measured, not assumed. Inkscape
 renders straight to the target size here, so no resize step is needed at all.
 
-The three background_*.png files are NOT produced here: they derive from a
-photograph via tools/derive_backgrounds.py.
+The two background_*.png files are NOT produced here: tools/derive_backgrounds.py
+derives the room from a photograph and generates the Game screen's pool of light.
 
 Usage:
     python3 tools/rasterize_assets.py            # rasterize everything

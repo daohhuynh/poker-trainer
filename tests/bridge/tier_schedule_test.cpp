@@ -73,7 +73,7 @@ TEST(GameLaunchRequiredAsset, NonTableAssetsAreNotGated) {
     // Tier-1 boot assets, Shop-only glyphs, and the Tier-4 Frog set never block
     // a Game launch.
     EXPECT_FALSE(br::is_game_launch_required_asset(as::AssetId::AppLogo));
-    EXPECT_FALSE(br::is_game_launch_required_asset(as::AssetId::BackgroundRoot));
+    EXPECT_FALSE(br::is_game_launch_required_asset(as::AssetId::BackgroundRoom));
     EXPECT_FALSE(br::is_game_launch_required_asset(as::AssetId::IconTomato));
     EXPECT_FALSE(br::is_game_launch_required_asset(as::AssetId::ButlerProfile));
     EXPECT_FALSE(br::is_game_launch_required_asset(as::AssetId::FrogBase));

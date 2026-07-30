@@ -1,27 +1,32 @@
 #!/usr/bin/env python3
-"""Derive the three room-background PNGs from one source photograph.
+"""Produce the two backdrop PNGs the app draws behind its screens.
 
-ARCHITECTURE.md Module 2 specifies a single source render of the high-limit room,
-blurred three ways at asset-preparation time so the app never pays for a runtime
-blur:
+ARCHITECTURE.md Module 2 specifies a single source render of the high-limit room
+blurred at asset-preparation time so the app never pays for a runtime blur. What
+ships is two files, not one per screen:
 
-    background_root.png   heavily blurred   ~12-20 px radius equivalent
-    background_mode.png   medium blur       ~6-10 px radius equivalent
-    background_game.png   light blur        ~2-4 px radius equivalent
+    background_room.png   heavily blurred photo     Root, Mode Selection,
+                                                    Post-Round, Tutorial Complete
+    background_game.png   generated pool of light   Game screen
 
-The screens crossfade between these variants to fake a camera focus-pull, so all
-three must be the same crop of the same source at the same size -- any framing
-drift between variants shows up as a jump during the transition.
+The room is derived from the photograph below. The pool of light is not derived
+from anything -- see POOL_OF_LIGHT for why the Game screen stopped showing the
+room at all.
+
+The four menu-side screens share one asset rather than taking one each: they are
+all menus, they all want the same heavy blur, and a crossfade between two
+identical images is not a transition. The focus-pull the spec describes happens
+once, at the step that carries the idea -- room to pool of light, when you sit
+down at the table.
 
 Output is PNG because the decoder is compiled STBI_ONLY_PNG (see
 src/assets/loader.cpp); a JPG here would silently fail to load.
 
-The same module budgets ~1.3 MB for all three combined. A full-depth 2560x1440
-truecolour PNG blows through that on its own, so each variant is colour-quantized
-to fit. Blur destroys high-frequency detail, which is exactly what makes heavy
-quantization invisible here -- and the heavier the blur, the fewer colours the
-variant needs. Dithering suppresses banding across the smooth tonal ramps that
-survive the blur.
+The same module budgets ~1.3 MB for the backdrop set. A full-depth 2560x1440
+truecolour PNG blows through that on its own, so the room is colour-quantized to
+fit. Blur destroys high-frequency detail, which is exactly what makes heavy
+quantization invisible here. Dithering suppresses banding across the smooth tonal
+ramps that survive the blur.
 """
 
 from __future__ import annotations
@@ -38,35 +43,22 @@ WIDTH, HEIGHT = 2560, 1440
 
 # (output path, gaussian sigma at 2560px, stored width, palette colours)
 #
-# Sigma is the midpoint of each band the architecture specifies, applied at full
-# 2560px width so the blur radius means what the spec says it means.
+# Sigma sits at the midpoint of the heavy band the architecture specifies for the
+# innermost menu backdrop, applied at full 2560px width so the blur radius means
+# what the spec says it means.
 #
 # Stored resolution is then matched to the blur. A Gaussian of sigma s erases
 # essentially all spatial detail finer than about 2s pixels, so storing a
-# heavily-blurred variant at full width is paying for information the blur
-# already destroyed. background_root (sigma 16) carries no detail below ~32px and
-# is visually identical stored at 1/4 width and bilinear-upscaled by the GPU;
-# background_game (sigma 3) is only lightly blurred and keeps most of its width.
-# This is what brings the set inside the ~1.3 MB budget in Module 2 -- quantizing
-# alone could not, and it matters most for background_root, which is Tier 1 and
-# therefore on the critical path to first render.
+# heavily-blurred image at full width is paying for information the blur already
+# destroyed. At sigma 16 the room carries no detail below ~32px and is visually
+# identical stored at 1/4 width and bilinear-upscaled by the GPU. This is what
+# brings the backdrop set inside the ~1.3 MB budget in Module 2 -- quantizing
+# alone could not -- and it matters here because the room is Tier 1 and therefore
+# on the critical path to first render.
 #
 # Palette size follows the same logic: the heavier the blur, the fewer colours
 # needed before quantization becomes visible.
-# The Game screen is deliberately NOT in this list -- see POOL_OF_LIGHT below.
-#
-# Root and Mode Selection use IDENTICAL parameters on purpose. Mode used to sit at
-# sigma 8 so the room "resolved" a step as you moved inward, but both screens are
-# just menus, the crossfade between them was not worth the switch, and the heavier
-# blur is what makes their buttons dominate. Matching Root also drops Mode from
-# 442 KB to the same 139 KB.
-#
-# The step that carries the whole idea is now the last one -- room to pool of light
-# when you sit down at the table.
-VARIANTS = [
-    ("tier1/background_root.png", 16, 720, 96),
-    ("tier2/background_mode.png", 16, 720, 96),
-]
+ROOM = ("tier1/background_room.png", 16, 720, 96)
 
 # The Game screen does not show the room at all. It shows a pool of light.
 #
@@ -77,7 +69,7 @@ VARIANTS = [
 # the felt throws the room OUT of focus, so a crisp room behind the table is the
 # unrealistic state, not the realistic one.
 #
-# So this variant is generated rather than derived: a warm elliptical falloff over
+# So this backdrop is generated rather than derived: a warm elliptical falloff over
 # black, as if the only light in the room hangs above the table. That kills the
 # luminance competition (blur alone would not -- a blurred chandelier is still a
 # large bright blob) while keeping the table and the dealer standing in a lit space
@@ -155,37 +147,38 @@ def main() -> int:
     total += pool_size
     print(f"  {pool['path']:<32} POOL OF LIGHT  {pw}x{ph}  {pool_size / 1024:.0f} KB")
 
-    for rel, sigma, store_w, colours in VARIANTS:
-        out = REPO / "assets" / "images" / rel
-        out.parent.mkdir(parents=True, exist_ok=True)
-        store_h = store_w * HEIGHT // WIDTH
-        run([
-            "magick", str(args.source),
-            # Centre-crop to exactly 16:9 at full width first. Cropping before the
-            # blur keeps every variant on identical framing, which the crossfade
-            # between them depends on.
-            "-resize", f"{WIDTH}x{HEIGHT}^",
-            "-gravity", "center",
-            "-extent", f"{WIDTH}x{HEIGHT}",
-            # Blur at full width so the radius matches the spec's stated pixels...
-            "-blur", f"0x{sigma}",
-            # ...then downsample to the storage resolution the blur justifies.
-            "-resize", f"{store_w}x{store_h}",
-            "-brightness-contrast", f"-{DARKEN_PERCENT}x0",
-            "-colors", str(colours),
-            "-dither", "FloydSteinberg",
-            "-strip",
-            "-define", "png:compression-level=9",
-            str(out),
-        ])
-        size = out.stat().st_size
-        total += size
-        geom = subprocess.run(
-            ["magick", "identify", "-format", "%wx%h %[type]", str(out)],
-            check=True, capture_output=True, text=True,
-        ).stdout
-        print(f"  {rel:<32} sigma={sigma:<3} colors={colours:<4} "
-              f"{geom}  {size / 1024:.0f} KB")
+    # --- the blurred room (Root, Mode Selection, Post-Round, Tutorial Complete) ---
+    rel, sigma, store_w, colours = ROOM
+    out = REPO / "assets" / "images" / rel
+    out.parent.mkdir(parents=True, exist_ok=True)
+    store_h = store_w * HEIGHT // WIDTH
+    run([
+        "magick", str(args.source),
+        # Centre-crop to exactly 16:9 at full width before blurring, so the framing
+        # is a property of the crop rather than of the blur pass -- re-deriving at a
+        # different sigma must not shift the composition.
+        "-resize", f"{WIDTH}x{HEIGHT}^",
+        "-gravity", "center",
+        "-extent", f"{WIDTH}x{HEIGHT}",
+        # Blur at full width so the radius matches the spec's stated pixels...
+        "-blur", f"0x{sigma}",
+        # ...then downsample to the storage resolution the blur justifies.
+        "-resize", f"{store_w}x{store_h}",
+        "-brightness-contrast", f"-{DARKEN_PERCENT}x0",
+        "-colors", str(colours),
+        "-dither", "FloydSteinberg",
+        "-strip",
+        "-define", "png:compression-level=9",
+        str(out),
+    ])
+    size = out.stat().st_size
+    total += size
+    geom = subprocess.run(
+        ["magick", "identify", "-format", "%wx%h %[type]", str(out)],
+        check=True, capture_output=True, text=True,
+    ).stdout
+    print(f"  {rel:<32} sigma={sigma:<3} colors={colours:<4} "
+          f"{geom}  {size / 1024:.0f} KB")
 
     print(f"\ncombined: {total / 1024 / 1024:.2f} MB "
           f"(ARCHITECTURE Module 2 budget: ~1.3 MB)")

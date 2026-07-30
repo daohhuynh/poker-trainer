@@ -151,9 +151,9 @@ void render_tutorial_complete_screen() {
     const Canvas c = viewport_canvas();
     ImDrawList* dl = ImGui::GetBackgroundDrawList();
 
-    // Root background (blurred, for continuity); bg_primary wash when unavailable.
+    // Room background (blurred, for continuity); bg_primary wash when unavailable.
     if (!bridge::draw_asset_image(dl, ImVec2{0.0f, 0.0f}, ImVec2{c.width, c.height},
-                                  assets::AssetId::BackgroundRoot)) {
+                                  assets::AssetId::BackgroundRoom)) {
         dl->AddRectFilled(ImVec2{0.0f, 0.0f}, ImVec2{c.width, c.height},
                           token_u32(theme::ColorToken::BgPrimary));
     }

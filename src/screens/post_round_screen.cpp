@@ -505,9 +505,9 @@ void render_post_round_screen(PostRoundRuntime& runtime) {
         modal_alpha = 1.0f;
     }
 
-    // Background (background_mode, full opacity). The screen slide itself is applied by
+    // Background (background_room, full opacity). The screen slide itself is applied by
     // the bridge's screen-transition module (it renders this whole screen at an offset).
-    render_util::draw_image_slot(dl, anim::Rect{0.0f, 0.0f, w, h}, assets::AssetId::BackgroundMode,
+    render_util::draw_image_slot(dl, anim::Rect{0.0f, 0.0f, w, h}, assets::AssetId::BackgroundRoom,
                                  render_util::SlotFallback::Background, false);
 
     // Tier-1 ambient particle drift, behind the dealer + stat modal (self-gates on

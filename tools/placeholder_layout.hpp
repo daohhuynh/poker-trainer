@@ -54,14 +54,10 @@ struct Size {
             return {2048, 1577};
         case A::IconHome:
             return {256, 256};
-        // The three room backgrounds are stored at a resolution matched to their
-        // blur radius rather than all at full size: a heavy blur destroys the
-        // detail that resolution would preserve, so background_root needs far
-        // fewer pixels than background_game. See tools/derive_backgrounds.py.
-        case A::BackgroundRoot:
-            return {720, 405};
-        case A::BackgroundMode:
-            // Same parameters as Root: the two menus share one background.
+        // Both backdrops are stored well below full size: a heavy blur destroys
+        // the detail that resolution would preserve, and a smooth gradient has
+        // none to begin with. See tools/derive_backgrounds.py.
+        case A::BackgroundRoom:
             return {720, 405};
         case A::BackgroundGame:
             // Not photo-derived: a generated pool of light, which upscales cleanly.

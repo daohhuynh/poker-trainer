@@ -446,25 +446,11 @@ void render_asset(AssetId id, Canvas& cv) {
         return;
     }
 
-    // Backgrounds (theme-independent blur variants) — solid dark tints.
-    if (id == A::BackgroundRoot || id == A::BackgroundMode || id == A::BackgroundGame) {
-        Color tint{22, 20, 18, 255};
-        std::string_view name = "MODE";
-        switch (id) {
-            case A::BackgroundRoot:
-                tint = Color{26, 18, 16, 255};
-                name = "ROOT";
-                break;
-            case A::BackgroundGame:
-                tint = Color{18, 26, 20, 255};
-                name = "GAME";
-                break;
-            case A::BackgroundMode:
-            default:
-                tint = Color{22, 20, 18, 255};
-                name = "MODE";
-                break;
-        }
+    // Backgrounds (theme-independent) — solid dark tints.
+    if (id == A::BackgroundRoom || id == A::BackgroundGame) {
+        const bool is_room = (id == A::BackgroundRoom);
+        const Color tint = is_room ? Color{26, 18, 16, 255} : Color{18, 26, 20, 255};
+        const std::string_view name = is_room ? "ROOM" : "GAME";
         cv.fill(tint);
         draw_text_centered(cv, static_cast<int>(cv.w) / 2, static_cast<int>(cv.h) / 2 - 12, "BG", 2,
                            Color{120, 112, 104, 255});

@@ -52,8 +52,8 @@ FONT: list[str] = []
 
 # (section title, glob, tile size, columns)
 SECTIONS = [
-    ("BACKGROUNDS", ["tier1/background_root.png", "tier2/background_mode.png",
-                     "tier2/background_game.png"], 380, 3),
+    ("BACKGROUNDS", ["tier1/background_room.png",
+                     "tier2/background_game.png"], 380, 2),
     ("DEALER  -  butler x3, frog base + overlays", [
         "tier1/butler_neutral.png", "tier1/butler_raised.png",
         "tier2/butler_profile.png", "tier4/frog_base.png",

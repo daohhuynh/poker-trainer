@@ -128,16 +128,21 @@ usable quality and aspect ratio was found.
 
 `assets/source/room_source.jpg` is an **archived input, not a shipped asset** —
 the CMake deploy step excludes `assets/source/` from the bundle. It is committed
-so the three backgrounds can be re-derived at different blur radii without
+so the room background can be re-derived at a different blur radius without
 re-sourcing the photo.
 
-Three backgrounds derive from it via `tools/derive_backgrounds.py`:
+One background derives from it via `tools/derive_backgrounds.py`. The same script
+emits the Game screen's backdrop, but that one is generated rather than derived —
+a radial gradient, no photographic content, so no licence obligation attaches:
 
-| Asset | Blur σ | Stored | Size |
-|---|---|---|---|
-| `assets/images/tier1/background_root.png` | 16 | 720×405 | 139 KB |
-| `assets/images/tier2/background_mode.png` | 8 | 1280×720 | 442 KB |
-| `assets/images/tier2/background_game.png` | 3 | 1920×1080 | 1087 KB |
+| Asset | Origin | Blur σ | Stored | Size |
+|---|---|---|---|---|
+| `assets/images/tier1/background_room.png` | photo | 16 | 720×405 | 139 KB |
+| `assets/images/tier2/background_game.png` | generated | n/a | 480×270 | 155 KB |
+
+The room is one asset drawn by four screens (Root, Mode Selection, Post-Round,
+Tutorial Complete). It used to ship twice — Mode Selection carried a byte-identical
+copy under its own name once it took Root's blur parameters.
 
 ---
 
@@ -164,7 +169,7 @@ Rebuild every PNG from source with:
 
 ```
 python3 tools/rasterize_assets.py       # 84 vector assets
-python3 tools/derive_backgrounds.py     # 3 photo-derived backgrounds
+python3 tools/derive_backgrounds.py     # the room + the Game pool of light
 ```
 
 ---
