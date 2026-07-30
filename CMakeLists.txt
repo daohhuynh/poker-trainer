@@ -517,6 +517,12 @@ if(EMSCRIPTEN)
     # manifest already applies — macOS junk must not reach the CDN. An empty asset
     # tree is a hard error, not a warning: shipping a zero-asset bundle is the exact
     # silent failure this step exists to prevent.
+    #
+    # Both this and the service-worker step hang off the always-run bundle_assets
+    # target below rather than add_custom_command(TARGET ... POST_BUILD), because
+    # POST_BUILD only fires when the target actually relinks. On a build where only
+    # assets changed the wasm is already up to date, so POST_BUILD is skipped and
+    # the new assets never reach the bundle — silently reintroducing the 404s.
     file(WRITE ${CMAKE_BINARY_DIR}/deploy_assets.cmake [=[
 if(NOT IS_DIRECTORY "${SOURCE}")
     message(FATAL_ERROR "Asset source tree not found: ${SOURCE}")
@@ -524,6 +530,7 @@ endif()
 file(GLOB_RECURSE _media LIST_DIRECTORIES false
     "${SOURCE}/*.png" "${SOURCE}/*.jpg" "${SOURCE}/*.jpeg"
     "${SOURCE}/*.mp3" "${SOURCE}/*.ogg" "${SOURCE}/*.wav")
+list(FILTER _media EXCLUDE REGEX "/(svg|source)/")
 list(LENGTH _media _media_count)
 if(_media_count EQUAL 0)
     message(FATAL_ERROR
@@ -531,18 +538,16 @@ if(_media_count EQUAL 0)
         "bundle: every /assets/... fetch would 404 at runtime.")
 endif()
 file(REMOVE_RECURSE "${DEST}")
-file(COPY "${SOURCE}/" DESTINATION "${DEST}" PATTERN ".DS_Store" EXCLUDE)
+# assets/svg/ (editable vector sources) and assets/source/ (the archived room
+# photograph) are inputs to the art pipeline, not shipped assets -- the browser
+# never requests them, so deploying them would be dead CDN weight.
+file(COPY "${SOURCE}/" DESTINATION "${DEST}"
+    PATTERN ".DS_Store" EXCLUDE
+    PATTERN "*.svg" EXCLUDE
+    PATTERN "svg" EXCLUDE
+    PATTERN "source" EXCLUDE)
 message(STATUS "Deployed ${_media_count} assets to ${DEST}")
 ]=])
-    add_custom_command(TARGET poker_trainer POST_BUILD
-        COMMAND ${CMAKE_COMMAND}
-            -DSOURCE=${CMAKE_SOURCE_DIR}/assets
-            -DDEST=$<TARGET_FILE_DIR:poker_trainer>/assets
-            -P ${CMAKE_BINARY_DIR}/deploy_assets.cmake
-        COMMENT "Deploying assets/ into the wasm bundle"
-        VERBATIM
-    )
-
     # Serve the service worker from the bundle directory so the boot-time
     # navigator.serviceWorker.register('service_worker.js') resolves (a worker
     # only controls pages at or below its own scope).
@@ -574,6 +579,10 @@ endif()
 file(GLOB_RECURSE _assets LIST_DIRECTORIES false
     "${ASSETS}/*.png" "${ASSETS}/*.jpg" "${ASSETS}/*.jpeg"
     "${ASSETS}/*.mp3" "${ASSETS}/*.ogg" "${ASSETS}/*.wav")
+# Mirror the deploy step's exclusions: assets/svg/ and assets/source/ are art
+# inputs that never reach the browser, so they must not perturb the cache
+# version -- re-exporting an SVG should not evict a returning user's cache.
+list(FILTER _assets EXCLUDE REGEX "/(svg|source)/")
 list(SORT _assets)
 foreach(_a IN LISTS _assets)
     file(SHA256 "${_a}" _ah)
@@ -592,16 +601,36 @@ message(STATUS
     "service_worker.js cache version: poker-trainer-${CACHE_VERSION} "
     "(wasm + ${_asset_count} assets)")
 ]=])
-    add_custom_command(TARGET poker_trainer POST_BUILD
+    # Both asset-dependent bundle steps run here, on an always-out-of-date custom
+    # target rather than as POST_BUILD commands on poker_trainer.
+    #
+    # POST_BUILD only fires when the target relinks. Editing a PNG or dropping in a
+    # music track leaves the wasm up to date, so on that build POST_BUILD would be
+    # skipped entirely: the new asset never reaches the bundle, and the service
+    # worker keeps serving the previous cache version. That directly contradicts
+    # what the cache-version scheme above is for ("busts when a PNG/audio file
+    # changes even if the wasm did not"). A custom target is always considered out
+    # of date, so both steps run on every build; both are cheap and idempotent, and
+    # the version hash is content-derived so an unchanged tree still yields an
+    # unchanged cache name.
+    #
+    # add_dependencies orders this after the link, which the version injector needs
+    # -- it hashes the freshly-built wasm.
+    add_custom_target(bundle_assets ALL
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE=${CMAKE_SOURCE_DIR}/assets
+            -DDEST=$<TARGET_FILE_DIR:poker_trainer>/assets
+            -P ${CMAKE_BINARY_DIR}/deploy_assets.cmake
         COMMAND ${CMAKE_COMMAND}
             -DWASM=$<TARGET_FILE_DIR:poker_trainer>/poker_trainer.wasm
             -DASSETS=${CMAKE_SOURCE_DIR}/assets
             -DSRC=${CMAKE_SOURCE_DIR}/src/bridge/service_worker.js
             -DOUT=$<TARGET_FILE_DIR:poker_trainer>/service_worker.js
             -P ${CMAKE_BINARY_DIR}/inject_sw_version.cmake
-        COMMENT "Injecting build-unique cache version into service_worker.js"
+        COMMENT "Deploying assets/ and versioning service_worker.js"
         VERBATIM
     )
+    add_dependencies(bundle_assets poker_trainer)
 
     # The wasm target emits only poker_trainer.js + .wasm (no .html suffix, so
     # Emscripten generates no shell). index.html is our own canvas loader: the
