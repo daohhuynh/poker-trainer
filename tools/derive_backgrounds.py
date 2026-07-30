@@ -54,9 +54,18 @@ WIDTH, HEIGHT = 2560, 1440
 # Palette size follows the same logic: the heavier the blur, the fewer colours
 # needed before quantization becomes visible.
 # The Game screen is deliberately NOT in this list -- see POOL_OF_LIGHT below.
+#
+# Root and Mode Selection use IDENTICAL parameters on purpose. Mode used to sit at
+# sigma 8 so the room "resolved" a step as you moved inward, but both screens are
+# just menus, the crossfade between them was not worth the switch, and the heavier
+# blur is what makes their buttons dominate. Matching Root also drops Mode from
+# 442 KB to the same 139 KB.
+#
+# The step that carries the whole idea is now the last one -- room to pool of light
+# when you sit down at the table.
 VARIANTS = [
     ("tier1/background_root.png", 16, 720, 96),
-    ("tier2/background_mode.png", 8, 1280, 160),
+    ("tier2/background_mode.png", 16, 720, 96),
 ]
 
 # The Game screen does not show the room at all. It shows a pool of light.

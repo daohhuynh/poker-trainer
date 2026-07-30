@@ -61,7 +61,8 @@ struct Size {
         case A::BackgroundRoot:
             return {720, 405};
         case A::BackgroundMode:
-            return {1280, 720};
+            // Same parameters as Root: the two menus share one background.
+            return {720, 405};
         case A::BackgroundGame:
             // Not photo-derived: a generated pool of light, which upscales cleanly.
             return {480, 270};
