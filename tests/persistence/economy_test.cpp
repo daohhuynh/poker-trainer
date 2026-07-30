@@ -3,6 +3,7 @@
 #include "audio/audio_paths.hpp"
 #include "persistence/persistence_schema.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -166,4 +167,55 @@ TEST(PoolMutation, AddUnownedTrackIsNoOp) {
     pt::MusicLibraryState lib{};
     pt::add_track_to_pool(lib, audio::MusicTrackId::Classical_Track3);  // not owned
     EXPECT_TRUE(lib.active_pool_track_ids.empty());
+}
+
+// ----- First-session starter seeding (Module 7 "Default tracks") -----
+
+TEST(StarterPoolSeeding, PutsEveryGenresStarterInRotation) {
+    pt::MusicLibraryState lib{};
+    pt::add_starter_tracks_to_pool(lib);
+    EXPECT_TRUE(pt::is_track_in_pool(lib, audio::MusicTrackId::LoungeJazz_Starter));
+    EXPECT_TRUE(pt::is_track_in_pool(lib, audio::MusicTrackId::Classical_Starter));
+    EXPECT_TRUE(pt::is_track_in_pool(lib, audio::MusicTrackId::BossaNova_Starter));
+    EXPECT_TRUE(pt::is_track_in_pool(lib, audio::MusicTrackId::Ambient_Starter));
+}
+
+TEST(StarterPoolSeeding, LeavesPaidTracksOutOfRotation) {
+    pt::MusicLibraryState lib{};
+    pt::add_starter_tracks_to_pool(lib);
+    ASSERT_EQ(lib.active_pool_track_ids.size(), 4u);
+    for (std::size_t i = 0; i < audio::kMusicTrackCount; ++i) {
+        const auto track = static_cast<audio::MusicTrackId>(i);
+        if (!audio::music_track_info(track).is_starter) {
+            EXPECT_FALSE(pt::is_track_in_pool(lib, track));
+        }
+    }
+}
+
+TEST(StarterPoolSeeding, IsIdempotent) {
+    pt::MusicLibraryState lib{};
+    pt::add_starter_tracks_to_pool(lib);
+    pt::add_starter_tracks_to_pool(lib);
+    EXPECT_EQ(lib.active_pool_track_ids.size(), 4u);
+}
+
+TEST(StarterPoolSeeding, PreservesTracksAlreadyInRotation) {
+    pt::AppState s{};
+    s.tomatoes = pt::TomatoesState{25, 25};
+    ASSERT_TRUE(pt::purchase_track(s, audio::MusicTrackId::Classical_Track2));
+    pt::add_track_to_pool(s.music_library, audio::MusicTrackId::Classical_Track2);
+
+    pt::add_starter_tracks_to_pool(s.music_library);
+    EXPECT_TRUE(pt::is_track_in_pool(s.music_library, audio::MusicTrackId::Classical_Track2));
+    EXPECT_EQ(s.music_library.active_pool_track_ids.size(), 5u);
+}
+
+// Boot reconciles Z03's in-memory pools to this set both ways, so a removed starter must
+// stay out of it — the persisted rotation is what survives a reload, not the Z03 seed.
+TEST(StarterPoolSeeding, RemovedStarterStaysOutOnceTheSetIsNonEmpty) {
+    pt::MusicLibraryState lib{};
+    pt::add_starter_tracks_to_pool(lib);
+    pt::remove_track_from_pool(lib, audio::MusicTrackId::LoungeJazz_Starter);
+    EXPECT_FALSE(pt::is_track_in_pool(lib, audio::MusicTrackId::LoungeJazz_Starter));
+    EXPECT_FALSE(lib.active_pool_track_ids.empty());  // boot re-seeds only an EMPTY set
 }

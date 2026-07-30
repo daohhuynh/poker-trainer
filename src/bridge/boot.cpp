@@ -654,20 +654,47 @@ void finish_boot_after_persistence() {
     // forwards here through Z03's normal mute/volume routing.
     bridge::set_sfx_player([](audio::SfxId id) { audio::play_sfx(id); });
 
-    // Restore the persisted shuffle-pool composition (Module 7). install_audio seeded
-    // each genre's starter; replay the saved active_pool_track_ids on top so previously
-    // added/purchased tracks return to rotation across a reload. add_to_shuffle is
-    // idempotent, so re-adding a starter is a no-op. KNOWN V1 LIMITATION: a STARTER the
-    // user removed from rotation reappears after reload (the starter is always re-seeded);
-    // non-starter removals persist correctly. See report.
+    // Restore the persisted shuffle-pool composition (Module 7) and make it the single
+    // source of truth for what is in rotation. Z03's install seeds every genre's starter
+    // into its in-memory pool unconditionally (it has no persistence dependency), so the
+    // restore must RECONCILE both ways — add what the user has in rotation, remove what
+    // they do not — not merely add. An add-only replay let the always-re-seeded starters
+    // survive a removal, and left the Shop's dot/ADD/REMOVE state (read from
+    // active_pool_track_ids) describing a rotation the audio engine was not actually
+    // playing.
+    //
+    // A profile whose active_pool_track_ids is empty has no persisted representation of
+    // the rotation yet, which is the first-session case: seed the four starters into it
+    // (ARCHITECTURE Module 7 Shop UI, "Default tracks ... pre-added to that genre's
+    // shuffle pool on first session") and save, so the persisted set is authoritative from
+    // here on and a later removal sticks.
     if (g_boot.service.has_value()) {
-        for (const std::uint8_t id :
-             g_boot.service->state().music_library.active_pool_track_ids) {
-            if (id < audio::kMusicTrackCount) {
-                const auto track = static_cast<audio::MusicTrackId>(id);
-                audio::add_to_shuffle(audio::music_track_info(track).genre, track);
+        if (g_boot.service->state().music_library.active_pool_track_ids.empty()) {
+            persistence::AppState next = g_boot.service->state();
+            persistence::add_starter_tracks_to_pool(next.music_library);
+            g_boot.service->save_state(next);
+        }
+        const persistence::MusicLibraryState& lib = g_boot.service->state().music_library;
+        for (std::size_t i = 0; i < audio::kMusicTrackCount; ++i) {
+            const auto track = static_cast<audio::MusicTrackId>(i);
+            const audio::MusicGenre genre = audio::music_track_info(track).genre;
+            if (persistence::is_track_in_pool(lib, track)) {
+                audio::add_to_shuffle(genre, track);
+            } else {
+                audio::remove_from_shuffle(genre, track);
             }
         }
+    }
+
+    // Apply the persisted audio settings now that Z03 is installed and its pools match
+    // the saved rotation. The boot path already restores the saved theme before the first
+    // frame; audio was the omission — apply_audio ran only from a Settings edit or the
+    // post-auth adopt, so every reload silently fell back to the DEFAULTS: Lounge Jazz at
+    // volume 50 with the mutes off. That pinned playback to the Lounge Jazz pool no matter
+    // which genre the user had selected, which is what made Shop add/remove on any other
+    // genre inaudible.
+    if (g_boot.settings.apply_audio) {
+        g_boot.settings.apply_audio(g_boot.live_settings.audio);
     }
 
     // Register the tier orchestrator's per-frame tick: the navigation-gated Tier-2

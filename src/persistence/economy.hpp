@@ -77,4 +77,13 @@ void add_track_to_pool(MusicLibraryState& lib, audio::MusicTrackId track);
 // state only; the caller updates the in-memory audio pool via audio::remove_from_shuffle.
 void remove_track_from_pool(MusicLibraryState& lib, audio::MusicTrackId track);
 
+// Put every genre's free starter track into the persisted rotation. ARCHITECTURE
+// Module 7 (Shop UI — "Default tracks"): "The first track of each genre is permanently
+// owned and pre-added to that genre's shuffle pool on first session", rendering in the
+// Owned-and-in-shuffle state. Boot calls this once, on a profile whose rotation has no
+// persisted representation yet, so active_pool_track_ids becomes the single source of
+// truth for what is in rotation from that point on (a later removal then sticks across
+// reloads instead of being re-seeded). Idempotent.
+void add_starter_tracks_to_pool(MusicLibraryState& lib);
+
 }  // namespace poker_trainer::persistence

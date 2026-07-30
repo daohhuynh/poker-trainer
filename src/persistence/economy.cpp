@@ -4,6 +4,7 @@
 #include "persistence/persistence_schema.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <vector>
@@ -94,6 +95,15 @@ void add_track_to_pool(MusicLibraryState& lib, audio::MusicTrackId track) {
 
 void remove_track_from_pool(MusicLibraryState& lib, audio::MusicTrackId track) {
     erase_value(lib.active_pool_track_ids, track_byte(track));
+}
+
+void add_starter_tracks_to_pool(MusicLibraryState& lib) {
+    for (std::size_t i = 0; i < audio::kMusicTrackCount; ++i) {
+        const auto track = static_cast<audio::MusicTrackId>(i);
+        if (audio::music_track_info(track).is_starter) {
+            add_track_to_pool(lib, track);
+        }
+    }
 }
 
 }  // namespace poker_trainer::persistence
