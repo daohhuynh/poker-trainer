@@ -14,11 +14,16 @@ assets::AssetTier sfx_load_tier(audio::SfxId id) noexcept {
         case audio::SfxId::ModalSwooshOpen:
         case audio::SfxId::ModalSwooshClose:
             return assets::AssetTier::Tier2;
+        // The Root-screen frog can be clicked before the user has navigated anywhere,
+        // and Tier 3 does not load until the first Root -> Mode Selection move. Left
+        // in Tier 3 the frog's ribbit would simply not play on a fresh tab, which is
+        // the one thing that interaction does. It is 7 KB.
+        case audio::SfxId::FrogToggle:
+            return assets::AssetTier::Tier2;
         case audio::SfxId::CardDeal:
         case audio::SfxId::ButtonClickConfirmation:
         case audio::SfxId::ChipPush:
         case audio::SfxId::SidePotSplit:
-        case audio::SfxId::FrogToggle:
         case audio::SfxId::SlideIn:
         case audio::SfxId::SlideOut:
             return assets::AssetTier::Tier3;

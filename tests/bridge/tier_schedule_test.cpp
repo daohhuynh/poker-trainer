@@ -18,24 +18,31 @@ namespace bb = poker_trainer::backbone;
 
 // ----- SFX tier split (Module 3: swoosh pair in Tier 2, the rest in Tier 3) ----
 
-TEST(SfxLoadTier, SwooshPairLoadsInTierTwo) {
+TEST(SfxLoadTier, SamplesAudibleBeforeTierThreeLoadInTierTwo) {
+    // Tier 3 does not arrive until the first Root -> Mode Selection navigation, so a
+    // sample that can be triggered before then has to be Tier 2 or it simply will not
+    // play. The swoosh pair qualifies because the Root cluster's modals open on the
+    // first screen; the frog ribbit qualifies because the Root-screen frog can be
+    // clicked on a fresh tab before the user has navigated anywhere.
     EXPECT_EQ(br::sfx_load_tier(au::SfxId::ModalSwooshOpen), as::AssetTier::Tier2);
     EXPECT_EQ(br::sfx_load_tier(au::SfxId::ModalSwooshClose), as::AssetTier::Tier2);
+    EXPECT_EQ(br::sfx_load_tier(au::SfxId::FrogToggle), as::AssetTier::Tier2);
 }
 
-TEST(SfxLoadTier, EveryOtherSampleLoadsInTierThree) {
+TEST(SfxLoadTier, GameplaySamplesLoadInTierThree) {
+    // Everything below is first reachable inside a drill, which is after Tier 3 lands.
     EXPECT_EQ(br::sfx_load_tier(au::SfxId::CardDeal), as::AssetTier::Tier3);
     EXPECT_EQ(br::sfx_load_tier(au::SfxId::ButtonClickConfirmation), as::AssetTier::Tier3);
     EXPECT_EQ(br::sfx_load_tier(au::SfxId::ChipPush), as::AssetTier::Tier3);
     EXPECT_EQ(br::sfx_load_tier(au::SfxId::SidePotSplit), as::AssetTier::Tier3);
-    EXPECT_EQ(br::sfx_load_tier(au::SfxId::FrogToggle), as::AssetTier::Tier3);
     EXPECT_EQ(br::sfx_load_tier(au::SfxId::SlideIn), as::AssetTier::Tier3);
     EXPECT_EQ(br::sfx_load_tier(au::SfxId::SlideOut), as::AssetTier::Tier3);
 }
 
 TEST(SfxLoadTier, EverySampleMapsToTierTwoOrThree) {
-    // No SFX leaks into a tier that carries none (Tier 1 / Tier 4). Exactly the
-    // two swoosh samples are Tier 2.
+    // No SFX leaks into a tier that carries none (Tier 1 / Tier 4). Tier 2 carries
+    // exactly the samples reachable before Tier 3 lands: the swoosh pair and the
+    // Root-screen frog's ribbit.
     std::size_t tier2 = 0;
     std::size_t tier3 = 0;
     for (std::size_t i = 0; i < au::kSfxCount; ++i) {
@@ -47,8 +54,8 @@ TEST(SfxLoadTier, EverySampleMapsToTierTwoOrThree) {
             ++tier3;
         }
     }
-    EXPECT_EQ(tier2, 2u);
-    EXPECT_EQ(tier3, au::kSfxCount - 2u);
+    EXPECT_EQ(tier2, 3u);
+    EXPECT_EQ(tier3, au::kSfxCount - 3u);
 }
 
 // ----- Game-launch required-asset gating (Tier-2 navigation guard) -----
