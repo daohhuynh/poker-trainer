@@ -1,10 +1,12 @@
 #include "modal/offline_indicator.hpp"
 
+#include "modal/modal_base.hpp"
+
 #include "persistence/sync_state.hpp"
 
 #include "theme/theme_tokens.hpp"
 
-#include <cfloat>
+#include <algorithm>
 
 #include <imgui.h>
 
@@ -24,9 +26,20 @@ void draw_cloud_slash(ImDrawList* dl, const animations::Rect& r, ImU32 color) {
     dl->AddCircleFilled(ImVec2{r.x + r.w * 0.6f, cy}, base_r * 1.15f, color, 12);
     dl->AddCircleFilled(ImVec2{r.x + r.w * 0.5f, cy - base_r * 0.7f}, base_r, color, 12);
     dl->AddRectFilled(ImVec2{r.x + r.w * 0.34f, cy}, ImVec2{r.x + r.w * 0.66f, cy + base_r}, color);
-    // Diagonal slash.
-    dl->AddLine(ImVec2{r.x + r.w * 0.25f, r.y + r.h * 0.8f},
-                ImVec2{r.x + r.w * 0.75f, r.y + r.h * 0.3f}, color, 2.0f);
+
+    // Diagonal slash, drawn in two passes. A single line in the glyph's own colour --
+    // which is what this did -- lies entirely inside the cloud silhouette and is
+    // therefore invisible at every size, leaving a featureless blob. The first pass
+    // cuts a channel through the cloud in the screen background tint; the second draws
+    // the slash inside that channel. Without the cut the icon reads as weather rather
+    // than as a dropped connection, and the glyph is now the only carrier of the
+    // message (the text moved to the hover tooltip).
+    const ImVec2 from{r.x + r.w * 0.18f, r.y + r.h * 0.84f};
+    const ImVec2 to{r.x + r.w * 0.82f, r.y + r.h * 0.24f};
+    const float stroke = std::max(1.5f, r.h * 0.10f);
+    dl->AddLine(from, to, ImGui::ColorConvertFloat4ToU32(theme::get_color(theme::ColorToken::BgPrimary)),
+                stroke * 2.4f);
+    dl->AddLine(from, to, color, stroke);
 }
 
 }  // namespace
@@ -41,38 +54,39 @@ void render_offline_indicator(ImDrawList* dl) {
         return;
     }
 
-    // Match the "Training tool, no real money." disclaimer EXACTLY: the small (0.8x) font in
-    // text_secondary at ~70% alpha. An informational line, not a control — no fill, no hover
-    // state. Laid out (text)(cloud), right-aligned to the bottom-right corner with the cloud
-    // essentially flush in the corner. The cloud is drawn procedurally in the same muted
-    // token (an image asset can't be alpha-matched to the disclaimer, so no image path here).
-    ImFont* font = ImGui::GetFont();
-    const float size = ImGui::GetFontSize() * 0.8f;
+    // Anchored under the "Training tool, no real money." disclaimer, whose rect Z11
+    // publishes each frame it draws one. Only trusted on the frame it was stamped:
+    // screens that draw no disclaimer (Tutorial Complete, Error) get no indicator
+    // rather than the previous screen's stale position. render_modal_overlay runs
+    // after the screen body in the same ImGui frame, so on the four screens that do
+    // draw it the stamp is always current.
+    const ModalRuntime* rt = modal_runtime();
+    if (rt == nullptr || rt->disclaimer_frame != ImGui::GetFrameCount()) {
+        return;
+    }
+    const animations::Rect& row = rt->disclaimer_rect;
+
+    // Glyph only, no text and no fill — ARCHITECTURE L563 makes this informational
+    // rather than interactive, and the message lives in the hover tooltip. Sized and
+    // coloured off the disclaimer so the two read as one passive stack.
+    // 1.25x the text height was right when a label sat beside it; now the glyph
+    // carries the whole message, and at ~13px the cloud's puffs came to about four
+    // pixels and read as a smudge. ARCHITECTURE asks for cluster-icon size, which is
+    // ~50px here and far too heavy for a passive tag under the disclaimer, so this
+    // sits between: unmistakably a cloud, still clearly subordinate to the Home icon.
+    const float icon = row.h * 2.2f;
+    const animations::Rect cloud{row.x + row.w - icon, row.y + row.h + row.h * 0.35f, icon,
+                                 icon};
+
     ImVec4 c = theme::get_color(theme::ColorToken::TextSecondary);
     c.w *= 0.7f;  // ~70% opacity: passive, matches the disclaimer
-    const ImU32 color = ImGui::ColorConvertFloat4ToU32(c);
+    draw_cloud_slash(dl, cloud, ImGui::ColorConvertFloat4ToU32(c));
 
-    const ImGuiViewport* vp = ImGui::GetMainViewport();
-    const float pad = size * 0.5f;   // a hair off the very corner so nothing clips
-    const float icon = size * 1.25f;  // cloud square, ~ the text cap height
-    const float gap = size * 0.4f;    // between the text and the cloud
-
-    const char* text = "Offline - changes saved locally";  // ASCII only (the font has no em dash)
-    const ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0.0f, text);
-
-    // Cloud flush in the bottom-right corner; text to its left, vertically centered.
-    const animations::Rect cloud{vp->Pos.x + vp->Size.x - pad - icon,
-                                 vp->Pos.y + vp->Size.y - pad - icon, icon, icon};
-    const float text_x = cloud.x - gap - ts.x;
-    const float text_y = cloud.y + (icon - ts.y) * 0.5f;
-
-    dl->AddText(font, size, ImVec2{text_x, text_y}, color, text);
-    draw_cloud_slash(dl, cloud, color);
-
-    // Hover tooltip (manual hit-test over the whole group; drawn on a top-level draw list
-    // with no active ImGui window, so IsItemHovered is unavailable here).
+    // Hover tooltip (manual hit-test: drawn on a top-level draw list with no active
+    // ImGui window, so IsItemHovered is unavailable here).
     const ImVec2 m = ImGui::GetIO().MousePos;
-    if (m.x >= text_x && m.x <= cloud.x + icon && m.y >= cloud.y && m.y <= cloud.y + icon) {
+    if (m.x >= cloud.x && m.x <= cloud.x + cloud.w && m.y >= cloud.y &&
+        m.y <= cloud.y + cloud.h) {
         ImGui::SetTooltip("%s", kOfflineTooltip);
     }
 }

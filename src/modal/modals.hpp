@@ -261,6 +261,19 @@ struct ModalRuntime {
     bool has_cluster{false};
     ClusterContext cluster{};
 
+    // The rect render_training_disclaimer last drew into, and the ImGui frame it drew
+    // in. The offline indicator hangs off this so the two stay aligned without any
+    // duplicated layout maths: the disclaimer's anchor differs per screen (Root and
+    // Mode Selection derive it from the Home icon, Game and Post-Round from the
+    // cluster box), so re-deriving it in a second place would drift.
+    //
+    // The frame stamp is load-bearing, not defensive. Unlike has_cluster (which is
+    // set once and never cleared, so it goes stale across screens) this must only be
+    // trusted on a frame the disclaimer actually drew — screens that draw no
+    // disclaimer must get no indicator, not the last screen's position.
+    animations::Rect disclaimer_rect{};
+    int disclaimer_frame{-1};
+
     // Click-outside opening-frame guard (mirrors CustomPopupState::just_opened):
     // suppresses the click that opened the modal from immediately dismissing it.
     bool modal_just_opened{false};

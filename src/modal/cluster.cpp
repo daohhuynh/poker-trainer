@@ -130,6 +130,12 @@ void render_training_disclaimer(ImDrawList* dl, const std::array<animations::Rec
     ImVec4 c = theme::get_color(theme::ColorToken::TextSecondary);
     c.w *= 0.7f;  // ~70% opacity: passive, not competing with the controls
     dl->AddText(font, size, ImVec2{x, y}, ImGui::ColorConvertFloat4ToU32(c), text);
+
+    // Publish the row for the offline indicator, which sits directly beneath it.
+    if (ModalRuntime* rt = modal_runtime(); rt != nullptr) {
+        rt->disclaimer_rect = animations::Rect{x, y, ts.x, ts.y};
+        rt->disclaimer_frame = ImGui::GetFrameCount();
+    }
 }
 
 void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx) {
@@ -193,9 +199,10 @@ void render_persistent_cluster(ImDrawList* dl, const ClusterContext& ctx) {
         }
     }
 
-    // The offline sync indicator is no longer a cluster element — it is a bottom-right
-    // corner line drawn as a top-level overlay (render_modal_overlay -> render_offline_
-    // indicator), so it shows on every screen the frame a sync fails.
+    // The offline sync indicator is not drawn here. It is a top-level overlay
+    // (render_modal_overlay -> render_offline_indicator) so it can use the foreground
+    // draw list and stay visible above an open modal, but it positions itself under the
+    // disclaimer row that render_training_disclaimer publishes below.
 
     // Passive "Training tool, no real money." tag, its own row beneath the cluster.
     render_training_disclaimer(dl, ctx.rects);

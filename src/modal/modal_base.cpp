@@ -473,9 +473,11 @@ void render_modal_overlay() {
     // The outage banner renders above any modal (top-center foreground).
     render_outage_banner(g_runtime->banner);
 
-    // The offline sync indicator: a bottom-right corner line, drawn on the FOREGROUND draw
-    // list so it sits above an open modal and shows on EVERY screen (this overlay runs every
-    // frame, before/independent of the cluster). Self-gates on sync_state.
+    // The offline sync indicator: a glyph under the "Training tool, no real money."
+    // disclaimer, drawn on the FOREGROUND draw list so it sits above an open modal (the
+    // screens themselves draw into the background list, which the scrim above dims).
+    // Self-gates on sync_state AND on a disclaimer having been published this frame, so
+    // it must run after the screen body — which it does, render_screen precedes this.
     render_offline_indicator(ImGui::GetForegroundDrawList());
 }
 
