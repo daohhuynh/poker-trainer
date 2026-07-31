@@ -2,8 +2,10 @@
 
 // Zone 07 — the Root screen's frog.
 //
-// A small frog sits in the Root screen's bottom-right corner on a quarter of
-// visits. Clicking it ribbits and opens a speech bubble to its left; clicking
+// A small frog sits in the Root screen's bottom-right corner, on the share of
+// visits kFrogAppearPercent declares (currently every one of them, subject to the
+// tutorial-prompt gate below). Clicking it ribbits and opens a speech bubble to
+// its left; clicking
 // again swaps the line. It is decoration on the Root screen, so it lives with
 // the rest of Zone 07's Root code — src/easter_egg/ is Zone 08's dealer toggle
 // (22 clicks on the dealer swaps the Butler for a frog), a different feature.
@@ -56,8 +58,10 @@ inline constexpr std::array<std::string_view, 10> kFrogLines{
 
 inline constexpr std::size_t kFrogLineCount = kFrogLines.size();
 
-// Percent of Root visits that get a frog.
-inline constexpr std::uint32_t kFrogAppearPercent = 25;
+// Percent of Root visits that get a frog. The roll machinery stays in place at 100
+// so this is a one-number change back to an occasional frog; the tutorial-prompt
+// suppression gates appearance independently of it.
+inline constexpr std::uint32_t kFrogAppearPercent = 100;
 
 // ----- State ------------------------------------------------------------------
 
@@ -86,7 +90,7 @@ struct RootFrogState {
     // The animation clock alone cannot seed this: total_ms_since_app_start()
     // restarts at 0 on every page load, so the entry roll on the boot frame always
     // saw the same (near-zero) input and produced the same answer every time. That
-    // is not a 25% chance, it is one fixed outcome per build -- the frog either
+    // was not a chance at all, it was one fixed outcome per build -- the frog either
     // always appeared on a fresh tab or, as shipped, never did. Mixing in a session
     // seed is what makes the roll actually random. Mirrors audio.cpp's
     // make_session_seed and bridge::game_launch's master_rng.

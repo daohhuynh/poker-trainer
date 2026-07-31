@@ -260,7 +260,7 @@ void install_root_handlers(animations::MorphController& morph, RootFrogState& fr
                 return false;
             }
             const animations::Canvas canvas = viewport_canvas();
-            // The frog (bottom-right, on a quarter of visits): ribbit + open or swap
+            // The frog (bottom-right corner): ribbit + open or swap
             // its speech bubble. Hit-tested at the exact rect render_root_frog draws
             // and only while it is actually showing, so an invisible frog is never
             // clickable. That rect deliberately overhangs the canvas corner so the

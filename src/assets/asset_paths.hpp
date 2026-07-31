@@ -97,7 +97,7 @@ enum class AssetId : std::uint16_t {
 
     // --- Tier 2: Root screen frog decoration ---
     FrogPeek,      // the small frog that sits in the Root screen's bottom-right
-                   // corner on a fraction of visits (screens/root_frog.hpp)
+                   // corner (screens/root_frog.hpp)
     SpeechBubble,  // its dialogue bubble, drawn to the frog's left once clicked
 
     // --- Tier 4: Frog easter egg (base + two expression overlays) ---

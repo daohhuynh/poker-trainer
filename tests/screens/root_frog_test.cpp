@@ -10,6 +10,7 @@
 #include "animations/button_morph.hpp"
 #include "backbone/screen_state.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -49,7 +50,7 @@ constexpr an::Canvas kCanvas{1920.0f, 1080.0f};
 
 // ----- The appearance roll ----------------------------------------------------
 
-TEST(RootFrogRoll, LandsNearTheDeclaredQuarter) {
+TEST(RootFrogRoll, MatchesTheDeclaredAppearanceRate) {
     std::size_t hits = 0;
     constexpr std::size_t kSamples = 20000;
     for (std::uint64_t ms = 0; ms < kSamples; ++ms) {
@@ -58,23 +59,25 @@ TEST(RootFrogRoll, LandsNearTheDeclaredQuarter) {
         }
     }
     const double rate = static_cast<double>(hits) / static_cast<double>(kSamples);
-    EXPECT_NEAR(rate, 0.25, 0.02);
+    // Checked against the declared constant rather than a literal, so changing the
+    // rate does not silently leave a test asserting the old one.
+    const double declared = static_cast<double>(sc::kFrogAppearPercent) / 100.0;
+    EXPECT_NEAR(rate, declared, 0.02);
 }
 
-TEST(RootFrogRoll, ConsecutiveEntriesInTheSameMillisecondCanDiffer) {
+TEST(RootFrogRoll, TheNonceVariesTheRollInput) {
     // The nonce is what keeps two entries that land in the same millisecond from
-    // producing identical rolls forever.
-    bool saw_true = false;
-    bool saw_false = false;
-    for (std::uint32_t nonce = 0; nonce < 64; ++nonce) {
-        if (sc::roll_frog_appears(/*now_ms=*/5000, nonce)) {
-            saw_true = true;
-        } else {
-            saw_false = true;
-        }
+    // hashing identically. Asserted on the hash rather than on the roll's boolean
+    // outcome: at kFrogAppearPercent = 100 every roll is true, so an outcome-based
+    // check would pass vacuously while proving nothing about the nonce.
+    constexpr std::size_t kNonces = 64;
+    std::array<std::uint64_t, kNonces> mixed{};
+    for (std::size_t i = 0; i < kNonces; ++i) {
+        mixed[i] = sc::frog_mix(5000ULL + static_cast<std::uint64_t>(i));
     }
-    EXPECT_TRUE(saw_true);
-    EXPECT_TRUE(saw_false);
+    std::sort(mixed.begin(), mixed.end());
+    EXPECT_EQ(static_cast<std::size_t>(std::unique(mixed.begin(), mixed.end()) - mixed.begin()),
+              kNonces);
 }
 
 // ----- Tutorial-prompt suppression --------------------------------------------
