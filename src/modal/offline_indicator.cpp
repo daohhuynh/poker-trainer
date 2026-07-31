@@ -2,6 +2,8 @@
 
 #include "modal/modal_base.hpp"
 
+#include "backbone/screen_state.hpp"
+
 #include "persistence/sync_state.hpp"
 
 #include "theme/theme_tokens.hpp"
@@ -42,6 +44,29 @@ void draw_cloud_slash(ImDrawList* dl, const animations::Rect& r, ImU32 color) {
     dl->AddLine(from, to, color, stroke);
 }
 
+// Which screens draw the "Training tool, no real money." disclaimer, and so give
+// the glyph a row to hang under. The rest get the corner fallback.
+//
+// Keyed on the SCREEN rather than on "was a disclaimer published this frame",
+// which is the tempting test but the wrong one: Root's morph frame draws no
+// disclaimer either, so that rule would fling the glyph to the far corner and back
+// for the duration of every Root -> Mode Selection transition. On a screen that
+// does draw one, a frame without it means the whole corner is momentarily empty,
+// and the right answer is to go with it.
+[[nodiscard]] bool screen_draws_disclaimer(backbone::ScreenId screen) noexcept {
+    switch (screen) {
+        case backbone::ScreenId::Root:
+        case backbone::ScreenId::ModeSelection:
+        case backbone::ScreenId::Game:
+        case backbone::ScreenId::PostRound:
+            return true;
+        case backbone::ScreenId::TutorialComplete:
+        case backbone::ScreenId::Error:
+            return false;
+    }
+    return false;
+}
+
 }  // namespace
 
 void render_offline_indicator(ImDrawList* dl) {
@@ -54,29 +79,35 @@ void render_offline_indicator(ImDrawList* dl) {
         return;
     }
 
-    // Anchored under the "Training tool, no real money." disclaimer, whose rect Z11
-    // publishes each frame it draws one. Only trusted on the frame it was stamped:
-    // screens that draw no disclaimer (Tutorial Complete, Error) get no indicator
-    // rather than the previous screen's stale position. render_modal_overlay runs
-    // after the screen body in the same ImGui frame, so on the four screens that do
-    // draw it the stamp is always current.
-    const ModalRuntime* rt = modal_runtime();
-    if (rt == nullptr || rt->disclaimer_frame != ImGui::GetFrameCount()) {
-        return;
-    }
-    const animations::Rect& row = rt->disclaimer_rect;
+    // Sized off the same 0.8x font the disclaimer uses, so the glyph is identical
+    // whichever branch places it.
+    const float text_size = ImGui::GetFontSize() * 0.8f;
+    const float icon = text_size * 2.2f;
 
-    // Glyph only, no text and no fill — ARCHITECTURE L563 makes this informational
-    // rather than interactive, and the message lives in the hover tooltip. Sized and
-    // coloured off the disclaimer so the two read as one passive stack.
-    // 1.25x the text height was right when a label sat beside it; now the glyph
-    // carries the whole message, and at ~13px the cloud's puffs came to about four
-    // pixels and read as a smudge. ARCHITECTURE asks for cluster-icon size, which is
-    // ~50px here and far too heavy for a passive tag under the disclaimer, so this
-    // sits between: unmistakably a cloud, still clearly subordinate to the Home icon.
-    const float icon = row.h * 2.2f;
-    const animations::Rect cloud{row.x + row.w - icon, row.y + row.h + row.h * 0.35f, icon,
-                                 icon};
+    animations::Rect cloud{};
+    if (screen_draws_disclaimer(backbone::read_screen_state().current)) {
+        // Anchored under the "Training tool, no real money." disclaimer, whose rect
+        // Z11 publishes each frame it draws one. Only trusted on the frame it was
+        // stamped. render_modal_overlay runs after the screen body in the same ImGui
+        // frame, so on these screens the stamp is current except during the Root ->
+        // Mode morph, which draws no disclaimer at all — nothing to sit under, so
+        // nothing is drawn.
+        const ModalRuntime* rt = modal_runtime();
+        if (rt == nullptr || rt->disclaimer_frame != ImGui::GetFrameCount()) {
+            return;
+        }
+        const animations::Rect& row = rt->disclaimer_rect;
+        cloud = animations::Rect{row.x + row.w - icon, row.y + row.h * 1.35f, icon, icon};
+    } else {
+        // Tutorial Complete and the Error screen draw no cluster and no disclaimer,
+        // so there is nothing to hang off. They fall back to the bottom-left corner,
+        // inset by the same margins home_icon_rect uses for its corner. Bottom-LEFT
+        // specifically: the bottom-right is the Root frog's and the Post-Round Again
+        // button's, so a status glyph there would teach two meanings for one corner.
+        const ImGuiViewport* vp = ImGui::GetMainViewport();
+        cloud = animations::Rect{vp->Pos.x + vp->Size.x * 0.03f,
+                                 vp->Pos.y + vp->Size.y * 0.97f - icon, icon, icon};
+    }
 
     ImVec4 c = theme::get_color(theme::ColorToken::TextSecondary);
     c.w *= 0.7f;  // ~70% opacity: passive, matches the disclaimer

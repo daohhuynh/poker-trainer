@@ -13,10 +13,18 @@ struct ImDrawList;
 // by the hover tooltip. Reads the Phase-0 sync_state primitive (no direct Zone 04
 // dependency).
 //
-// Position: it hangs off ModalRuntime::disclaimer_rect, published by
-// render_training_disclaimer on each frame it draws. So it appears wherever the disclaimer
-// does (Root, Mode Selection, Game, Post-Round) and nowhere else — Tutorial Complete and
-// the Error screen draw no disclaimer and therefore no indicator.
+// Position, by screen:
+//   * Root, Mode Selection, Game, Post-Round — hangs off ModalRuntime::disclaimer_rect,
+//     published by render_training_disclaimer on each frame it draws. Nothing is drawn on a
+//     frame where that screen drew no disclaimer (the Root -> Mode morph), since there is
+//     no row to sit under and the corner is empty anyway.
+//   * Tutorial Complete, Error — no cluster and no disclaimer, so the glyph falls back to
+//     the bottom-LEFT corner. Not the bottom-right: that corner is the Root frog's and the
+//     Post-Round Again button's.
+//
+// Note the Error screen can barely reach this in practice — the Tier-1 boot path arrives
+// there before an authenticated service exists, so offline_hint() is false and no sync has
+// run. Only the mid-session Tier-2 blocked-navigation path can surface it.
 //
 // Still rendered as a top-level overlay (via render_modal_overlay) on the FOREGROUND draw
 // list, deliberately: the screens all draw into the background list, which
