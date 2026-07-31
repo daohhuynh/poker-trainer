@@ -14,7 +14,7 @@ hand when assets change.
 | Sound effects | 9 | CC0 1.0 | not required |
 | Music tracks | 12 | 10× CC BY 4.0, 2× public domain / CC0 | **REQUIRED** for 10 |
 | Source photograph | 1 | Unsplash License | not required |
-| Generated vector art | 84 | original work, project-owned | n/a |
+| Generated vector art | 86 | original work, project-owned | n/a |
 
 ---
 
@@ -146,7 +146,7 @@ copy under its own name once it took Root's blur parameters.
 
 ---
 
-## Generated vector art — 84 files, original work
+## Generated vector art — 86 files, original work
 
 Authored for this project as SVG, no third-party source material, no licence
 obligation. Editable sources live at `assets/svg/<mirrored path>.svg` and are
@@ -164,11 +164,13 @@ committed alongside the PNGs so art can be edited rather than redrawn.
 | Dealer button | 1 | `assets/svg/tier1/dealer_button.svg` |
 | Side-pot all-in marker | 1 | `assets/svg/tier2/side_pot_all_in_marker.svg` |
 | App logo | 1 | `assets/svg/tier1/app_logo.svg` |
+| Root frog | 1 | `assets/svg/tier2/frog_peek.svg` |
+| Speech bubble | 1 | `assets/svg/tier2/speech_bubble.svg` |
 
 Rebuild every PNG from source with:
 
 ```
-python3 tools/rasterize_assets.py       # 84 vector assets
+python3 tools/rasterize_assets.py       # 86 vector assets
 python3 tools/derive_backgrounds.py     # the room + the Game pool of light
 ```
 

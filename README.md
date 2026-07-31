@@ -2,6 +2,8 @@
 
 A browser-based trainer that drills the real-time decision math of poker (pot odds, outs, equity, EV, fold probability, bet sizing) and grades your answers against strict margins under time pressure.
 
+**Live:** <https://poker-trainer-pearl.vercel.app>
+
 It is written in C++23 and compiled to a single WebAssembly binary. The UI is a real-time Dear ImGui scene rendered through an in-house WebGL2 renderer to one HTML5 canvas. There is no server-side game logic: every scenario is generated deterministically in the browser from a 64-bit Scenario ID, the math is computed and graded locally, and the whole app ships as `poker_trainer.wasm` plus static art and audio served from any static host.
 
 The interesting part of this codebase is not raw speed. It is the architecture: a system decomposed into dependency-ordered zones behind frozen interface headers, an immediate-mode UI given retained-mode behavior (stable keyboard focus, modal focus traps) on top of a renderer that rebuilds the entire UI every frame, a clean asset bind seam that decouples art from code, and a locked decision-math engine that is the same code in the browser and in the native test suite.
@@ -13,7 +15,7 @@ The interesting part of this codebase is not raw speed. It is the architecture: 
 Each round presents one poker scenario and asks for the math behind the decision.
 
 - **Scenario types** (`engine::ScenarioType`): `Caller`, and three Aggressor variants `AggressorPureBluff`, `AggressorValueBet`, `AggressorSemiBluff`. The type is communicated visually through table state, not a text label, so you learn to read the board the way you would at a real table.
-- **The six math inputs** (`engine::InputId`): `PotOdds`, `Outs`, `Equity`, `Ev`, `FoldProbability`, `BetSize`. Which inputs a scenario asks for depends on its type: a Caller answers pot odds / outs / equity / net-call EV; an Aggressor answers per-tier fold probability and EV and picks the optimal bet size; a semi-bluff additionally answers equity-if-called.
+- **The six math inputs** (`engine::InputId`): `PotOdds`, `Outs`, `Equity`, `Ev`, `FoldProbability`, `BetSize`. Which inputs a scenario asks for depends on its type: a Caller answers pot odds / outs / equity / net-call EV; an Aggressor answers a per-tier **breakeven fold %** (`bet / (pot + bet)`, the aggressor's mirror of pot odds) plus per-tier EV, and picks the optimal bet size; a semi-bluff additionally answers equity-if-called. The opponent's actual fold % is displayed rather than typed — `InputId::FoldProbability` keeps its name for source compatibility but carries the breakeven figure (`src/engine/scenario.hpp`).
 - **Bet sizing** (`engine::BetTier`): `OneThirdPot`, `HalfPot`, `FullPot`, `Overbet`. With the Bet Sizing Engine on, an Aggressor scenario presents the same spot at all four sizes (the multi-tier drill) and grades each tier.
 - **Grading margins** (`engine/evaluator.hpp`): probabilities within +/-5 percentage points (`kProbabilityMarginPp`), dollar EV within `max($0.50, 5%)` (`kEvAbsoluteFloor`, `kEvRelativeMargin`), outs as an exact integer match. A chosen bet tier is correct when its EV is within the same propagated EV tolerance of the max-EV tier, so tiers that are statistically tied with the best all pass.
 - **Time pressure**: scenarios run against a target time that scales by street and scenario type, with an optional flat custom value (`settings::GameplaySettings::time_pressure_custom_seconds`). A full pass requires both correct math and finishing at or under target.
@@ -35,11 +37,11 @@ The system is split into a Phase 0 backbone plus fourteen numbered zones, arrang
 | Phase 0 | Backbone primitives and the frozen contract headers every zone builds against (`src/backbone/`, plus `scenario_id.hpp`, `settings.hpp`, `theme_tokens.hpp`, and the other contract headers). |
 | Z01 Engine | Deterministic scenario generation, the locked EV formulas, grading (`src/engine/`). |
 | Z02 Assets | Tiered PNG load over a CDN/dev fetch, decode, registry (`src/assets/`). |
-| Z03 Audio | Music, SFX, spawn choreography over a miniaudio backend (`src/audio/`). |
+| Z03 Audio | SFX and spawn choreography over a miniaudio backend, plus the music rotation: one cross-genre playlist with a genre filter and a Loop/Shuffle order (`src/audio/`). |
 | Z04 Persistence | Guest-mode IDBFS store, migration, Auth0-backed account/sync (`src/persistence/`). |
 | Z05 Bridge | Emscripten platform bring-up, WebGL2 renderer, input, boot, main loop, render seam (`src/bridge/`). |
 | Z06 Theme | Four palettes and the token system (`src/theme/`). |
-| Z07 Root + Mode | Root and Mode Selection screens, the Custom popup, the button morph (`src/screens/`, `src/animations/`). |
+| Z07 Root + Mode | Root and Mode Selection screens, the Custom popup, the button morph, the Root frog (`src/screens/`, `src/animations/`). |
 | Z08 Game | The first-person table: felt, cards, chips, dealer, opponents, HUD (`src/screens/game_screen.cpp`, `src/render/`). |
 | Z09 Math Interrogator | Math input boxes, bet-size buttons, submission, keybinds (`src/math/`). |
 | Z10 Temporal | Delta timer, visual countdown, per-scenario target time (`src/temporal/`). |
@@ -72,9 +74,9 @@ Handlers register with `register_key_handler(context, handler, priority, tag)`. 
 
 Art is late-bound and swappable with no code change. Every drawable routes through one point, `bridge::draw_asset_image` in `src/bridge/asset_image.hpp`, which is the single `ImDrawList::AddImage` call shared by backgrounds, the logo, the table, cards, chips, the dealer, and markers. It is keyed by a stable `assets::AssetId` handle, not a path or a pointer.
 
-Underneath, `draw_asset_image` calls `bridge::asset_gl_texture(id)` (`src/bridge/texture_bind.hpp`). Zone 02 decodes a PNG to CPU-resident RGBA8; `texture_bind` uploads those pixels to a WebGL2 texture once, caches the GL name per `AssetId`, and returns it. When the texture is not available (still loading, unavailable after a fetch failure, or no GL context in the native test build) it returns 0 and `draw_asset_image` returns `false`, so the caller draws a procedural fallback instead. Because lookups are keyed by `AssetId` and the bytes are uploaded once, dropping real art in later is a file overwrite at the same asset path followed by a rebuild: the exact same code draws the new pixels, with no cache invalidation and nothing in the render code to change. The header is deliberately ImGui-free and returns a plain integer, so the pure, native-testable `bridge` library can supply a no-op stub while the real WebGL2 upload lives in `texture_bind.cpp` and is compiled only into the wasm build.
+Underneath, `draw_asset_image` calls `bridge::asset_gl_texture(id)` (`src/bridge/texture_bind.hpp`). Zone 02 decodes a PNG to CPU-resident RGBA8; `texture_bind` uploads those pixels to a WebGL2 texture once, caches the GL name per `AssetId`, and returns it. When the texture is not available (still loading, unavailable after a fetch failure, or no GL context in the native test build) it returns 0 and `draw_asset_image` returns `false`, so the caller draws a procedural fallback instead. Because lookups are keyed by `AssetId` and the bytes are uploaded once, replacing a piece of art is a file overwrite at the same asset path followed by a rebuild: the exact same code draws the new pixels, with no cache invalidation and nothing in the render code to change. The full production art and audio set ships in `assets/` (see *Art and audio* below) — the procedural fallbacks are the loading and no-GL path, not placeholders waiting on real art. The header is deliberately ImGui-free and returns a plain integer, so the pure, native-testable `bridge` library can supply a no-op stub while the real WebGL2 upload lives in `texture_bind.cpp` and is compiled only into the wasm build.
 
-Asset bytes are fetched at runtime over `bridge::make_cdn_fetch` (`src/bridge/cdn_fetch.cpp`, via `emscripten_async_wget_data`) at asset-root-relative paths like `assets/images/tier1/dealer_button.png`, loaded in tiers (Tier 1 synchronously for Root, Tier 2 in the background, Tier 3 audio, Tier 4 the on-demand easter-egg art).
+Asset bytes are fetched at runtime over `bridge::make_cdn_fetch` (`src/bridge/cdn_fetch.cpp`, via `emscripten_async_wget_data`) at asset-root-relative paths like `assets/images/tier1/dealer_button.png`. Tiers are ordered by when a thing can first be seen or heard, not by media type: Tier 1 is the synchronous Root set; Tier 2 is the background fetch the table needs, plus the three sound effects reachable from Root (both modal swooshes and the frog's ribbit); Tier 3 is the remaining six gameplay effects and the starter music; Tier 4 is the on-demand Post-Round frog art. The mapping is `src/assets/asset_paths.hpp` and `src/bridge/tier_schedule.cpp`.
 
 ### The decision-math engine
 
@@ -90,6 +92,14 @@ double net_call_ev(double equity, double pot, double bet)     = equity*(pot+bet)
 ```
 
 `evaluate(state, answers)` produces one `InputGrade` per input the scenario asks for (an unfilled box grades incorrect), applies the per-input margins, and sets `all_correct`. The extreme-value cases (pure bluff at `P(fold)=1` equals pot, value bet at `P(call)=0` equals 0, the semi-bluff identity, and so on) are pinned as non-negotiable tests in `tests/engine/evaluator_test.cpp`.
+
+### Art and audio
+
+109 files ship: 88 PNGs, 9 Ogg sound effects, and 12 MP3 music tracks, all under `assets/`.
+
+Almost all of the art is **generated, not hand-drawn into a binary**. 86 of the 88 images are authored as SVG under `assets/svg/` — a tree that mirrors the PNG tree path for path — and rasterized by `tools/rasterize_assets.py`, which drives Inkscape at fixed per-asset dimensions and then verifies that every cut-out asset still has a transparent pixel (the whole set is alpha-composited over a dim room, so a silently-flattened alpha channel is the failure mode that matters). The remaining two are the backdrops, built by `tools/derive_backgrounds.py`: one heavily blurred photograph of a room, shared by every menu screen, and a generated warm elliptical falloff over black for the Game screen. Editing art means editing the SVG and re-running the script, not overwriting a PNG.
+
+The audio is fetched rather than generated. `ASSETS.md` is the per-file ledger — source URL, original title, author, and licence for every asset not drawn for this project. **Ten of the twelve music tracks are CC BY 4.0 and their attribution is a licence condition**; see *License and attribution* below.
 
 ---
 
@@ -129,7 +139,8 @@ The split is what makes it testable. The pure parts (the registry, the reconcile
 | Audio | miniaudio + stb_vorbis (`third_party/`) | SFX device and Ogg/Vorbis decode; HTML5 audio for music. |
 | Images | stb_image (`third_party/stb/stb_image.h`) | PNG decode to RGBA8. |
 | Persistence | IDBFS (`-lidbfs.js`, `src/persistence/idbfs.cpp`) | Durable guest-mode local storage in IndexedDB. |
-| Accounts | Auth0 (`src/persistence/auth.cpp`, `auth0_config.hpp`) | Authentication and server sync for the leaderboard. |
+| Identity | Auth0 (`src/persistence/auth.cpp`, `auth0_config.hpp`) | Authentication only — it issues the token, it stores no app data. |
+| Backend | Supabase / PostgREST (`src/persistence/supabase_backend.cpp`) | All server state: account sync, leaderboard, reports, deletion. Row-Level Security trusts the Auth0 ID token as a third-party issuer. |
 | Offline | Service worker (`src/bridge/service_worker.js`) | Versioned PWA caching of the bundle and assets. |
 
 ---
@@ -154,32 +165,45 @@ Activate emsdk first (its environment is not sourced automatically):
 
 ```sh
 source /path/to/emsdk/emsdk_env.sh
-mkdir -p build && cd build
+mkdir -p build-wasm && cd build-wasm
 emcmake cmake -DCMAKE_BUILD_TYPE=Release ..
 emmake make -j
 ```
 
-This produces `poker_trainer.js` and `poker_trainer.wasm` in the build directory and copies `service_worker.js` next to them (a post-build step, so the worker is served from the bundle root where its scope can control the page). The wasm link flags request WebGL2 (`-sMIN_WEBGL_VERSION=2`, `-sMAX_WEBGL_VERSION=2`, `-sFULL_ES3=1`), memory growth, a persistent runtime (`-sEXIT_RUNTIME=0`), and the IDBFS backend.
+The link step emits `poker_trainer.js` and `poker_trainer.wasm`. A `bundle_assets` target then assembles the rest of the bundle: it deploys the repo's `assets/` tree into `<build>/assets/` (excluding the `svg/` and `source/` working files), and writes a version-stamped `service_worker.js` into the bundle root where its scope can control the page.
+
+That target deliberately is **not** an `add_custom_command(POST_BUILD)`. `POST_BUILD` only fires when the target actually relinks, so on a build where only an asset changed the wasm is already up to date, the step is skipped, and the new asset never reaches the bundle — a build that succeeds and then 404s every `assets/...` fetch at runtime. `assets/` in the repo is the single source of truth; the copy under the build directory is derived, and is never a place to put files by hand.
+
+The wasm link flags request WebGL2 (`-sMIN_WEBGL_VERSION=2`, `-sMAX_WEBGL_VERSION=2`, `-sFULL_ES3=1`), memory growth, a persistent runtime (`-sEXIT_RUNTIME=0`), and the IDBFS backend.
 
 ### Serving locally
 
-The app draws to a canvas and fetches art at asset-root-relative paths, so serve a directory that contains the bundle, the service worker, a minimal host page, and the `assets/` tree. The host page is just a canvas plus the loader:
+There is no packaging step and no host page to write: the build directory holds the deployable bundle. Alongside the CMake scratch and the static libraries the link consumed, these are the files that get served:
 
-```html
-<!doctype html><html><head><meta charset="utf-8">
-<style>html,body{margin:0;height:100%;background:#111}canvas{display:block}</style></head>
-<body><canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
-<script>var Module={canvas:document.getElementById('canvas')};</script>
-<script src="poker_trainer.js"></script></body></html>
+```
+build-wasm/
+├── index.html          canvas loader, copied from src/bridge/index.html
+├── poker_trainer.js    Emscripten loader
+├── poker_trainer.wasm  the application
+├── service_worker.js   cache version stamped in at build time
+├── privacy.html        served by the in-app legal-doc overlay
+├── terms.html
+└── assets/             109 files — 88 PNG, 9 Ogg SFX, 12 MP3 tracks
 ```
 
-Then serve over HTTP (a `file://` open will not work, the wasm fetch needs a server):
+`assets/` is deployed from the repo tree minus `svg/` and `source/`, which are the editable art sources and the original photograph — working files, not runtime ones.
+
+Serve it over HTTP (a `file://` open will not work, the wasm fetch needs a server):
 
 ```sh
-python3 -m http.server 8000
+cd build-wasm && python3 -m http.server 8000
 ```
 
-**Service worker caching.** `service_worker.js` serves the core bundle (`poker_trainer.js` / `poker_trainer.wasm` and HTML navigations) network-first, so a rebuilt bundle loads on a normal reload. Static assets (PNGs, audio) are served cache-first, keyed by `CACHE_VERSION`. That means a swapped art or audio file will not appear until you bump `CACHE_VERSION` (the activate handler drops prior caches), clear the service-worker cache in devtools, or load in an incognito window.
+To change the host page, edit `src/bridge/index.html` — the copy in the build directory is overwritten on the next build. `privacy.html` and `terms.html` are likewise copied in from `src/bridge/`; the Settings modal loads them at `/privacy.html` and `/terms.html`, so a bundle without them has a broken legal-docs link.
+
+**Service worker caching.** `service_worker.js` serves the core bundle (`poker_trainer.js` / `poker_trainer.wasm` and HTML navigations) network-first, so a rebuilt bundle loads on a normal reload. Static assets (PNGs, audio) are served cache-first, keyed by `CACHE_VERSION`.
+
+`CACHE_VERSION` is injected at build time and is not maintained by hand. The git-tracked `src/bridge/service_worker.js` carries a `@CACHE_VERSION@` placeholder; `bundle_assets` substitutes a hash over the linked wasm plus a manifest of every deployed asset. So swapping a PNG or a music track changes the cache name and evicts returning users' caches on the next build, while a byte-identical rebuild leaves it alone. Nothing needs bumping, and there is no version literal in the repo to bump.
 
 ---
 
@@ -199,6 +223,29 @@ Read these in order to follow the system from its contracts up to a running scre
 
 ## Testing and build posture
 
-`ctest --test-dir build-test` runs seventeen test executables, all passing. Sixteen are GoogleTest suites totaling 724 test cases (engine determinism and the locked EV formulas, the focus reconcile decision, the event router and focus manager, asset loading, persistence, audio, and the screen/modal wiring); the seventeenth is the Phase 0 sign-off gate (`tests/all_headers_test.cpp`), which includes every contract header and instantiates one of each type to confirm they compile together. Rendering, audio output, and modal layout are verified by running the app rather than unit-tested, by design.
+`ctest --test-dir build-test` runs seventeen test executables, all passing. Sixteen are GoogleTest suites totaling 819 test cases (engine determinism and the locked EV formulas, the focus reconcile decision, the event router and focus manager, asset loading, persistence, audio, and the screen/modal wiring); the seventeenth is the Phase 0 sign-off gate (`tests/all_headers_test.cpp`), which includes every contract header and instantiates one of each type to confirm they compile together. Rendering, audio output, and modal layout are verified by running the app rather than unit-tested, by design.
 
 Everything compiles as strict C++23 under `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wnon-virtual-dtor -Wold-style-cast -Wcast-align -Werror`. Low-level Emscripten/WebGL binding code runs under a reduced but still `-Werror` warning baseline.
+
+---
+
+## License and attribution
+
+The **code is proprietary**. `LICENSE` is an all-rights-reserved grant: no permission is given to use, copy, modify, or redistribute it. This repository is readable, not open source.
+
+The **shipped assets are not all covered by that licence**, and the distinction matters to anyone forking, redeploying, or lifting files out of `assets/`:
+
+| Class | Count | Licence | Attribution |
+|---|---|---|---|
+| Sound effects | 9 | CC0 1.0 | Not required |
+| Music | 12 | 10 × CC BY 4.0, 2 × public domain / CC0 | **Required for the ten** |
+| Source photograph | 1 | Unsplash License | Not required |
+| Generated vector art | 84 | Original, project-owned | n/a |
+
+`ASSETS.md` carries the per-file detail and the exact credit strings.
+
+The ten CC BY 4.0 tracks are by **Kevin MacLeod (incompetech.com)**, licensed under [Creative Commons BY 4.0](http://creativecommons.org/licenses/by/4.0/). Attribution is a condition of that licence, not a courtesy: the credits render in-app in the Settings modal's About / Credits section (`src/settings/settings_modal.cpp`). Shipping the audio without them would breach the licence.
+
+Vendored third-party code carries its own notices — Dear ImGui (MIT, `third_party/imgui/LICENSE.txt`), stb_image and stb_vorbis (dual MIT / public domain, `third_party/stb/`), miniaudio (dual public domain / MIT-0, `third_party/miniaudio/`). GoogleTest (BSD-3-Clause) is fetched at configure time for the test build only and is not redistributed in the bundle.
+
+`PRIVACY.md` and `TERMS.md` are the deployed legal documents, served in-app at `/privacy.html` and `/terms.html`.
