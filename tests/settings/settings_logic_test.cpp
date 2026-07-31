@@ -4,6 +4,7 @@
 // CLAUDE.md §9).
 
 #include "settings/settings_logic.hpp"
+#include "settings/settings_modal.hpp"
 
 #include "settings/settings.hpp"
 
@@ -206,4 +207,49 @@ TEST(GenreFilter, NonAllValuesSitOneAboveTheAudioGenre) {
                   static_cast<int>(audio::MusicGenre::Ambient) + 1);
     // One genre value per catalog genre, plus All.
     EXPECT_EQ(static_cast<std::size_t>(st::ActiveMusicGenre::Ambient), audio::kMusicGenreCount);
+}
+
+// ----- the Settings Tab order must fit its storage in BOTH auth states -----
+
+// Regression: active_focus_order was a hand-written 54 against a 53-stop order whose
+// signed-in form is 55 (the guest Sign In / Sign Up pair is replaced by four stops).
+// Every signed-in open therefore wrote one FocusableId past the end. On wasm32 those
+// eight bytes ran off active_focus_count, through account_view_profile_open, and into
+// search_buf[0..2] -- so opening Settings while signed in showed three unrenderable
+// characters sitting in the search box, on every load, with no way to clear them.
+// Guests were unaffected (53 fits), which is what made it look like a sync bug.
+//
+// Counted the way build_account_focus_order builds it, so the arithmetic is checked
+// rather than the literal.
+namespace {
+
+[[nodiscard]] std::size_t focus_stops_for(bool logged_in) {
+    std::size_t n = 0;
+    for (const poker_trainer::backbone::FocusableId id : st::kSettingsFocusOrder) {
+        if (id == st::kAcSignIn) {
+            n += logged_in ? st::kLoggedInAccountStops : st::kGuestAccountStops;
+        } else if (id == st::kAcSignUp) {
+            // emitted alongside kAcSignIn
+        } else {
+            ++n;
+        }
+    }
+    return n;
+}
+
+}  // namespace
+
+TEST(SettingsFocusOrder, SignedInOrderFitsItsStorage) {
+    const std::size_t capacity = st::SettingsModalState{}.active_focus_order.size();
+    EXPECT_LE(focus_stops_for(/*logged_in=*/true), capacity);
+    EXPECT_LE(focus_stops_for(/*logged_in=*/false), capacity);
+}
+
+TEST(SettingsFocusOrder, SignedInOrderIsTwoStopsLongerThanGuest) {
+    // The exact relationship the capacity is derived from. If the account blocks change
+    // size without kGuestAccountStops / kLoggedInAccountStops following, this fails
+    // before the capacity silently goes short again.
+    EXPECT_EQ(focus_stops_for(true),
+              focus_stops_for(false) + st::kLoggedInAccountStops - st::kGuestAccountStops);
+    EXPECT_EQ(focus_stops_for(false), st::kSettingsFocusOrder.size());
 }

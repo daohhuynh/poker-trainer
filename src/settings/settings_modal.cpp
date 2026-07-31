@@ -143,17 +143,28 @@ void clear_imgui_keyboard_nav() {
 // behavior is unchanged; only the (currently unreachable) logged-in traversal differs.
 void build_account_focus_order(SettingsModalState& s) {
     s.logged_in_focus = account_is_logged_in(s);
+
+    // Held in arrays sized by the very constants active_focus_order's capacity is
+    // derived from, rather than written as loose statements. Adding a stop to either
+    // block without updating its constant is then a compile error, not a silent write
+    // past the end of the order -- which is exactly how the signed-in build came to
+    // overrun into search_buf.
+    constexpr std::array<backbone::FocusableId, kLoggedInAccountStops> kLoggedInBlock{
+        kAcViewProfile, kAcChangePassword, kAcSignOut, kAcDeleteAccount};
+    constexpr std::array<backbone::FocusableId, kGuestAccountStops> kGuestBlock{
+        kAcSignIn, kAcSignUp};
+
     std::size_t n = 0;
     for (const backbone::FocusableId id : kSettingsFocusOrder) {
         if (id == kAcSignIn) {
             if (s.logged_in_focus) {
-                s.active_focus_order[n++] = kAcViewProfile;
-                s.active_focus_order[n++] = kAcChangePassword;
-                s.active_focus_order[n++] = kAcSignOut;
-                s.active_focus_order[n++] = kAcDeleteAccount;
+                for (const backbone::FocusableId a : kLoggedInBlock) {
+                    s.active_focus_order[n++] = a;
+                }
             } else {
-                s.active_focus_order[n++] = kAcSignIn;
-                s.active_focus_order[n++] = kAcSignUp;
+                for (const backbone::FocusableId a : kGuestBlock) {
+                    s.active_focus_order[n++] = a;
+                }
             }
         } else if (id == kAcSignUp) {
             // already emitted alongside kAcSignIn

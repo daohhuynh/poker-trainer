@@ -112,6 +112,13 @@ inline constexpr backbone::FocusableId kLeTerms = backbone::make_focusable_id("s
 inline constexpr backbone::FocusableId kLePrivacy = backbone::make_focusable_id("settings.le.privacy");
 inline constexpr backbone::FocusableId kLeAbout = backbone::make_focusable_id("settings.le.about");
 
+// Account-section Tab stops, by auth state: Sign In / Sign Up when signed out, and
+// View Profile / Change Password / Sign Out / Delete Account when signed in.
+// kSettingsFocusOrder below carries the guest pair, so the signed-in order is two
+// stops LONGER than it.
+inline constexpr std::size_t kGuestAccountStops = 2;
+inline constexpr std::size_t kLoggedInAccountStops = 4;
+
 // The full Tab order (53 stops). Stable storage; the content provider's focus_list
 // returns a span over this.
 inline constexpr std::array<backbone::FocusableId, 53> kSettingsFocusOrder{
@@ -143,6 +150,20 @@ inline constexpr std::array<backbone::FocusableId, 53> kSettingsFocusOrder{
     // X close (Zone 11 shell)
     modal::kSettingsShellClose,
 };
+
+// Capacity for the per-open active order. DERIVED, never a literal: this was a
+// hand-written 54 against a 53-stop order whose signed-in form is 55, so every
+// signed-in open wrote one FocusableId past the end. On wasm32 that eight-byte
+// write ran off active_focus_count (immediately reassigned, so invisible), through
+// account_view_profile_open, and into the first three bytes of search_buf -- which
+// is why a signed-in user opening Settings found three unrenderable characters
+// ("???") already in the search box, on every load. Sizing off the constants means
+// changing either account block cannot reintroduce it.
+inline constexpr std::size_t kMaxSettingsFocusStops =
+    kSettingsFocusOrder.size() - kGuestAccountStops + kLoggedInAccountStops;
+
+static_assert(kMaxSettingsFocusStops >= kSettingsFocusOrder.size(),
+              "the guest order must also fit");
 
 // The first body control of each section (the sidebar enter/click jump target).
 [[nodiscard]] backbone::FocusableId first_control_of(SettingsSection section) noexcept;
@@ -183,7 +204,7 @@ struct SettingsModalState {
     // provider's focus_list returns a span over [0, active_focus_count). For the logged-out
     // (guest) case it is byte-for-byte kSettingsFocusOrder, so Tab/search are unchanged.
     bool logged_in_focus{false};                          // cached auth state at on_open
-    std::array<backbone::FocusableId, 54> active_focus_order{};
+    std::array<backbone::FocusableId, kMaxSettingsFocusStops> active_focus_order{};
     std::size_t active_focus_count{0};
 
     // View Profile inline panel toggle (logged-in Account section). Shows Spendable +
